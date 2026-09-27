@@ -91,24 +91,27 @@ header strong span {
   min-height: 0;
 }
 .panel {
+  --list-background: #000080;
+  --list-foreground: #00ffff;
+  --list-hidden-file: #ffff00;
   min-width: 0;
-  border: 1px solid #354052;
+  border: 1px solid #555;
   display: flex;
   flex-direction: column;
-  background: #1d232e;
+  background: #333;
   overflow: hidden;
 }
 .panel.active {
-  border-color: #709aee;
+  border-color: #00ffff;
 }
 .pathbar {
   display: flex;
   gap: 5px;
   padding: 7px;
-  background: #242c3a;
+  background: #333;
 }
 .panel.active .pathbar {
-  background: #283952;
+  background: #3b3b3b;
 }
 .pathbar form {
   flex: 1;
@@ -128,9 +131,10 @@ header strong span {
   gap: 9px;
   height: 30px;
   padding: 0 9px;
-  color: #8c9db6;
+  color: #c0c0c0;
   font-size: 10px;
   letter-spacing: 0.6px;
+  background: #333;
 }
 .panel-tools label {
   margin-left: auto;
@@ -149,15 +153,16 @@ header strong span {
   align-items: center;
 }
 .columns {
-  background: #252d3a;
-  border-block: 1px solid #364155;
+  background: #333;
+  border-block: 1px solid #666;
 }
 .columns button {
   text-align: left;
   border: 0;
-  border-right: 1px solid #364155;
+  border-right: 1px solid #666;
   border-radius: 0;
   background: transparent;
+  color: #f0f0f0;
   font-size: 11px;
   padding: 6px 8px;
   white-space: nowrap;
@@ -168,18 +173,17 @@ header strong span {
   overflow: auto;
   outline: none;
   position: relative;
-}
-.file-list:focus-visible {
-  box-shadow: inset 0 0 0 1px #91b7ff;
+  background: var(--list-background);
 }
 .file-row {
   height: 28px;
   cursor: default;
   user-select: none;
   border: 1px solid transparent;
+  color: var(--list-foreground);
 }
 .file-row:nth-child(even) {
-  background: #202733;
+  background: transparent;
 }
 .file-row > span {
   overflow: hidden;
@@ -188,54 +192,57 @@ header strong span {
   padding: 0 7px;
 }
 .file-row > span:not(:first-child) {
-  color: #97a5ba;
+  color: var(--list-foreground);
   font-size: 11px;
 }
 .file-row .size {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.file-row.cursor {
-  border-color: #68778f;
-  background: #303a4b;
-}
 .active .file-row.cursor {
-  border-color: #8ab1fb;
-  background: #2e466b;
+  background: #0047b8;
 }
-.file-row.selected,
+.file-row.selected {
+  color: var(--list-hidden-file);
+}
 .file-row.selected > span {
-  color: #ffd978;
-  background: #3b382c;
-}
-.file-row.selected.cursor {
-  background: #49432e;
+  color: var(--list-hidden-file);
 }
 .file-icon {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
-  color: #a6bde7;
-  font-size: 17px;
+  vertical-align: middle;
+  color: #ddd;
+  font-size: 13px;
 }
-.hidden-entry {
-  opacity: 0.65;
+.file-icon svg {
+  filter: grayscale(1);
+  opacity: 0.82;
+}
+.file-row.directory .filename {
+  color: var(--list-foreground);
+}
+.file-row.selected.directory .filename {
+  color: var(--list-hidden-file);
 }
 .panel-status {
   display: flex;
   justify-content: space-between;
   gap: 6px;
   padding: 7px 9px;
-  border-top: 1px solid #354052;
-  color: #a5b3c8;
+  border-top: 1px solid #666;
+  color: #c0c0c0;
   font-size: 11px;
+  background: #333;
 }
 .empty {
   padding: 30px;
   text-align: center;
-  color: #7d8ba0;
+  color: #80dede;
 }
-.panel-error,
-.app-error {
+.panel-error {
   padding: 8px;
   background: #482c32;
   color: #ffc3c5;
@@ -244,13 +251,6 @@ header strong span {
 .panel-error {
   max-height: 95px;
   overflow: auto;
-}
-.app-error {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 6px;
-  gap: 10px;
 }
 .operation-status {
   height: 34px;
@@ -274,6 +274,36 @@ header strong span {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+}
+.command-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: 5px;
+  margin-bottom: 6px;
+}
+.command-line input {
+  flex: 1;
+  height: 28px;
+  font-family: Consolas, monospace;
+}
+.error-command {
+  font-family: Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.error-output {
+  max-height: 35vh;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  background: #171b23;
+  color: #ffc3c5;
+  font:
+    11px/1.4 Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 footer {
   display: grid;

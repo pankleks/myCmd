@@ -3,6 +3,7 @@
   import { isTauri } from '@tauri-apps/api/core';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import FilePanel from './components/FilePanel.svelte';
+  import ErrorDialog from './components/ErrorDialog.svelte';
   import OperationDialog, {
     type Action,
   } from './components/OperationDialog.svelte';
@@ -28,7 +29,12 @@
   import { bytes } from './utils/format';
   let ready = $state(false);
   let error = $state('');
+  let errorTitle = $state('Error');
   let busy = $state(false);
+  let commandRunning = $state(false);
+  let commandInput = $state('');
+  let commandError = $state<{ command: string; output: string }>();
+  let commandInputElement: HTMLInputElement;
   let progress = $state<Progress>();
   let conflict = $state<Conflict>();
   let dialog = $state<{
@@ -40,6 +46,8 @@
   }>();
   let operationSide: Side = 'left';
   let operationId: string | undefined;
+  const refreshTimers: Partial<Record<Side, ReturnType<typeof setTimeout>>> =
+    {};
   let active = $derived(commander[commander.activePanel]);
   let percent = $derived(
     progress
@@ -55,12 +63,19 @@
         )
       : 0,
   );
+  $effect(() => {
+    if (!ready) return;
+    const paths = [commander.left.path, commander.right.path].filter(Boolean);
+    void api.watch(paths).catch((e) => {
+      showError(errorMessage(e));
+    });
+  });
   const actions: [string, Action, string][] = [
-    ['F2', 'rename', 'Zmień nazwę'],
-    ['F5', 'copy', 'Kopiuj'],
-    ['F6', 'move', 'Przenieś'],
-    ['F7', 'createDirectory', 'Nowy katalog'],
-    ['F8', 'delete', 'Usuń'],
+    ['F2', 'rename', 'Rename'],
+    ['F5', 'copy', 'Copy'],
+    ['F6', 'move', 'Move'],
+    ['F7', 'createDirectory', 'New folder'],
+    ['F8', 'delete', 'Delete'],
   ];
   function focusPanel() {
     document.getElementById(`list-${commander.activePanel}`)?.focus();
@@ -69,13 +84,27 @@
     dialog = undefined;
     void tick().then(focusPanel);
   }
+  function showError(message: string, title = 'Error') {
+    errorTitle = title;
+    error = message;
+  }
   function request(action: Action) {
-    if (!ready || busy || dialog || conflict || active.loading || !active.path)
+    if (
+      !ready ||
+      busy ||
+      commandRunning ||
+      dialog ||
+      conflict ||
+      commandError ||
+      error ||
+      active.loading ||
+      !active.path
+    )
       return;
     const entries = sources(active);
     if (action !== 'createDirectory' && !entries.length) return;
     if (action === 'rename' && entries.length !== 1) {
-      error = 'Zmiana nazwy wymaga wybrania jednego elementu.';
+      showError('Select exactly one item to rename.');
       return;
     }
     error = '';
@@ -98,7 +127,7 @@
       const id = await api.start(operation);
       if (busy) operationId = id;
     } catch (e) {
-      error = errorMessage(e);
+      showError(errorMessage(e), 'Operation failed');
       busy = false;
     }
   }
@@ -119,16 +148,41 @@
       try {
         await api.cancel(id);
       } catch (e) {
-        error = errorMessage(e);
+        showError(errorMessage(e), 'Operation failed');
       }
+  }
+  async function runCommand(event?: SubmitEvent) {
+    event?.preventDefault();
+    const command = commandInput.trim();
+    if (!command || !ready || busy || commandRunning || !active.path) return;
+    commandInput = '';
+    commandRunning = true;
+    error = '';
+    try {
+      const result = await api.runCommand(command, active.path);
+      if (!result.success) {
+        commandError = {
+          command,
+          output:
+            [result.stderr, result.stdout].filter(Boolean).join('\n').trim() ||
+            'The command failed without output.',
+        };
+      }
+      await Promise.all([load(commander.left), load(commander.right)]);
+    } catch (e) {
+      commandError = { command, output: errorMessage(e) };
+    } finally {
+      commandRunning = false;
+    }
   }
   onMount(() => {
     let disposed = false;
     const unlisten: UnlistenFn[] = [];
     async function init() {
       if (!isTauri()) {
-        error =
-          'Dostęp do plików wymaga aplikacji desktopowej. Uruchom: npm run tauri dev';
+        showError(
+          'File access requires the desktop app. Run: npm run tauri dev',
+        );
         return;
       }
       try {
@@ -141,7 +195,7 @@
               busy = false;
               conflict = undefined;
               if (payload.error && payload.state === 'failed')
-                error = errorMessage(payload.error);
+                showError(errorMessage(payload.error), 'Operation failed');
               void Promise.all([
                 load(
                   commander.left,
@@ -165,6 +219,22 @@
           ({ payload }) => (conflict = payload),
         );
         unlisten.push(c);
+        const filesystemChanges = await listen<string>(
+          'filesystem-changed',
+          ({ payload }) => {
+            if (!ready || busy || commandRunning) return;
+            for (const side of ['left', 'right'] as const) {
+              const panel = commander[side];
+              if (panel.path !== payload) continue;
+              clearTimeout(refreshTimers[side]);
+              refreshTimers[side] = setTimeout(() => {
+                refreshTimers[side] = undefined;
+                if (!disposed && !busy && !commandRunning) void load(panel);
+              }, 180);
+            }
+          },
+        );
+        unlisten.push(filesystemChanges);
         if (disposed) {
           unlisten.forEach((fn) => fn());
           return;
@@ -181,17 +251,25 @@
           focusPanel();
         }
       } catch (e) {
-        error = errorMessage(e);
+        showError(errorMessage(e));
       }
     }
     void init();
     return () => {
       disposed = true;
+      for (const timer of Object.values(refreshTimers)) clearTimeout(timer);
       unlisten.forEach((fn) => fn());
     };
   });
   function keydown(event: KeyboardEvent) {
-    if (dialog || conflict || event.defaultPrevented || event.isComposing)
+    if (
+      dialog ||
+      conflict ||
+      commandError ||
+      error ||
+      event.defaultPrevented ||
+      event.isComposing
+    )
       return;
     const target = event.target as HTMLElement;
     if (target.closest('input, select, textarea, dialog')) return;
@@ -240,7 +318,38 @@
       }
       return;
     }
+    if (
+      event.key === 'Enter' &&
+      commandInput.trim() &&
+      ready &&
+      !busy &&
+      !commandRunning
+    ) {
+      event.preventDefault();
+      commandInputElement?.focus();
+      void runCommand();
+      return;
+    }
     if (target.closest('button') && ['Enter', ' '].includes(event.key)) return;
+    if (
+      ready &&
+      !busy &&
+      !commandRunning &&
+      !event.altKey &&
+      event.key.length === 1 &&
+      (event.key !== ' ' || commandInput.length > 0)
+    ) {
+      event.preventDefault();
+      commandInput += event.key;
+      commandInputElement?.focus();
+      return;
+    }
+    if (event.key === 'Backspace' && commandInput && ready && !busy) {
+      event.preventDefault();
+      commandInput = Array.from(commandInput).slice(0, -1).join('');
+      commandInputElement?.focus();
+      return;
+    }
     const list = rows(active);
     const page = Math.max(
       1,
@@ -252,6 +361,8 @@
     const movement: Record<string, number> = {
       ArrowUp: -1,
       ArrowDown: 1,
+      ArrowLeft: -list.length,
+      ArrowRight: list.length,
       PageUp: -page,
       PageDown: page,
       Home: -list.length,
@@ -279,8 +390,13 @@
           active.cursor + 1,
         );
     } else if (event.key === 'Escape') {
-      active.selected = new Set();
-      error = '';
+      if (commandInput) {
+        commandInput = '';
+        commandInputElement?.focus();
+      } else {
+        active.selected = new Set();
+        error = '';
+      }
     }
   }
 </script>
@@ -288,10 +404,9 @@
 <svelte:window onkeydown={keydown} />
 <main>
   <header>
-    <strong>my<span>Cmd</span></strong><span class="subtitle"
-      >Menedżer plików</span
+    <strong>my<span>Cmd</span></strong><span class="subtitle">File Manager</span
     ><span class="keyboard-hint"
-      >Tab · zmień panel &nbsp; Ctrl+L · ścieżka &nbsp; Ctrl+R · odśwież</span
+      >Tab · switch panel &nbsp; Ctrl+L · path &nbsp; Ctrl+R · refresh</span
     >
   </header>
   <div class="panels">
@@ -301,40 +416,63 @@
       roots={commander.roots}
     /><FilePanel panel={commander.right} side="right" roots={commander.roots} />
   </div>
-  {#if error}<div role="alert" class="app-error">
-      <span>{error}</span><button
-        onclick={() => (error = '')}
-        aria-label="Zamknij komunikat">×</button
-      >
-    </div>{/if}
-  <div class="operation-status" role="status" aria-live="polite">
-    {#if progress}<span
-        >{{
-          queued: 'Oczekuje',
-          running: 'Operacja w toku',
-          completed: 'Zakończono',
-          failed: 'Błąd operacji',
-          cancelled: 'Anulowano',
-        }[progress.state]} · {progress.processedItems}/{progress.totalItems} · {bytes(
-          progress.processedBytes,
-        )}</span
-      >{#if busy}<progress max="100" value={percent}></progress><span
-          >{percent}%</span
-        ><button onclick={cancel}>Anuluj</button>{/if}<span
-        class="current-item"
-        title={progress.currentItem}>{progress.currentItem ?? ''}</span
-      >
-    {:else}<span
-        >{busy
-          ? 'Przygotowywanie operacji…'
-          : ready
-            ? 'Gotowy'
-            : 'Oczekiwanie na backend Tauri'}</span
-      >{/if}
-  </div>
+  {#if error}<ErrorDialog
+      title={errorTitle}
+      output={error}
+      onclose={() => {
+        error = '';
+        errorTitle = 'Error';
+        void tick().then(() => commandInputElement?.focus());
+      }}
+    />
+  {:else if commandError}<ErrorDialog
+      {...commandError}
+      onclose={() => {
+        commandError = undefined;
+        void tick().then(() => commandInputElement?.focus());
+      }}
+    />{/if}
+  {#if busy || !ready}
+    <div class="operation-status" role="status" aria-live="polite">
+      {#if progress}<span
+          >{{
+            queued: 'Queued',
+            running: 'Operation in progress',
+            completed: 'Completed',
+            failed: 'Operation failed',
+            cancelled: 'Cancelled',
+          }[progress.state]} · {progress.processedItems}/{progress.totalItems} · {bytes(
+            progress.processedBytes,
+          )}</span
+        >{#if busy}<progress max="100" value={percent}></progress><span
+            >{percent}%</span
+          ><button onclick={cancel}>Cancel</button>{/if}<span
+          class="current-item"
+          title={progress.currentItem}>{progress.currentItem ?? ''}</span
+        >
+      {:else if busy}
+        <span>Preparing operation…</span>
+      {:else}
+        <span>Waiting for Tauri backend</span>
+      {/if}
+    </div>
+  {/if}
+  <form class="command-line" onsubmit={runCommand}>
+    <input
+      id="system-command"
+      bind:this={commandInputElement}
+      aria-label="System command (runs in the active folder)"
+      bind:value={commandInput}
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="Enter a command to run in the active folder"
+      title={`Working directory: ${active.path}`}
+      disabled={!ready || busy || commandRunning || !active.path}
+    />
+  </form>
   <footer>
     {#each actions as [key, action, label]}<button
-        disabled={!ready || busy}
+        disabled={!ready || busy || commandRunning}
         onclick={() => request(action)}><kbd>{key}</kbd>{label}</button
       >{/each}
   </footer>

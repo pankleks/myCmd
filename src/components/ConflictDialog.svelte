@@ -41,39 +41,39 @@
     void resolve('cancel');
   }}
 >
-  <h2>Element już istnieje</h2>
+  <h2>Item already exists</h2>
   <p class="conflict-path">{conflict.destination.path}</p>
   <dl>
-    <dt>Źródło</dt>
+    <dt>Source</dt>
     <dd>
       {bytes(conflict.source.size)} · {date(conflict.source.modified)} · {conflict
         .source.type}
     </dd>
-    <dt>Cel</dt>
+    <dt>Destination</dt>
     <dd>
       {bytes(conflict.destination.size)} · {date(conflict.destination.modified)} ·
       {conflict.destination.type}
     </dd>
   </dl>
   <label
-    >Nowa nazwa (pusta = automatyczna)<input
+    >New name (leave blank for automatic)<input
       bind:value={name}
       spellcheck="false"
     /></label
   >
   <label class="check-label"
-    ><input type="checkbox" bind:checked={applyToAll} /> Zastosuj do wszystkich (kolejne
-    nazwy automatyczne)</label
+    ><input type="checkbox" bind:checked={applyToAll} /> Apply to all (automatic names
+    for subsequent conflicts)</label
   >
   {#if error}<p class="danger-text" role="alert">{error}</p>{/if}
   <div class="dialog-actions">
-    <button disabled={submitting} onclick={() => resolve('skip')}>Pomiń</button
+    <button disabled={submitting} onclick={() => resolve('skip')}>Skip</button
     ><button disabled={submitting} onclick={() => resolve('rename')}
-      >Zmień nazwę</button
+      >Rename</button
     ><button disabled={submitting} onclick={() => resolve('overwrite')}
-      >Nadpisz</button
+      >Overwrite</button
     ><button disabled={submitting} onclick={() => resolve('cancel')}
-      >Anuluj operację</button
+      >Cancel operation</button
     >
   </div>
 </dialog>

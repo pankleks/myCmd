@@ -6,7 +6,7 @@ export function bytes(value: number) {
 export function date(value?: number) {
   return value == null
     ? '—'
-    : new Date(value * 1000).toLocaleString([], {
+    : new Date(value * 1000).toLocaleString('en-US', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',

@@ -1,6 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Listing, Root } from './types';
 import type { FileOperation, Resolution } from '../operations/types';
+export interface CommandResult {
+  exitCode: number | null;
+  success: boolean;
+  stdout: string;
+  stderr: string;
+}
 export const api = {
   list: (path: string) => invoke<Listing>('list_directory', { path }),
   roots: () => invoke<Root[]>('list_roots'),
@@ -11,6 +17,9 @@ export const api = {
     invoke<void>('cancel_operation', { operationId }),
   resolve: (operationId: string, resolution: Resolution) =>
     invoke<void>('resolve_conflict', { operationId, resolution }),
+  watch: (paths: string[]) => invoke<void>('watch_directories', { paths }),
+  runCommand: (command: string, cwd: string) =>
+    invoke<CommandResult>('run_system_command', { command, cwd }),
 };
 export function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error && 'message' in error) {

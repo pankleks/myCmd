@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte';
+  import fileIconData from '../file-icons.generated.json';
   import type { PanelState, Root, Column } from '../filesystem/types';
   import {
     commander,
@@ -18,12 +20,25 @@
   let scrollTop = $state(0);
   let height = $state(400);
   const rowHeight = 28;
+  const fileIcons = fileIconData.icons as Record<
+    string,
+    { body: string; width: number; height: number }
+  >;
+  const extensionIcons = fileIconData.extensions as Record<string, string>;
+  const filenameIcons = fileIconData.filenames as Record<string, string>;
   let items = $derived(rows(panel));
   let start = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - 8));
   let end = $derived(
     Math.min(items.length, start + Math.ceil(height / rowHeight) + 16),
   );
   let active = $derived(commander.activePanel === side);
+  function iconFor(name: string, extension: string) {
+    const key =
+      filenameIcons[name.toLowerCase()] ??
+      extensionIcons[extension.toLowerCase()] ??
+      'default-file';
+    return fileIcons[key] ?? fileIcons['default-file'];
+  }
   $effect(() => {
     draft = panel.path;
   });
@@ -52,22 +67,22 @@
     scroller.focus();
   }
   const columns: [Column, string][] = [
-    ['name', 'Nazwa'],
-    ['extension', 'Typ'],
-    ['size', 'Rozmiar'],
-    ['modified', 'Zmodyfikowano'],
+    ['name', 'Name'],
+    ['extension', 'Ext'],
+    ['size', 'Size'],
+    ['modified', 'Date'],
   ];
 </script>
 
 <section
   class:active
   class="panel"
-  aria-label={side === 'left' ? 'Lewy panel' : 'Prawy panel'}
+  aria-label={side === 'left' ? 'Left panel' : 'Right panel'}
   onfocusin={() => (commander.activePanel = side)}
 >
   <div class="pathbar">
     <select
-      aria-label="Dyski i punkty montowania"
+      aria-label="Drives and mount points"
       value=""
       onchange={(e) => {
         commander.activePanel = side;
@@ -75,7 +90,7 @@
         e.currentTarget.value = '';
       }}
     >
-      <option value="" disabled>Dyski ▾</option>
+      <option value="" disabled>Drives ▾</option>
       {#each roots as root}<option value={root.path}>{root.name}</option>{/each}
     </select>
     <form
@@ -87,7 +102,7 @@
       }}
     >
       <input
-        aria-label="Ścieżka katalogu"
+        aria-label="Directory path"
         bind:value={draft}
         spellcheck="false"
         onkeydown={(e) => {
@@ -99,7 +114,7 @@
       />
     </form>
     <button
-      title="Katalog nadrzędny (Backspace)"
+      title="Parent directory (Backspace)"
       disabled={!panel.parent || panel.loading}
       onclick={() => {
         commander.activePanel = side;
@@ -108,13 +123,13 @@
     >
   </div>
   <div class="panel-tools">
-    <span>{side === 'left' ? 'LEWY' : 'PRAWY'} PANEL</span><label
+    <span>{side === 'left' ? 'LEFT' : 'RIGHT'} PANEL</span><label
       ><input
         type="checkbox"
         checked={panel.showHidden}
         onchange={() => hidden(panel)}
-      /> Ukryte</label
-    ><button title="Odśwież (Ctrl+R)" onclick={() => void load(panel)}>↻</button
+      /> Hidden</label
+    ><button title="Refresh (Ctrl+R)" onclick={() => void load(panel)}>↻</button
     >
   </div>
   <div class="columns" role="row">
@@ -140,7 +155,7 @@
     bind:clientHeight={height}
     onscroll={() => (scrollTop = scroller.scrollTop)}
     role="listbox"
-    aria-label="Pliki i katalogi"
+    aria-label="Files and folders"
     aria-multiselectable="true"
     aria-busy={panel.loading}
     tabindex={active ? 0 : -1}
@@ -160,6 +175,7 @@
         class="file-row"
         class:cursor={panel.cursor === index}
         class:selected={panel.selected.has(entry.path)}
+        class:directory={entry.type === 'directory'}
         class:hidden-entry={entry.hidden}
         onclick={(e) => click(e, index)}
         ondblclick={() => void open(panel, entry)}
@@ -172,15 +188,25 @@
         title={entry.path}
       >
         <span class="filename"
-          ><span class="file-icon"
-            >{entry.parentEntry
-              ? '↰'
-              : entry.type === 'directory'
-                ? '▸'
-                : entry.type === 'symlink'
-                  ? '↗'
-                  : '·'}</span
-          >{entry.name}</span
+          ><span class="file-icon" aria-hidden="true"
+            >{#if entry.parentEntry}
+              <Icon
+                icon={fileIcons['folder-up-outline']}
+                width="16"
+                height="16"
+              />
+            {:else if entry.type === 'directory'}
+              <Icon icon={fileIcons['folder-outline']} width="16" height="16" />
+            {:else if entry.type === 'symlink'}
+              ↗
+            {:else}
+              <Icon
+                icon={iconFor(entry.name, entry.extension)}
+                width="16"
+                height="16"
+              />
+            {/if}</span
+          >{entry.type === 'directory' ? `[${entry.name}]` : entry.name}</span
         >
         <span>{entry.type === 'directory' ? '' : entry.extension}</span>
         <span class="size"
@@ -197,7 +223,7 @@
       style:height={`${Math.max(0, items.length - end) * rowHeight}px`}
     ></div>
     {#if !items.length && !panel.loading}<div class="empty">
-        Katalog jest pusty
+        This folder is empty
       </div>{/if}
   </div>
   {#if panel.error}<div class="panel-error" role="alert">
@@ -206,10 +232,10 @@
   <div class="panel-status">
     <span
       >{panel.loading
-        ? 'Wczytywanie…'
-        : `${items.filter((e) => !e.parentEntry).length} elementów`}</span
+        ? 'Loading…'
+        : `${items.filter((e) => !e.parentEntry).length} items`}</span
     ><span
-      >{panel.selected.size} zaznaczonych · {bytes(
+      >{panel.selected.size} selected · {bytes(
         panel.entries
           .filter((e) => panel.selected.has(e.path))
           .reduce((n, e) => n + e.size, 0),

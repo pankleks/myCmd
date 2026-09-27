@@ -20,11 +20,11 @@
     onclose: () => void;
   } = $props();
   const labels = {
-    copy: 'Kopiuj',
-    move: 'Przenieś',
-    rename: 'Zmień nazwę',
-    createDirectory: 'Nowy katalog',
-    delete: 'Usuń trwale',
+    copy: 'Copy',
+    move: 'Move',
+    rename: 'Rename',
+    createDirectory: 'New folder',
+    delete: 'Delete permanently',
   };
   let value = $state('');
   let dialog: HTMLDialogElement;
@@ -67,29 +67,29 @@
   >
     <h2>{labels[action]}</h2>
     {#if action === 'delete'}
-      <p>Trwale usunąć {entries.length} elementów?</p>
+      <p>Delete {entries.length} items permanently?</p>
       <p>
-        {entries.filter((e) => e.type === 'directory').length} katalogów, {entries.filter(
+        {entries.filter((e) => e.type === 'directory').length} folders, {entries.filter(
           (e) => e.type !== 'directory',
-        ).length} plików / dowiązań.
+        ).length} files / links.
       </p>
       <p class="danger-text">
-        Katalogi zostaną usunięte z całą zawartością. Operacji nie można cofnąć.
+        Folders and all their contents will be deleted. This cannot be undone.
       </p>
     {:else}
       {#if action !== 'createDirectory'}<p>
           {entries.length === 1
             ? entries[0].name
-            : `${entries.length} zaznaczonych elementów`}
+            : `${entries.length} selected items`}
         </p>{/if}
       <label
         >{action === 'copy' || action === 'move'
-          ? 'Katalog docelowy'
-          : 'Nazwa'}<input bind:value required spellcheck="false" /></label
+          ? 'Destination folder'
+          : 'Name'}<input bind:value required spellcheck="false" /></label
       >
     {/if}
     <div class="dialog-actions">
-      <button type="button" onclick={onclose}>Anuluj</button><button
+      <button type="button" onclick={onclose}>Cancel</button><button
         class:danger={action === 'delete'}
         class="primary"
         type="submit">{labels[action]}</button
