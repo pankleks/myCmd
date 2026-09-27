@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  # Select an existing vX.Y.Z tag as the ref when dispatching manually.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  metadata:
+    name: Validate release tag
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require a version tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != tag ]; then
+            echo 'Run this workflow on an existing vX.Y.Z tag, not a branch.' >&2
+            exit 1
+          fi
+      - id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release.mjs check --tag "$RELEASE_TAG"
+
+  verify:
+    name: Verify tagged sources
+    needs: metadata
+    uses: ./.github/workflows/check.yml
+
+  build:
+    name: Package ${{ matrix.platform }}
+    needs: [metadata, verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: msi,nsis
+          - platform: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+          - platform: macos-x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: dmg
+          - platform: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            bundles: dmg
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: release-${{ matrix.target }}
+      - name: Linux bundler dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libfuse2 patchelf
+      - run: npm ci
+      - name: Build installers
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: npm run tauri build -- --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+      - name: Collect and validate platform packages
+        run: node scripts/release.mjs collect src-tauri/target/${{ matrix.target }}/release/bundle release-assets ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.platform }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Prepare GitHub Release
+    needs: [metadata, build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundles-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify complete asset set and generate SHA-256 checksums
+        run: node scripts/release.mjs checksums release-assets
+      - name: Generate release notes
+        run: node scripts/release.mjs notes > "$RUNNER_TEMP/release-notes.md"
+      - name: Create or refresh draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo 'This release is already published; create a new version instead.' >&2
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            extra=()
+            if [ "$PRERELEASE" = true ]; then extra+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "myCmd $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md" "${extra[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber

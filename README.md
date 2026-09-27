@@ -1,0 +1,86 @@
+# myCmd
+
+[![CI](https://github.com/pankleks/myCmd/actions/workflows/check.yml/badge.svg)](https://github.com/pankleks/myCmd/actions/workflows/check.yml)
+[![Release](https://github.com/pankleks/myCmd/actions/workflows/release.yml/badge.svg)](https://github.com/pankleks/myCmd/actions/workflows/release.yml)
+
+Dwupanelowy menedżer plików desktopowych zgodny z zakresem MVP w `design.md`.
+Frontend: Svelte 5 / TypeScript / Vite. Backend: Tauri 2 / Rust.
+
+## Uruchomienie
+
+Wymagane: Node.js 22.12+ z linii 22 lub Node.js 24 LTS, Rust stable oraz [zależności systemowe Tauri](https://v2.tauri.app/start/prerequisites/).
+Na Windows potrzebne są MSVC Build Tools (C++) i WebView2; na Linux WebKitGTK 4.1 oraz biblioteki wymienione w dokumentacji Tauri; na macOS Xcode Command Line Tools.
+
+```sh
+npm install
+npm run tauri dev
+```
+
+```sh
+npm run build                 # sprawdzenie TypeScript/Svelte + frontend produkcyjny
+npm run tauri build           # aplikacja desktopowa i pakiety instalacyjne
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Test integracyjny Windows (Node.js 22+), uruchamiający rzeczywisty proces Tauri/WebView2 i operujący wyłącznie na tymczasowych danych:
+
+```sh
+npm run tauri build -- --debug --no-bundle
+npm run test:desktop
+```
+
+Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
+
+`npm run dev` uruchamia sam frontend. Dostęp do systemu plików wymaga procesu Tauri; w przeglądarce wyświetlany jest odpowiedni komunikat.
+
+## Obsługa
+
+| Skrót | Działanie |
+| --- | --- |
+| ↑ / ↓, Home / End, Page Up / Down | Kursor |
+| Enter / dwuklik | Otwórz katalog lub plik w aplikacji systemowej |
+| Backspace | Katalog nadrzędny |
+| Tab | Drugi panel |
+| Space / Insert | Zaznaczenie (Insert przesuwa też kursor) |
+| Ctrl+A / Esc | Zaznacz wszystkie / wyczyść zaznaczenie |
+| Ctrl+klik / Shift+klik | Zaznaczenie wielu elementów / zakresu |
+| F2 | Zmień nazwę jednego elementu |
+| F5 / F6 | Kopiuj / przenieś do drugiego panelu |
+| F7 | Utwórz katalog |
+| F8 / Delete | Usuń trwale po potwierdzeniu |
+| Ctrl+H | Pokaż/ukryj pliki ukryte |
+| Ctrl+R | Odśwież panel |
+| Ctrl+L | Edytuj ścieżkę |
+
+Kliknięcie nagłówka sortuje kolumnę. Katalogi pozostają na początku. Każdy panel ma niezależne sortowanie, zaznaczenie i widoczność plików ukrytych. Lista jest wirtualizowana.
+
+## Operacje i architektura
+
+- `src/state/commander.svelte.ts`: stan paneli w runach Svelte 5.
+- `src/filesystem/api.ts`: typowany most IPC; frontend nie wykonuje operacji systemu plików.
+- `src-tauri/src/commands.rs`: cienkie komendy IPC.
+- `src-tauri/src/filesystem.rs`: listowanie, metadane, korzenie/montowania, walidacja nazw.
+- `src-tauri/src/operations.rs`: wspólny model operacji, zadania w tle, konflikty, postęp i anulowanie.
+- `src-tauri/src/error.rs`: błędy strukturalne.
+
+Operacje używają zaznaczenia lub elementu pod kursorem. Jednocześnie interfejs uruchamia jedną operację. Konflikty można pomijać, automatycznie/ręcznie zmieniać nazwę, nadpisywać lub anulować; dostępna jest reguła dla całej operacji. Nadpisanie katalogów scala zawartość, a konflikty wewnątrz obsługuje ten sam mechanizm. Nadpisanie niezgodnych typów oraz docelowych dowiązań jest odrzucane — należy wybrać pominięcie lub zmianę nazwy.
+
+Pliki są kopiowane porcjami do plików tymczasowych w katalogu docelowym i publikowane dopiero po zakończeniu zapisu. Przenoszenie używa natywnej zmiany położenia; po błędzie między systemami plików stosuje kopiowanie i usunięcie źródła. Pominięte źródła pozostają na miejscu. Anulowanie pozostawia ukończone elementy i usuwa bieżący tymczasowy plik; nie cofa wcześniejszych zmian. Usuwanie jest trwałe.
+
+Dowiązania są rozpoznawane, kopiowane jako dowiązania i nie są śledzone w rekursji. Utworzenie dowiązania na Windows może wymagać włączonego Developer Mode lub odpowiednich uprawnień. Ścieżki są przetwarzane w Rust jako `PathBuf`, z kanonikalizacją katalogów (w tym ścieżek UNC i długich ścieżek Windows). Ścieżki niepoprawne w Unicode są odrzucane przy listowaniu zamiast udostępniania niejednoznacznych nazw.
+
+## Weryfikacja platform
+
+Testy backendu obejmują rekursję, konflikty, przenoszenie, blokadę kopiowania katalogu do siebie, anulowanie i walidację nazw; na Unix również pętle dowiązań. Skonfigurowano CI dla buildu frontendu oraz testów Rust na Windows, Linux i macOS.
+
+Lokalnie zweryfikowano Windows: build frontendu bez błędów/ostrzeżeń, 5 testów Rust, build aplikacji oraz test integracyjny startu, listowania, kopiowania, dialogu konfliktu, zmiany nazwy, tworzenia katalogu, przenoszenia, usuwania, zdarzeń postępu i obsługi F7. W przeglądarce sprawdzono wirtualizację 10 000 wpisów, zaznaczanie i przełączanie paneli. Linux/macOS, udziały UNC i przenoszenie między fizycznymi woluminami wymagają weryfikacji na docelowych środowiskach.
+
+## CI i wydania
+
+- Push/PR: testy Vitest z pokryciem, kontrola TypeScript/Svelte i formatowania, testy Rust oraz Clippy na trzech systemach; test desktopowy na Windows.
+- `npm test` — testy logiki paneli i narzędzi wydania; `npm run test:coverage` — pokrycie i JUnit.
+- `npm run release:version -- 0.2.0` — aktualizacja wersji we wszystkich manifestach i lockfile.
+- `npm run release:check` — kontrola zgodności wersji i changelogu.
+- Tag `vX.Y.Z`: pełne CI, instalatory dla Windows/Linux/macOS Intel i ARM, sumy SHA-256 oraz szkic GitHub Release.
+
+Pełna instrukcja: [docs/RELEASING.md](docs/RELEASING.md). Historia zmian: [CHANGELOG.md](CHANGELOG.md).

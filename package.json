@@ -1,6 +1,38 @@
 {
-  "name": "mycmd", "version": "0.1.0", "private": true, "type": "module",
-  "scripts": { "dev": "vite", "build": "npm run check && vite build", "check": "svelte-check --tsconfig ./tsconfig.json", "tauri": "tauri" },
-  "dependencies": { "@tauri-apps/api": "^2.0.0", "svelte": "^5.0.0" },
-  "devDependencies": { "@sveltejs/vite-plugin-svelte": "^5.0.0", "@tauri-apps/cli": "^2.0.0", "svelte-check": "^4.0.0", "typescript": "~5.7.0", "vite": "^6.0.0" }
+  "name": "mycmd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run check && vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test:desktop": "node scripts/smoke-desktop.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=test-results/frontend.xml",
+    "release:check": "node scripts/release.mjs check",
+    "release:version": "node scripts/release.mjs version",
+    "tauri": "tauri",
+    "format": "prettier --write src scripts .github vite.config.ts vitest.config.ts svelte.config.js *.json src-tauri/*.json src-tauri/capabilities/*.json",
+    "format:check": "prettier --check src scripts .github vite.config.ts vitest.config.ts svelte.config.js *.json src-tauri/*.json src-tauri/capabilities/*.json"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@vitest/coverage-v8": "^5.0.2",
+    "prettier": "^3.9.9",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte-check": "^4.0.0",
+    "typescript": "~5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^5.0.2"
+  }
 }
