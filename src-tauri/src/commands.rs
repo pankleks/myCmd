@@ -37,6 +37,15 @@ pub fn save_config(config: AppConfig) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn measure_directory(path: String) -> Result<u64> {
+    tauri::async_runtime::spawn_blocking(move || {
+        filesystem::directory_size(std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+
+#[tauri::command]
 pub fn start_operation(app: AppHandle, manager: State<Manager>, operation: Operation) -> String {
     manager.start(app, operation)
 }

@@ -3,9 +3,11 @@ import type { FileEntry, Listing, PanelState } from '../filesystem/types';
 import { api } from '../filesystem/api';
 import {
   commander,
+  dirSizing,
   hidden,
   load,
   matchQuickFind,
+  measureDirectory,
   open,
   quickFindAppend,
   quickFindBackspace,
@@ -17,7 +19,7 @@ import {
 } from './commander.svelte';
 
 vi.mock('../filesystem/api', () => ({
-  api: { list: vi.fn(), open: vi.fn() },
+  api: { list: vi.fn(), open: vi.fn(), measureDirectory: vi.fn() },
   errorMessage: (error: { message: string }) => error.message,
 }));
 
@@ -200,6 +202,65 @@ describe('quick find', () => {
     quickFindAppend('left', 'p');
     quickFindClose();
     expect(commander.quickFind).toBeNull();
+  });
+});
+
+describe('directory sizing', () => {
+  it('stores the measured size on the directory entry', async () => {
+    const p = panel();
+    const dir = entry('docs', { type: 'directory', size: 0 });
+    p.entries = [dir];
+    vi.mocked(api.measureDirectory).mockResolvedValue(1536);
+    await measureDirectory(p, rows(p)[1]);
+    expect(api.measureDirectory).toHaveBeenCalledWith(dir.path);
+    expect(p.entries[0].size).toBe(1536);
+  });
+
+  it('skips files, the parent entry and concurrent runs', async () => {
+    const p = panel();
+    const dir = entry('docs', { type: 'directory', size: 0 });
+    p.entries = [entry('a.txt'), dir];
+    const deferred = (() => {
+      let resolve!: (value: number) => void;
+      const promise = new Promise<number>((yes) => (resolve = yes));
+      return { promise, resolve };
+    })();
+    vi.mocked(api.measureDirectory).mockReturnValue(deferred.promise);
+    const rowsList = rows(p);
+    await measureDirectory(p, rowsList[2]);
+    await measureDirectory(p, undefined);
+    const pending = measureDirectory(p, rowsList[1]);
+    const duplicate = measureDirectory(p, rowsList[1]);
+    expect(api.measureDirectory).toHaveBeenCalledTimes(1);
+    deferred.resolve(100);
+    await pending;
+    await duplicate;
+    expect(p.entries[1].size).toBe(100);
+  });
+
+  it('marks the directory as sizing while measuring', async () => {
+    const p = panel();
+    p.entries = [entry('docs', { type: 'directory', size: 0 })];
+    const deferred = (() => {
+      let resolve!: (value: number) => void;
+      const promise = new Promise<number>((yes) => (resolve = yes));
+      return { promise, resolve };
+    })();
+    vi.mocked(api.measureDirectory).mockReturnValue(deferred.promise);
+    const pending = measureDirectory(p, rows(p)[1]);
+    expect(dirSizing.paths.includes(p.entries[0].path)).toBe(true);
+    deferred.resolve(100);
+    await pending;
+    expect(dirSizing.paths.includes(p.entries[0].path)).toBe(false);
+    expect(p.entries[0].size).toBe(100);
+  });
+
+  it('keeps <DIR> when measuring fails', async () => {
+    const p = panel();
+    p.entries = [entry('docs', { type: 'directory', size: 0 })];
+    vi.mocked(api.measureDirectory).mockRejectedValue(new Error('denied'));
+    await measureDirectory(p, rows(p)[1]);
+    expect(p.entries[0].size).toBe(0);
   });
 });
 

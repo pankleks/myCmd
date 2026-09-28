@@ -12,6 +12,8 @@ export const api = {
   list: (path: string) => invoke<Listing>('list_directory', { path }),
   roots: () => invoke<Root[]>('list_roots'),
   open: (path: string) => invoke<void>('open_file', { path }),
+  measureDirectory: (path: string) =>
+    invoke<number>('measure_directory', { path }),
   start: (operation: FileOperation) =>
     invoke<string>('start_operation', { operation }),
   cancel: (operationId: string) =>

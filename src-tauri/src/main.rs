@@ -14,6 +14,7 @@ fn main() {
             commands::list_directory,
             commands::list_roots,
             commands::open_file,
+            commands::measure_directory,
             commands::start_operation,
             commands::cancel_operation,
             commands::resolve_conflict,

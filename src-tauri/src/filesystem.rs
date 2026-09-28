@@ -35,6 +35,24 @@ pub struct Root {
 pub fn text(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
+
+pub fn directory_size(p: &Path) -> Result<u64> {
+    let root = absolute(p)?;
+    let mut total = 0u64;
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).map_err(|e| FsError::io(e, &dir))? {
+            let path = entry.map_err(|e| FsError::io(e, &dir))?.path();
+            let meta = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
+            if meta.is_dir() && !meta.file_type().is_symlink() {
+                stack.push(path);
+            } else if meta.is_file() {
+                total += meta.len();
+            }
+        }
+    }
+    Ok(total)
+}
 pub fn absolute(p: &Path) -> Result<PathBuf> {
     let p = if p == Path::new("~") {
         dirs::home_dir().ok_or_else(|| FsError::new("not_found", "Home directory unavailable"))?
@@ -202,4 +220,28 @@ pub fn roots() -> Vec<Root> {
         }
     }
     roots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn directory_size_sums_nested_files() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("nested")).unwrap();
+        let mut a = fs::File::create(dir.path().join("a.bin")).unwrap();
+        a.write_all(&[0u8; 100]).unwrap();
+        let mut b = fs::File::create(dir.path().join("nested/b.bin")).unwrap();
+        b.write_all(&[0u8; 50]).unwrap();
+        assert_eq!(directory_size(dir.path()).unwrap(), 150);
+    }
+
+    #[test]
+    fn directory_size_rejects_missing_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("missing");
+        assert!(directory_size(&missing).is_err());
+    }
 }

@@ -10,6 +10,7 @@
     toggle,
     open,
     sort,
+    dirSizing,
     type Side,
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
@@ -327,7 +328,11 @@
           >{entry.parentEntry
             ? ''
             : entry.type === 'directory'
-              ? '<DIR>'
+              ? dirSizing.paths.includes(entry.path)
+                ? '?'
+                : entry.size > 0
+                  ? bytes(entry.size)
+                  : '<DIR>'
               : bytes(entry.size)}</span
         >
         <span>{entry.parentEntry ? '' : date(entry.modified)}</span>

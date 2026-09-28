@@ -19,6 +19,7 @@
     quickFindAppend,
     quickFindBackspace,
     quickFindClose,
+    measureDirectory,
     type Side,
   } from './state/commander.svelte';
   import {
@@ -513,7 +514,15 @@
       if (active.parent) void load(active, active.parent, active.path);
     } else if (event.key === ' ' || event.key === 'Insert') {
       event.preventDefault();
-      toggle(active, list[active.cursor]);
+      const row = list[active.cursor];
+      toggle(active, row);
+      if (
+        event.key === ' ' &&
+        row &&
+        !row.parentEntry &&
+        row.type === 'directory'
+      )
+        void measureDirectory(active, row);
       if (event.key === 'Insert')
         active.cursor = Math.min(
           Math.max(0, list.length - 1),

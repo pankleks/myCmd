@@ -98,6 +98,27 @@ export function toggle(panel: PanelState, row?: Row) {
   else next.add(row.path);
   panel.selected = next;
 }
+
+export const dirSizing = $state({ paths: [] as string[] });
+const sizingInFlight = new Set<string>();
+
+export async function measureDirectory(panel: PanelState, row?: Row) {
+  if (!row || row.parentEntry || row.type !== 'directory') return;
+  if (sizingInFlight.has(row.path)) return;
+  sizingInFlight.add(row.path);
+  if (!dirSizing.paths.includes(row.path))
+    dirSizing.paths = [...dirSizing.paths, row.path];
+  try {
+    const size = await api.measureDirectory(row.path);
+    const entry = panel.entries.find((e) => e.path === row.path);
+    if (entry) entry.size = size;
+  } catch {
+    // Keep showing <DIR> when the size cannot be computed.
+  } finally {
+    sizingInFlight.delete(row.path);
+    dirSizing.paths = dirSizing.paths.filter((p) => p !== row.path);
+  }
+}
 export function sources(panel: PanelState): Row[] {
   const visible = rows(panel);
   return panel.selected.size

@@ -35,26 +35,26 @@ Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
 
 ## Obsługa
 
-| Skrót                             | Działanie                                           |
-| --------------------------------- | --------------------------------------------------- |
-| ↑ / ↓, Home / End, Page Up / Down | Kursor                                              |
-| Enter / dwuklik                   | Otwórz katalog lub plik w aplikacji systemowej      |
-| Backspace                         | Katalog nadrzędny                                   |
-| Tab                               | Drugi panel                                         |
-| Alt+litera                        | Szybkie wyszukiwanie w aktywnym panelu (Esc zamyka) |
-| Alt+F1 / Alt+F2                   | Wybór dysku w lewym / prawym panelu                 |
-| Space / Insert                    | Zaznaczenie (Insert przesuwa też kursor)            |
-| Ctrl+A / Esc                      | Zaznacz wszystkie / wyczyść zaznaczenie             |
-| Ctrl+klik / Shift+klik            | Zaznaczenie wielu elementów / zakresu               |
-| F2                                | Zmień nazwę jednego elementu                        |
-| F5 / F6                           | Kopiuj / przenieś do drugiego panelu                |
-| F7                                | Utwórz katalog                                      |
-| F8 / Delete                       | Przenieś do Kosza po potwierdzeniu                  |
-| Shift+F8 / Shift+Delete           | Usuń trwale po potwierdzeniu                        |
-| Ctrl+H                            | Pokaż/ukryj pliki ukryte                            |
-| Ctrl+R                            | Odśwież panel                                       |
-| Ctrl+L                            | Edytuj ścieżkę                                      |
-| Ctrl++ / Ctrl+- / Ctrl+0          | Większy / mniejszy / domyślny font listy plików     |
+| Skrót                             | Działanie                                                                   |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| ↑ / ↓, Home / End, Page Up / Down | Kursor                                                                      |
+| Enter / dwuklik                   | Otwórz katalog lub plik w aplikacji systemowej                              |
+| Backspace                         | Katalog nadrzędny                                                           |
+| Tab                               | Drugi panel                                                                 |
+| Alt+litera                        | Szybkie wyszukiwanie w aktywnym panelu (Esc zamyka)                         |
+| Alt+F1 / Alt+F2                   | Wybór dysku w lewym / prawym panelu                                         |
+| Space / Insert                    | Zaznaczenie (Insert przesuwa kursor; spacja na katalogu liczy jego rozmiar) |
+| Ctrl+A / Esc                      | Zaznacz wszystkie / wyczyść zaznaczenie                                     |
+| Ctrl+klik / Shift+klik            | Zaznaczenie wielu elementów / zakresu                                       |
+| F2                                | Zmień nazwę jednego elementu                                                |
+| F5 / F6                           | Kopiuj / przenieś do drugiego panelu                                        |
+| F7                                | Utwórz katalog                                                              |
+| F8 / Delete                       | Przenieś do Kosza po potwierdzeniu                                          |
+| Shift+F8 / Shift+Delete           | Usuń trwale po potwierdzeniu                                                |
+| Ctrl+H                            | Pokaż/ukryj pliki ukryte                                                    |
+| Ctrl+R                            | Odśwież panel                                                               |
+| Ctrl+L                            | Edytuj ścieżkę                                                              |
+| Ctrl++ / Ctrl+- / Ctrl+0          | Większy / mniejszy / domyślny font listy plików                             |
 
 Kliknięcie nagłówka sortuje kolumnę. Katalogi pozostają na początku. Każdy panel ma niezależne sortowanie, zaznaczenie i widoczność plików ukrytych. Lista jest wirtualizowana. Szerokość kolumn (wspólna dla obu paneli – resize jednego resizuje drugi) zmienisz myszą (uchwyt między nagłówkami) albo strzałkami po przejściu Tabem na uchwyt; dwuklik na nagłówku resetuje szerokości. Zwykłe pisanie trafia do pola komend (i przenosi tam fokus). Alt+litery przy fokusie w polu komend lub ścieżki wpisują polskie znaki do tego pola. Alt+litery (lewy lub prawy) przy fokusie na panelu plików otwierają szybkie wyszukiwanie.
 
