@@ -24,6 +24,8 @@ beforeEach(() => {
   preferences.columnWidths = null;
   commander.left.path = '';
   commander.right.path = '';
+  commander.left.showHidden = false;
+  commander.right.showHidden = false;
 });
 
 describe('loadPreferences', () => {
@@ -34,6 +36,7 @@ describe('loadPreferences', () => {
       rightPath: '/tmp',
       columnWeights: { left: [175, 78, 113, 218], right: null },
       fileFontSize: 20,
+      showHidden: { left: true, right: false },
     });
     const paths = await loadPreferences();
     expect(paths).toEqual({
@@ -42,6 +45,8 @@ describe('loadPreferences', () => {
     });
     expect(preferences.fileFontSize).toBe(20);
     expect(preferences.columnWidths).toEqual([175, 78, 113, 218]);
+    expect(commander.left.showHidden).toBe(true);
+    expect(commander.right.showHidden).toBe(false);
   });
 
   it('prefers the left panel when migrating split widths', async () => {
@@ -69,6 +74,7 @@ describe('persistPreferences', () => {
   it('saves paths, columns and font size', async () => {
     commander.left.path = 'C:\\Users\\root';
     commander.right.path = 'D:\\Backup';
+    commander.left.showHidden = true;
     preferences.fileFontSize = 16;
     preferences.columnWidths = [200, 80, 100, 220];
     await persistPreferences();
@@ -78,6 +84,7 @@ describe('persistPreferences', () => {
       rightPath: 'D:\\Backup',
       columnWeights: { left: [200, 80, 100, 220], right: [200, 80, 100, 220] },
       fileFontSize: 16,
+      showHidden: { left: true, right: false },
     });
   });
 

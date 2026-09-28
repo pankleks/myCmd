@@ -52,7 +52,14 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: [175, 78, 113, 218],
       fileFontSize: 20,
+      showHidden: { left: false, right: false },
     });
+  });
+
+  it('normalizes the hidden-files visibility', () => {
+    expect(
+      normalizeConfig({ showHidden: { left: true, right: 'yes' } }).showHidden,
+    ).toEqual({ left: true, right: false });
   });
 
   it('migrates split panel widths into one shared value', () => {
@@ -72,6 +79,7 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
+      showHidden: { left: false, right: false },
     });
     expect(normalizeConfig('oops')).toEqual(normalizeConfig(null));
   });
@@ -83,6 +91,7 @@ describe('normalizeConfig', () => {
       rightPath: '/tmp',
       columnWeights: { left: null, right: null },
       fileFontSize: 16,
+      showHidden: { left: true, right: false },
     });
     expect(buildSavePayload(normalized)).toEqual({
       version: 1,
@@ -90,6 +99,7 @@ describe('normalizeConfig', () => {
       rightPath: '/tmp',
       columnWeights: { left: null, right: null },
       fileFontSize: 16,
+      showHidden: { left: true, right: false },
     });
   });
 });

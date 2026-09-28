@@ -68,7 +68,7 @@ Aplikacja zapisuje automatycznie (z opóźnieniem ~250 ms) plik `config.json`:
 | Linux   | `~/.config/mycmd/config.json`                     |
 | macOS   | `~/Library/Application Support/mycmd/config.json` |
 
-Zapisywane są: aktualne katalogi obu paneli, wspólna szerokość kolumn oraz rozmiar fontu listy plików (12–24 px, domyślnie 18). Przy starcie aplikacja odtwarza katalogi (nieistniejące zastępuje katalogiem domowym), kolumny i font. Uszkodzony lub brakujący plik oznacza domyślne ustawienia. Zmienna środowiskowa `MYCMD_CONFIG_DIR` nadpisuje katalog konfiguracji (używana m.in. przez testy).
+Zapisywane są: aktualne katalogi obu paneli, wspólna szerokość kolumn, rozmiar fontu listy plików (12–24 px, domyślnie 18) oraz pokazywanie plików ukrytych (osobno lewy/prawy panel). Przy starcie aplikacja odtwarza katalogi (nieistniejące zastępuje katalogiem domowym), kolumny i font. Uszkodzony lub brakujący plik oznacza domyślne ustawienia. Zmienna środowiskowa `MYCMD_CONFIG_DIR` nadpisuje katalog konfiguracji (używana m.in. przez testy).
 
 ## Operacje i architektura
 

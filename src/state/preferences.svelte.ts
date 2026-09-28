@@ -27,6 +27,8 @@ export async function loadPreferences(): Promise<SavedPaths> {
   const normalized = normalizeConfig(raw);
   preferences.fileFontSize = normalized.fileFontSize;
   preferences.columnWidths = normalized.columns;
+  commander.left.showHidden = normalized.showHidden.left;
+  commander.right.showHidden = normalized.showHidden.right;
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
 }
 
@@ -36,6 +38,10 @@ export async function persistPreferences(): Promise<void> {
     rightPath: commander.right.path ? displayPath(commander.right.path) : null,
     columns: preferences.columnWidths,
     fileFontSize: preferences.fileFontSize,
+    showHidden: {
+      left: commander.left.showHidden,
+      right: commander.right.showHidden,
+    },
   });
   try {
     await api.saveConfig(payload);

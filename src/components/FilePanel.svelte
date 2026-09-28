@@ -10,7 +10,6 @@
     toggle,
     open,
     sort,
-    hidden,
     type Side,
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
@@ -218,16 +217,6 @@
         commander.activePanel = side;
         void load(panel, panel.parent!, panel.path);
       }}>↑</button
-    >
-  </div>
-  <div class="panel-tools">
-    <span>{side === 'left' ? 'LEFT' : 'RIGHT'} PANEL</span><label
-      ><input
-        type="checkbox"
-        checked={panel.showHidden}
-        onchange={() => hidden(panel)}
-      /> Hidden</label
-    ><button title="Refresh (Ctrl+R)" onclick={() => void load(panel)}>↻</button
     >
   </div>
   <div

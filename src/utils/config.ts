@@ -18,6 +18,10 @@ export interface AppConfig {
     | number[]
     | null;
   fileFontSize?: number | null;
+  showHidden?: {
+    left?: boolean | null;
+    right?: boolean | null;
+  } | null;
 }
 
 export interface NormalizedConfig {
@@ -25,6 +29,7 @@ export interface NormalizedConfig {
   rightPath: string | null;
   columns: number[] | null;
   fileFontSize: number;
+  showHidden: { left: boolean; right: boolean };
 }
 
 export function normalizeFontSize(value: unknown): number {
@@ -61,11 +66,19 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     typeof raw === 'object' && raw !== null
       ? (raw as Record<string, unknown>)
       : {};
+  const hidden =
+    typeof config.showHidden === 'object' && config.showHidden !== null
+      ? (config.showHidden as Record<string, unknown>)
+      : {};
   return {
     leftPath: normalizePath(config.leftPath),
     rightPath: normalizePath(config.rightPath),
     columns: normalizeSharedColumns(config.columnWeights),
     fileFontSize: normalizeFontSize(config.fileFontSize),
+    showHidden: {
+      left: hidden.left === true,
+      right: hidden.right === true,
+    },
   };
 }
 
@@ -91,5 +104,9 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
       right: normalized.columns,
     },
     fileFontSize: normalized.fileFontSize,
+    showHidden: {
+      left: normalized.showHidden.left,
+      right: normalized.showHidden.right,
+    },
   };
 }

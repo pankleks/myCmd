@@ -30,6 +30,22 @@ impl Default for ColumnWeights {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShowHidden {
+    pub left: Option<bool>,
+    pub right: Option<bool>,
+}
+
+impl Default for ShowHidden {
+    fn default() -> Self {
+        Self {
+            left: None,
+            right: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppConfig {
@@ -38,6 +54,7 @@ pub struct AppConfig {
     pub right_path: Option<String>,
     pub column_weights: ColumnWeights,
     pub file_font_size: Option<u32>,
+    pub show_hidden: ShowHidden,
 }
 
 impl Default for AppConfig {
@@ -48,6 +65,7 @@ impl Default for AppConfig {
             right_path: None,
             column_weights: ColumnWeights::default(),
             file_font_size: None,
+            show_hidden: ShowHidden::default(),
         }
     }
 }
@@ -82,6 +100,7 @@ impl AppConfig {
             file_font_size: self
                 .file_font_size
                 .map(|size| size.clamp(MIN_FILE_FONT_SIZE, MAX_FILE_FONT_SIZE)),
+            show_hidden: self.show_hidden,
         }
     }
 }
@@ -163,6 +182,10 @@ mod tests {
                 right: None,
             },
             file_font_size: Some(20),
+            show_hidden: ShowHidden {
+                left: Some(true),
+                right: None,
+            },
         };
         save_to(&path, &config).expect("save");
         assert_eq!(load_from(&path), config.sanitized());
@@ -179,6 +202,10 @@ mod tests {
                 right: Some([f64::NAN, 78.0, 113.0, 218.0]),
             },
             file_font_size: Some(99),
+            show_hidden: ShowHidden {
+                left: None,
+                right: Some(false),
+            },
         };
         let sanitized = config.sanitized();
         assert_eq!(sanitized.version, CONFIG_VERSION);
@@ -187,5 +214,12 @@ mod tests {
         assert_eq!(sanitized.column_weights.left, None);
         assert_eq!(sanitized.column_weights.right, None);
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
+        assert_eq!(
+            sanitized.show_hidden,
+            ShowHidden {
+                left: None,
+                right: Some(false),
+            }
+        );
     }
 }

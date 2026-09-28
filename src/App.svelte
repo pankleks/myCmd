@@ -90,6 +90,8 @@
     if (!ready) return;
     commander.left.path;
     commander.right.path;
+    commander.left.showHidden;
+    commander.right.showHidden;
     preferences.fileFontSize;
     preferences.columnWidths;
     scheduleSave();
@@ -531,13 +533,6 @@
 
 <svelte:window onkeydown={keydown} />
 <main style:--file-font-size={`${preferences.fileFontSize}px`}>
-  <header>
-    <strong>my<span>Cmd</span></strong><span class="subtitle">File Manager</span
-    ><span class="keyboard-hint"
-      >Alt+F1/F2 · drives &nbsp; Tab · switch panel &nbsp; Ctrl+L · path &nbsp;
-      Ctrl+R · refresh &nbsp; Ctrl+＋/－ · font</span
-    >
-  </header>
   <div class="panels">
     <FilePanel
       panel={commander.left}
