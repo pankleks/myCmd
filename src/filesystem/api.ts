@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Listing, Root } from './types';
 import type { FileOperation, Resolution } from '../operations/types';
+import type { AppConfig } from '../utils/config';
 export interface CommandResult {
   exitCode: number | null;
   success: boolean;
@@ -20,6 +21,8 @@ export const api = {
   watch: (paths: string[]) => invoke<void>('watch_directories', { paths }),
   runCommand: (command: string, cwd: string) =>
     invoke<CommandResult>('run_system_command', { command, cwd }),
+  loadConfig: () => invoke<AppConfig>('load_config'),
+  saveConfig: (config: AppConfig) => invoke<void>('save_config', { config }),
 };
 export function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error && 'message' in error) {

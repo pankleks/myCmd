@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import Icon from '@iconify/svelte';
   import fileIconData from '../file-icons.generated.json';
   import type { PanelState, Root, Column } from '../filesystem/types';
@@ -13,13 +14,31 @@
     type Side,
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
+  import { displayPath } from '../utils/paths';
+  import { resizeColumn } from '../utils/resizeColumns';
+  import { preferences } from '../state/preferences.svelte';
   let { panel, side, roots }: { panel: PanelState; side: Side; roots: Root[] } =
     $props();
   let draft = $state('');
   let scroller: HTMLDivElement;
+  let header: HTMLDivElement;
   let scrollTop = $state(0);
+  let scrollbarWidth = $state(0);
   let height = $state(400);
-  const rowHeight = 28;
+  let columnWidths = $derived(preferences.columns[side]);
+  let resizing = $state<{
+    index: number;
+    pointerId: number;
+    startX: number;
+    startWidths: number[];
+  } | null>(null);
+  const minimumColumnWidths = [80, 46, 72, 170];
+  let columnTemplate = $derived(
+    columnWidths
+      ?.map((width, i) => `minmax(${minimumColumnWidths[i]}px, ${width}fr)`)
+      .join(' '),
+  );
+  const rowHeight = 32;
   const fileIcons = fileIconData.icons as Record<
     string,
     { body: string; width: number; height: number }
@@ -40,7 +59,16 @@
     return fileIcons[key] ?? fileIcons['default-file'];
   }
   $effect(() => {
-    draft = panel.path;
+    draft = displayPath(panel.path);
+  });
+  $effect(() => {
+    items.length;
+    height;
+    columnWidths;
+    void tick().then(() => {
+      if (scroller)
+        scrollbarWidth = scroller.offsetWidth - scroller.clientWidth;
+    });
   });
   $effect(() => {
     const y = panel.cursor * rowHeight;
@@ -66,28 +94,99 @@
     panel.cursor = index;
     scroller.focus();
   }
-  const columns: [Column, string][] = [
-    ['name', 'Name'],
-    ['extension', 'Ext'],
-    ['size', 'Size'],
-    ['modified', 'Date'],
+  const columns: { column: Column; label: string }[] = [
+    { column: 'name', label: 'Name' },
+    { column: 'extension', label: 'Ext' },
+    { column: 'size', label: 'Size' },
+    { column: 'modified', label: 'Date' },
   ];
+
+  function measureColumns() {
+    const header = document.querySelector(`#panel-${side} .columns`);
+    return header
+      ? Array.from(
+          header.children,
+          (cell) => cell.getBoundingClientRect().width,
+        )
+      : [];
+  }
+
+  function startResize(event: PointerEvent, index: number) {
+    if (event.button !== 0) return;
+    const widths = measureColumns();
+    if (widths.length !== columns.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    preferences.columns[side] = widths;
+    resizing = {
+      index,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidths: widths,
+    };
+    event.currentTarget instanceof HTMLElement &&
+      event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveResize(event: PointerEvent, index: number) {
+    if (
+      !resizing ||
+      resizing.index !== index ||
+      resizing.pointerId !== event.pointerId
+    )
+      return;
+    event.preventDefault();
+    preferences.columns[side] = resizeColumn(
+      resizing.startWidths,
+      minimumColumnWidths,
+      index,
+      event.clientX - resizing.startX,
+    );
+  }
+
+  function keyboardResize(event: KeyboardEvent, index: number) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const widths = columnWidths ?? measureColumns();
+    if (widths.length !== columns.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    preferences.columns[side] = resizeColumn(
+      widths,
+      minimumColumnWidths,
+      index,
+      event.key === 'ArrowRight' ? 16 : -16,
+    );
+  }
+
+  function syncHeaderScroll() {
+    scrollTop = scroller.scrollTop;
+    if (header) header.scrollLeft = scroller.scrollLeft;
+  }
 </script>
 
 <section
+  id={`panel-${side}`}
   class:active
+  class:resizing={resizing !== null}
+  class:custom-columns={columnWidths !== null}
   class="panel"
+  style:--panel-column-template={columnTemplate}
   aria-label={side === 'left' ? 'Left panel' : 'Right panel'}
   onfocusin={() => (commander.activePanel = side)}
 >
   <div class="pathbar">
     <select
+      id={`drive-${side}`}
       aria-label="Drives and mount points"
+      title={side === 'left' ? 'Drives (Alt+F1)' : 'Drives (Alt+F2)'}
       value=""
-      onchange={(e) => {
+      onchange={async (e) => {
+        const path = e.currentTarget.value;
         commander.activePanel = side;
-        void load(panel, e.currentTarget.value);
         e.currentTarget.value = '';
+        if (!path) return;
+        await load(panel, path);
+        scroller.focus();
       }}
     >
       <option value="" disabled>Drives ▾</option>
@@ -107,7 +206,7 @@
         spellcheck="false"
         onkeydown={(e) => {
           if (e.key === 'Escape') {
-            draft = panel.path;
+            draft = displayPath(panel.path);
             scroller.focus();
           }
         }}
@@ -132,28 +231,55 @@
     ><button title="Refresh (Ctrl+R)" onclick={() => void load(panel)}>↻</button
     >
   </div>
-  <div class="columns" role="row">
-    {#each columns as [column, label]}<button
-        role="columnheader"
-        aria-sort={panel.sort.column === column
-          ? panel.sort.direction === 'asc'
-            ? 'ascending'
-            : 'descending'
-          : 'none'}
-        onclick={() => sort(panel, column)}
-        >{label}{panel.sort.column === column
-          ? panel.sort.direction === 'asc'
-            ? ' ▴'
-            : ' ▾'
-          : ''}</button
-      >{/each}
+  <div
+    class="columns"
+    role="row"
+    bind:this={header}
+    style:padding-right={`${scrollbarWidth}px`}
+  >
+    {#each columns as item, index}
+      <div class="column-heading">
+        <button
+          role="columnheader"
+          aria-sort={panel.sort.column === item.column
+            ? panel.sort.direction === 'asc'
+              ? 'ascending'
+              : 'descending'
+            : 'none'}
+          onclick={() => sort(panel, item.column)}
+          ondblclick={() => (preferences.columns[side] = null)}
+          title="Double-click to reset column widths"
+          >{item.label}{panel.sort.column === item.column
+            ? panel.sort.direction === 'asc'
+              ? ' ▴'
+              : ' ▾'
+            : ''}</button
+        >
+        {#if index < columns.length - 1}
+          <button
+            type="button"
+            class="column-resizer"
+            aria-label={`Resize ${item.label} column`}
+            aria-keyshortcuts="ArrowLeft ArrowRight"
+            title={`Resize ${item.label} column with the mouse or arrow keys. Double-click a column header to reset widths.`}
+            tabindex="0"
+            onpointerdown={(event) => startResize(event, index)}
+            onpointermove={(event) => moveResize(event, index)}
+            onpointerup={() => (resizing = null)}
+            onpointercancel={() => (resizing = null)}
+            onkeydown={(event) => keyboardResize(event, index)}
+            ondblclick={() => (preferences.columns[side] = null)}
+          ></button>
+        {/if}
+      </div>
+    {/each}
   </div>
   <div
     class="file-list"
     id={`list-${side}`}
     bind:this={scroller}
     bind:clientHeight={height}
-    onscroll={() => (scrollTop = scroller.scrollTop)}
+    onscroll={syncHeaderScroll}
     role="listbox"
     aria-label="Files and folders"
     aria-multiselectable="true"
@@ -185,18 +311,18 @@
             void open(panel, entry);
           }
         }}
-        title={entry.path}
+        title={displayPath(entry.path)}
       >
         <span class="filename"
           ><span class="file-icon" aria-hidden="true"
             >{#if entry.parentEntry}
               <Icon
-                icon={fileIcons['folder-up-outline']}
+                icon={fileIcons['default-folder-opened']}
                 width="16"
                 height="16"
               />
             {:else if entry.type === 'directory'}
-              <Icon icon={fileIcons['folder-outline']} width="16" height="16" />
+              <Icon icon={fileIcons['default-folder']} width="16" height="16" />
             {:else if entry.type === 'symlink'}
               ↗
             {:else}
@@ -229,6 +355,15 @@
   {#if panel.error}<div class="panel-error" role="alert">
       {panel.error}
     </div>{/if}
+  {#if commander.quickFind?.side === side}
+    <div class="quick-find" role="status">
+      <span>Search:</span><span class="quick-find-query"
+        >{commander.quickFind.query}</span
+      >{#if !commander.quickFind.matched}<span class="quick-find-miss"
+          >no match</span
+        >{/if}
+    </div>
+  {/if}
   <div class="panel-status">
     <span
       >{panel.loading

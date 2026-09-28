@@ -1,10 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { icons as vscodeIconSet, info } from '@iconify-json/vscode-icons';
-import {
-  icons as lucideIconSet,
-  info as lucideInfo,
-} from '@iconify-json/lucide';
 
 const iconByExtension = {
   pdf: 'file-type-pdf2',
@@ -121,6 +117,8 @@ const iconByFilename = {
 
 const iconNames = new Set([
   'default-file',
+  'default-folder',
+  'default-folder-opened',
   ...Object.values(iconByExtension),
   ...Object.values(iconByFilename),
 ]);
@@ -132,18 +130,6 @@ for (const name of iconNames) {
     ...icon,
     width: info.height,
     height: info.height,
-  };
-}
-for (const [name, source] of Object.entries({
-  'folder-outline': 'folder',
-  'folder-up-outline': 'folder-up',
-})) {
-  const icon = lucideIconSet.icons[source];
-  if (!icon) throw new Error(`Missing Lucide icon: ${source}`);
-  selectedIcons[name] = {
-    ...icon,
-    width: icon.width ?? lucideInfo.height,
-    height: icon.height ?? lucideInfo.height,
   };
 }
 

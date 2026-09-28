@@ -16,8 +16,21 @@
     toggle,
     hidden,
     open,
+    quickFindAppend,
+    quickFindBackspace,
+    quickFindClose,
     type Side,
   } from './state/commander.svelte';
+  import {
+    preferences,
+    loadPreferences,
+    scheduleSave,
+  } from './state/preferences.svelte';
+  import {
+    DEFAULT_FILE_FONT_SIZE,
+    MAX_FILE_FONT_SIZE,
+    MIN_FILE_FONT_SIZE,
+  } from './utils/config';
   import { api, errorMessage } from './filesystem/api';
   import type { FileEntry } from './filesystem/types';
   import type {
@@ -27,6 +40,8 @@
     Resolution,
   } from './operations/types';
   import { bytes } from './utils/format';
+  import { displayPath } from './utils/paths';
+  import { isQuickFindTrigger } from './utils/keyboard';
   let ready = $state(false);
   let error = $state('');
   let errorTitle = $state('Error');
@@ -70,6 +85,15 @@
       showError(errorMessage(e));
     });
   });
+  $effect(() => {
+    if (!ready) return;
+    commander.left.path;
+    commander.right.path;
+    preferences.fileFontSize;
+    preferences.columns.left;
+    preferences.columns.right;
+    scheduleSave();
+  });
   const actions: [string, Action, string][] = [
     ['F2', 'rename', 'Rename'],
     ['F5', 'copy', 'Copy'],
@@ -79,6 +103,19 @@
   ];
   function focusPanel() {
     document.getElementById(`list-${commander.activePanel}`)?.focus();
+  }
+  function openDrivePicker(side: Side) {
+    commander.activePanel = side;
+    const picker = document.getElementById(
+      `drive-${side}`,
+    ) as HTMLSelectElement | null;
+    if (!picker) return;
+    picker.focus();
+    try {
+      picker.showPicker();
+    } catch {
+      picker.click();
+    }
   }
   function closeDialog() {
     dialog = undefined;
@@ -242,10 +279,13 @@
         commander.roots = await api.roots();
         const home =
           commander.roots.find((r) => r.type === 'home')?.path ?? '~';
+        const saved = await loadPreferences();
         await Promise.all([
-          load(commander.left, home),
-          load(commander.right, home),
+          load(commander.left, saved.leftPath ?? home),
+          load(commander.right, saved.rightPath ?? home),
         ]);
+        if (commander.left.error) await load(commander.left, home);
+        if (commander.right.error) await load(commander.right, home);
         if (!disposed) {
           ready = true;
           focusPanel();
@@ -272,10 +312,30 @@
     )
       return;
     const target = event.target as HTMLElement;
-    if (target.closest('input, select, textarea, dialog')) return;
-    const ctrl = event.ctrlKey || event.metaKey;
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      (event.key === 'F1' || event.key === 'F2')
+    ) {
+      event.preventDefault();
+      openDrivePicker(event.key === 'F1' ? 'left' : 'right');
+      return;
+    }
+    if (target.closest('input, select, textarea, dialog')) {
+      if (commander.quickFind && event.key === 'Escape') {
+        event.preventDefault();
+        quickFindClose();
+        focusPanel();
+        return;
+      }
+      return;
+    }
+    const ctrl = (event.ctrlKey || event.metaKey) && !event.altKey;
     if (event.key === 'Tab' && !ctrl && !event.altKey) {
       event.preventDefault();
+      quickFindClose();
       commander.activePanel =
         commander.activePanel === 'left' ? 'right' : 'left';
       focusPanel();
@@ -286,6 +346,7 @@
       (event.key === 'Delete' ? 'delete' : undefined);
     if (action) {
       event.preventDefault();
+      quickFindClose();
       request(action);
       return;
     }
@@ -315,8 +376,69 @@
             ) as HTMLInputElement
           )?.select();
           break;
+        case '+':
+        case '=':
+          event.preventDefault();
+          preferences.fileFontSize = Math.min(
+            MAX_FILE_FONT_SIZE,
+            preferences.fileFontSize + 1,
+          );
+          break;
+        case '-':
+        case '_':
+          event.preventDefault();
+          preferences.fileFontSize = Math.max(
+            MIN_FILE_FONT_SIZE,
+            preferences.fileFontSize - 1,
+          );
+          break;
+        case '0':
+          event.preventDefault();
+          preferences.fileFontSize = DEFAULT_FILE_FONT_SIZE;
+          break;
       }
       return;
+    }
+    const altGraph =
+      typeof event.getModifierState === 'function' &&
+      event.getModifierState('AltGraph');
+    if (
+      isQuickFindTrigger({
+        key: event.key,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altGraph,
+      })
+    ) {
+      // Dowolny Alt (lewy lub prawy/AltGr) spoza pól tekstowych dokarmia
+      // szybkie wyszukiwanie. W polach tekstowych Alt wpisuje polskie znaki.
+      event.preventDefault();
+      quickFindAppend(commander.activePanel, event.key);
+      focusPanel();
+      return;
+    }
+    if (commander.quickFind && !ctrl && !event.metaKey) {
+      if (event.altKey && !event.ctrlKey) return;
+      if (['Alt', 'AltGraph', 'Control', 'Shift', 'Meta'].includes(event.key))
+        return;
+      if (event.key === 'Escape' || event.key === 'Enter') {
+        event.preventDefault();
+        quickFindClose();
+        focusPanel();
+        return;
+      }
+      if (event.key === 'Backspace') {
+        event.preventDefault();
+        quickFindBackspace();
+        return;
+      }
+      if (event.key.length === 1 && !event.altKey) {
+        event.preventDefault();
+        quickFindAppend(commander.activePanel, event.key);
+        return;
+      }
+      quickFindClose();
     }
     if (
       event.key === 'Enter' &&
@@ -355,7 +477,7 @@
       1,
       Math.floor(
         (document.getElementById(`list-${commander.activePanel}`)
-          ?.clientHeight ?? 280) / 28,
+          ?.clientHeight ?? 320) / 32,
       ),
     );
     const movement: Record<string, number> = {
@@ -402,11 +524,12 @@
 </script>
 
 <svelte:window onkeydown={keydown} />
-<main>
+<main style:--file-font-size={`${preferences.fileFontSize}px`}>
   <header>
     <strong>my<span>Cmd</span></strong><span class="subtitle">File Manager</span
     ><span class="keyboard-hint"
-      >Tab · switch panel &nbsp; Ctrl+L · path &nbsp; Ctrl+R · refresh</span
+      >Alt+F1/F2 · drives &nbsp; Tab · switch panel &nbsp; Ctrl+L · path &nbsp;
+      Ctrl+R · refresh &nbsp; Ctrl+＋/－ · font</span
     >
   </header>
   <div class="panels">
@@ -466,7 +589,7 @@
       autocomplete="off"
       spellcheck="false"
       placeholder="Enter a command to run in the active folder"
-      title={`Working directory: ${active.path}`}
+      title={`Working directory: ${displayPath(active.path)}`}
       disabled={!ready || busy || commandRunning || !active.path}
     />
   </form>

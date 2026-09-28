@@ -18,6 +18,7 @@ export const commander = $state({
   left: panel(),
   right: panel(),
   roots: [] as Root[],
+  quickFind: null as { side: Side; query: string; matched: boolean } | null,
 });
 export interface Row extends FileEntry {
   parentEntry?: boolean;
@@ -135,4 +136,74 @@ export function hidden(panel: PanelState) {
     [...panel.selected].filter((p) => visible.some((e) => e.path === p)),
   );
   panel.cursor = Math.min(panel.cursor, Math.max(0, visible.length - 1));
+}
+
+const FOLD_EXTRA: Record<string, string> = {
+  ł: 'l',
+  ø: 'o',
+  æ: 'ae',
+  œ: 'oe',
+  ß: 'ss',
+  đ: 'd',
+};
+
+function fold(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[łøæœßđ]/g, (char) => FOLD_EXTRA[char] ?? char);
+}
+
+export function matchQuickFind(panel: PanelState, query: string): number {
+  const prefix = fold(query);
+  const list = rows(panel);
+  let directoryFallback = -1;
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
+    if (entry.parentEntry) continue;
+    if (!fold(entry.name).startsWith(prefix)) continue;
+    if (entry.type === 'directory') {
+      if (directoryFallback < 0) directoryFallback = i;
+    } else {
+      return i;
+    }
+  }
+  return directoryFallback;
+}
+
+export function quickFindAppend(side: Side, char: string) {
+  const panel = commander[side];
+  const current =
+    commander.quickFind?.side === side ? commander.quickFind.query : '';
+  const query = (current + char).slice(0, 64);
+  const index = matchQuickFind(panel, query);
+  if (index >= 0) {
+    panel.cursor = index;
+    commander.quickFind = { side, query, matched: true };
+  } else {
+    commander.quickFind = { side, query, matched: false };
+  }
+}
+
+export function quickFindBackspace() {
+  const active = commander.quickFind;
+  if (!active) return;
+  const query = active.query.slice(0, -1);
+  if (!query) {
+    commander.quickFind = null;
+    return;
+  }
+  const panel = commander[active.side];
+  const index = matchQuickFind(panel, query);
+  if (index >= 0) {
+    panel.cursor = index;
+    commander.quickFind = { side: active.side, query, matched: true };
+  } else {
+    commander.quickFind = { side: active.side, query, matched: false };
+  }
+}
+
+export function quickFindClose() {
+  commander.quickFind = null;
 }

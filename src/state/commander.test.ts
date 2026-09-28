@@ -5,7 +5,11 @@ import {
   commander,
   hidden,
   load,
+  matchQuickFind,
   open,
+  quickFindAppend,
+  quickFindBackspace,
+  quickFindClose,
   rows,
   sort,
   sources,
@@ -123,6 +127,79 @@ describe('sorting and selection', () => {
     expect(commander.right.selected.size).toBe(0);
     expect(commander.right.showHidden).toBe(false);
     expect(commander.right.sort.column).toBe('name');
+  });
+});
+
+describe('quick find', () => {
+  function setup() {
+    commander.left.entries = [
+      entry('packdir', { type: 'directory' }),
+      entry('package.txt'),
+      entry('other.txt'),
+    ];
+    commander.left.cursor = 0;
+    commander.quickFind = null;
+  }
+  function rowIndex(name: string) {
+    return rows(commander.left).findIndex((e) => e.name === name);
+  }
+  it('jumps to the best matching file before any directory', () => {
+    setup();
+    for (const char of 'pack') quickFindAppend('left', char);
+    expect(commander.quickFind).toEqual({
+      side: 'left',
+      query: 'pack',
+      matched: true,
+    });
+    expect(commander.left.cursor).toBe(rowIndex('package.txt'));
+  });
+  it('falls back to a directory when no file matches', () => {
+    setup();
+    for (const char of 'packd') quickFindAppend('left', char);
+    expect(commander.quickFind?.matched).toBe(true);
+    expect(commander.left.cursor).toBe(rowIndex('packdir'));
+  });
+  it('keeps the query open without moving on no match', () => {
+    setup();
+    for (const char of 'zzz') quickFindAppend('left', char);
+    expect(commander.quickFind).toEqual({
+      side: 'left',
+      query: 'zzz',
+      matched: false,
+    });
+    expect(commander.left.cursor).toBe(0);
+  });
+  it('skips the synthetic parent entry', () => {
+    const p = panel();
+    p.entries = [entry('.gitignore')];
+    expect(matchQuickFind(p, '.')).toBe(
+      rows(p).findIndex((e) => e.name === '.gitignore'),
+    );
+  });
+  it('ignores Polish diacritics when matching', () => {
+    const p = panel();
+    p.entries = [entry('łódka.txt')];
+    expect(matchQuickFind(p, 'lod')).toBe(
+      rows(p).findIndex((e) => e.name === 'łódka.txt'),
+    );
+  });
+  it('backspace shrinks the query and closes it when empty', () => {
+    setup();
+    quickFindAppend('left', 'p');
+    quickFindAppend('left', 'a');
+    expect(commander.quickFind?.query).toBe('pa');
+    quickFindBackspace();
+    expect(commander.quickFind?.query).toBe('p');
+    quickFindBackspace();
+    expect(commander.quickFind).toBeNull();
+    quickFindBackspace();
+    expect(commander.quickFind).toBeNull();
+  });
+  it('closes explicitly', () => {
+    setup();
+    quickFindAppend('left', 'p');
+    quickFindClose();
+    expect(commander.quickFind).toBeNull();
   });
 });
 

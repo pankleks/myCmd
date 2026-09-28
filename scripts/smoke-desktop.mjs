@@ -38,6 +38,7 @@ await new Promise((r) => server.close(r));
 const app = spawn(executable, [], {
   env: {
     ...process.env,
+    MYCMD_CONFIG_DIR: join(fixture, 'config'),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
     WEBVIEW2_USER_DATA_FOLDER: join(fixture, 'webview-profile'),
   },

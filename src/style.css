@@ -6,7 +6,7 @@
     sans-serif;
   color: #d6dce7;
   background: #171b23;
-  font-size: 12px;
+  font-size: 14px;
   font-synthesis: none;
   color-scheme: dark;
 }
@@ -81,7 +81,7 @@ header strong span {
 .keyboard-hint {
   margin-left: auto;
   color: #8997ac;
-  font-size: 11px;
+  font-size: 12px;
 }
 .panels {
   display: grid;
@@ -94,6 +94,7 @@ header strong span {
   --list-background: #000080;
   --list-foreground: #00ffff;
   --list-hidden-file: #ffff00;
+  font-size: var(--file-font-size, 18px);
   min-width: 0;
   border: 1px solid #555;
   display: flex;
@@ -108,6 +109,7 @@ header strong span {
   display: flex;
   gap: 5px;
   padding: 7px;
+  font-size: 14px;
   background: #333;
 }
 .panel.active .pathbar {
@@ -119,7 +121,7 @@ header strong span {
 }
 .pathbar input {
   width: 100%;
-  height: 29px;
+  height: 32px;
   font-family: Consolas, monospace;
 }
 .pathbar select {
@@ -132,7 +134,7 @@ header strong span {
   height: 30px;
   padding: 0 9px;
   color: #c0c0c0;
-  font-size: 10px;
+  font-size: 13px;
   letter-spacing: 0.6px;
   background: #333;
 }
@@ -149,34 +151,87 @@ header strong span {
 .columns,
 .file-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 48px 78px 137px;
+  grid-template-columns: var(
+    --panel-column-template,
+    minmax(80px, 1fr) minmax(46px, 0.45fr) minmax(72px, 0.65fr)
+      minmax(170px, 1.25fr)
+  );
   align-items: center;
 }
 .columns {
   background: #333;
   border-block: 1px solid #666;
+  overflow: hidden;
+}
+.panel.custom-columns .file-row {
+  min-width: 100%;
+}
+.column-heading {
+  position: relative;
+  min-width: 0;
 }
 .columns button {
+  width: 100%;
   text-align: left;
   border: 0;
   border-right: 1px solid #666;
   border-radius: 0;
   background: transparent;
   color: #f0f0f0;
-  font-size: 11px;
-  padding: 6px 8px;
+  font-size: 14px;
+  padding: 5px 8px;
   white-space: nowrap;
+}
+.column-resizer {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: -4px;
+  width: 9px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.column-resizer:hover,
+.column-resizer:focus-visible {
+  background: transparent;
+}
+.column-resizer::after {
+  position: absolute;
+  top: 25%;
+  left: 4px;
+  height: 50%;
+  border-right: 1px solid #9aa8bc;
+  content: '';
+  opacity: 0;
+}
+.column-resizer:hover::after,
+.column-resizer:focus-visible::after {
+  opacity: 1;
+}
+.panel.resizing,
+.panel.resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 .file-list {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   outline: none;
   position: relative;
   background: var(--list-background);
 }
 .file-row {
-  height: 28px;
+  height: 32px;
   cursor: default;
   user-select: none;
   border: 1px solid transparent;
@@ -191,9 +246,12 @@ header strong span {
   white-space: nowrap;
   padding: 0 7px;
 }
+.file-row .filename {
+  font-size: inherit;
+}
 .file-row > span:not(:first-child) {
   color: var(--list-foreground);
-  font-size: 11px;
+  font-size: inherit;
 }
 .file-row .size {
   text-align: right;
@@ -215,11 +273,10 @@ header strong span {
   width: 20px;
   vertical-align: middle;
   color: #ddd;
-  font-size: 13px;
+  font-size: inherit;
 }
 .file-icon svg {
-  filter: grayscale(1);
-  opacity: 0.82;
+  opacity: 1;
 }
 .file-row.directory .filename {
   color: var(--list-foreground);
@@ -231,11 +288,32 @@ header strong span {
   display: flex;
   justify-content: space-between;
   gap: 6px;
-  padding: 7px 9px;
+  padding: 5px 9px;
   border-top: 1px solid #666;
   color: #c0c0c0;
-  font-size: 11px;
+  font-size: 13px;
   background: #333;
+}
+.quick-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border-top: 1px solid #666;
+  color: #c0c0c0;
+  font-size: 13px;
+  background: #222;
+}
+.quick-find-query {
+  font-family: Consolas, monospace;
+  color: #fff;
+  border-right: 2px solid #00ffff;
+  padding-right: 2px;
+  min-width: 8px;
+}
+.quick-find-miss {
+  margin-left: auto;
+  color: #ff9d9d;
 }
 .empty {
   padding: 30px;
@@ -253,11 +331,11 @@ header strong span {
   overflow: auto;
 }
 .operation-status {
-  height: 34px;
+  height: 38px;
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: #a3b2c9;
   flex-shrink: 0;
 }
@@ -285,7 +363,7 @@ header strong span {
 }
 .command-line input {
   flex: 1;
-  height: 28px;
+  height: 32px;
   font-family: Consolas, monospace;
 }
 .error-command {
@@ -300,7 +378,7 @@ header strong span {
   background: #171b23;
   color: #ffc3c5;
   font:
-    11px/1.4 Consolas,
+    12px/1.5 Consolas,
     monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -311,7 +389,7 @@ footer {
   gap: 6px;
 }
 footer button {
-  height: 34px;
+  height: 38px;
   display: flex;
   justify-content: center;
   gap: 10px;
@@ -321,7 +399,7 @@ kbd {
   font-family: inherit;
   font-weight: 700;
   color: #99bbff;
-  font-size: 11px;
+  font-size: 12px;
 }
 dialog {
   width: 480px;
@@ -337,7 +415,7 @@ dialog::backdrop {
   background: #090e188c;
 }
 dialog h2 {
-  font-size: 17px;
+  font-size: 19px;
   margin: 0 0 17px;
 }
 dialog p {
@@ -378,10 +456,10 @@ dialog input:not([type='checkbox']) {
   align-items: center;
   gap: 6px;
   margin-top: 14px;
-  font-size: 11px;
+  font-size: 13px;
 }
 dl {
-  font-size: 12px;
+  font-size: 14px;
 }
 dt {
   color: #93a7c4;
@@ -392,5 +470,5 @@ dd {
 }
 .conflict-path {
   font-family: Consolas, monospace;
-  font-size: 11px;
+  font-size: 13px;
 }

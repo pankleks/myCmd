@@ -1,4 +1,5 @@
 use crate::{
+    config::{self, AppConfig},
     error::{FsError, Result},
     filesystem,
     operations::{Manager, Operation, Resolution},
@@ -25,6 +26,16 @@ pub async fn open_file(path: String) -> Result<()> {
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
+#[tauri::command]
+pub fn load_config() -> Result<AppConfig> {
+    Ok(config::load())
+}
+
+#[tauri::command]
+pub fn save_config(config: AppConfig) -> Result<()> {
+    config::save(&config)
+}
+
 #[tauri::command]
 pub fn start_operation(app: AppHandle, manager: State<Manager>, operation: Operation) -> String {
     manager.start(app, operation)

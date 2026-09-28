@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod commands;
+mod config;
 mod error;
 mod filesystem;
 mod operations;
@@ -16,6 +17,8 @@ fn main() {
             commands::start_operation,
             commands::cancel_operation,
             commands::resolve_conflict,
+            commands::load_config,
+            commands::save_config,
             shell::run_system_command,
             watcher::watch_directories
         ])
