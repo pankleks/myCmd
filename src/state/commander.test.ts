@@ -206,14 +206,49 @@ describe('quick find', () => {
 });
 
 describe('directory sizing', () => {
-  it('stores the measured size on the directory entry', async () => {
+  it('stores the measured size and skips repeat measurements in the current list', async () => {
     const p = panel();
     const dir = entry('docs', { type: 'directory', size: 0 });
     p.entries = [dir];
     vi.mocked(api.measureDirectory).mockResolvedValue(1536);
     await measureDirectory(p, rows(p)[1]);
+    await measureDirectory(p, rows(p)[1]);
     expect(api.measureDirectory).toHaveBeenCalledWith(dir.path);
+    expect(api.measureDirectory).toHaveBeenCalledTimes(1);
     expect(p.entries[0].size).toBe(1536);
+  });
+
+  it('treats a measured empty directory as already calculated', async () => {
+    const p = panel();
+    p.entries = [entry('empty', { type: 'directory', size: 0 })];
+    vi.mocked(api.measureDirectory).mockResolvedValue(0);
+    await measureDirectory(p, rows(p)[1]);
+    await measureDirectory(p, rows(p)[1]);
+    expect(api.measureDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets measurements when the panel loads a different listing', async () => {
+    const p = panel();
+    p.entries = [entry('docs', { type: 'directory', size: 0 })];
+    vi.mocked(api.measureDirectory).mockResolvedValue(1536);
+    await measureDirectory(p, rows(p)[1]);
+
+    vi.mocked(api.list)
+      .mockResolvedValueOnce({
+        path: '/other',
+        parent: '/',
+        entries: [entry('other', { path: '/other/other' })],
+      })
+      .mockResolvedValueOnce({
+        path: '/home',
+        parent: '/',
+        entries: [entry('docs', { type: 'directory', size: 0 })],
+      });
+    await load(p, '/other');
+    await load(p, '/home');
+    await measureDirectory(p, rows(p)[1]);
+
+    expect(api.measureDirectory).toHaveBeenCalledTimes(2);
   });
 
   it('skips files, the parent entry and concurrent runs', async () => {

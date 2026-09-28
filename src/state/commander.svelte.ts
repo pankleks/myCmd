@@ -101,17 +101,24 @@ export function toggle(panel: PanelState, row?: Row) {
 
 export const dirSizing = $state({ paths: [] as string[] });
 const sizingInFlight = new Set<string>();
+const measuredDirectories = new WeakSet<FileEntry>();
 
 export async function measureDirectory(panel: PanelState, row?: Row) {
   if (!row || row.parentEntry || row.type !== 'directory') return;
+  if (measuredDirectories.has(row)) return;
   if (sizingInFlight.has(row.path)) return;
+  const revision = panel.revision;
   sizingInFlight.add(row.path);
   if (!dirSizing.paths.includes(row.path))
     dirSizing.paths = [...dirSizing.paths, row.path];
   try {
     const size = await api.measureDirectory(row.path);
+    if (panel.revision !== revision) return;
     const entry = panel.entries.find((e) => e.path === row.path);
-    if (entry) entry.size = size;
+    if (entry) {
+      entry.size = size;
+      measuredDirectories.add(entry);
+    }
   } catch {
     // Keep showing <DIR> when the size cannot be computed.
   } finally {
