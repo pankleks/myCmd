@@ -6,26 +6,24 @@ export const COLUMN_COUNT = 4;
 export const MIN_COLUMN_WEIGHT = 20;
 export const MAX_COLUMN_WEIGHT = 2000;
 
-export interface ColumnWeightsState {
-  left: number[] | null;
-  right: number[] | null;
-}
-
 export interface AppConfig {
   version: number;
   leftPath?: string | null;
   rightPath?: string | null;
-  columnWeights?: {
-    left?: number[] | null;
-    right?: number[] | null;
-  } | null;
+  columnWeights?:
+    | {
+        left?: number[] | null;
+        right?: number[] | null;
+      }
+    | number[]
+    | null;
   fileFontSize?: number | null;
 }
 
 export interface NormalizedConfig {
   leftPath: string | null;
   rightPath: string | null;
-  columns: ColumnWeightsState;
+  columns: number[] | null;
   fileFontSize: number;
 }
 
@@ -63,19 +61,24 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     typeof raw === 'object' && raw !== null
       ? (raw as Record<string, unknown>)
       : {};
-  const weights =
-    typeof config.columnWeights === 'object' && config.columnWeights !== null
-      ? (config.columnWeights as Record<string, unknown>)
-      : {};
   return {
     leftPath: normalizePath(config.leftPath),
     rightPath: normalizePath(config.rightPath),
-    columns: {
-      left: normalizeColumnWeights(weights.left),
-      right: normalizeColumnWeights(weights.right),
-    },
+    columns: normalizeSharedColumns(config.columnWeights),
     fileFontSize: normalizeFontSize(config.fileFontSize),
   };
+}
+
+function normalizeSharedColumns(value: unknown): number[] | null {
+  if (Array.isArray(value)) return normalizeColumnWeights(value);
+  if (typeof value === 'object' && value !== null) {
+    const weights = value as Record<string, unknown>;
+    return (
+      normalizeColumnWeights(weights.left) ??
+      normalizeColumnWeights(weights.right)
+    );
+  }
+  return null;
 }
 
 export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
@@ -84,8 +87,8 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     leftPath: normalized.leftPath,
     rightPath: normalized.rightPath,
     columnWeights: {
-      left: normalized.columns.left,
-      right: normalized.columns.right,
+      left: normalized.columns,
+      right: normalized.columns,
     },
     fileFontSize: normalized.fileFontSize,
   };

@@ -50,16 +50,27 @@ describe('normalizeConfig', () => {
     ).toEqual({
       leftPath: 'C:\\Users\\root',
       rightPath: null,
-      columns: { left: [175, 78, 113, 218], right: null },
+      columns: [175, 78, 113, 218],
       fileFontSize: 20,
     });
+  });
+
+  it('migrates split panel widths into one shared value', () => {
+    expect(
+      normalizeConfig({
+        columnWeights: { left: null, right: [200, 80, 100, 220] },
+      }).columns,
+    ).toEqual([200, 80, 100, 220]);
+    expect(
+      normalizeConfig({ columnWeights: [100, 100, 100, 100] }).columns,
+    ).toEqual([100, 100, 100, 100]);
   });
 
   it('returns defaults for corrupt payloads', () => {
     expect(normalizeConfig(null)).toEqual({
       leftPath: null,
       rightPath: null,
-      columns: { left: null, right: null },
+      columns: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
     });
     expect(normalizeConfig('oops')).toEqual(normalizeConfig(null));

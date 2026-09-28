@@ -3,7 +3,6 @@ import {
   buildSavePayload,
   DEFAULT_FILE_FONT_SIZE,
   normalizeConfig,
-  type ColumnWeightsState,
 } from '../utils/config';
 import { displayPath } from '../utils/paths';
 import { commander } from './commander.svelte';
@@ -15,7 +14,7 @@ export interface SavedPaths {
 
 export const preferences = $state({
   fileFontSize: DEFAULT_FILE_FONT_SIZE,
-  columns: { left: null, right: null } as ColumnWeightsState,
+  columnWidths: null as number[] | null,
 });
 
 export async function loadPreferences(): Promise<SavedPaths> {
@@ -27,7 +26,7 @@ export async function loadPreferences(): Promise<SavedPaths> {
   }
   const normalized = normalizeConfig(raw);
   preferences.fileFontSize = normalized.fileFontSize;
-  preferences.columns = normalized.columns;
+  preferences.columnWidths = normalized.columns;
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
 }
 
@@ -35,10 +34,7 @@ export async function persistPreferences(): Promise<void> {
   const payload = buildSavePayload({
     leftPath: commander.left.path ? displayPath(commander.left.path) : null,
     rightPath: commander.right.path ? displayPath(commander.right.path) : null,
-    columns: {
-      left: preferences.columns.left,
-      right: preferences.columns.right,
-    },
+    columns: preferences.columnWidths,
     fileFontSize: preferences.fileFontSize,
   });
   try {

@@ -1,7 +1,7 @@
 import type { FileEntry } from '../filesystem/types';
 export type FileOperation =
   | { type: 'copy' | 'move'; sources: string[]; destination: string }
-  | { type: 'delete'; sources: string[] }
+  | { type: 'delete'; sources: string[]; permanent: boolean }
   | { type: 'rename'; path: string; name: string }
   | { type: 'createDirectory'; parent: string; name: string };
 export interface Progress {

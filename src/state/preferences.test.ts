@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.useRealTimers();
   preferences.fileFontSize = DEFAULT_FILE_FONT_SIZE;
-  preferences.columns = { left: null, right: null };
+  preferences.columnWidths = null;
   commander.left.path = '';
   commander.right.path = '';
 });
@@ -41,7 +41,19 @@ describe('loadPreferences', () => {
       rightPath: '/tmp',
     });
     expect(preferences.fileFontSize).toBe(20);
-    expect(preferences.columns.left).toEqual([175, 78, 113, 218]);
+    expect(preferences.columnWidths).toEqual([175, 78, 113, 218]);
+  });
+
+  it('prefers the left panel when migrating split widths', async () => {
+    loadConfig.mockResolvedValue({
+      version: 1,
+      leftPath: null,
+      rightPath: null,
+      columnWeights: { left: null, right: [200, 80, 100, 220] },
+      fileFontSize: null,
+    });
+    await loadPreferences();
+    expect(preferences.columnWidths).toEqual([200, 80, 100, 220]);
   });
 
   it('falls back to defaults when the backend is unavailable', async () => {
@@ -49,7 +61,7 @@ describe('loadPreferences', () => {
     const paths = await loadPreferences();
     expect(paths).toEqual({ leftPath: null, rightPath: null });
     expect(preferences.fileFontSize).toBe(DEFAULT_FILE_FONT_SIZE);
-    expect(preferences.columns).toEqual({ left: null, right: null });
+    expect(preferences.columnWidths).toBeNull();
   });
 });
 
@@ -58,13 +70,13 @@ describe('persistPreferences', () => {
     commander.left.path = 'C:\\Users\\root';
     commander.right.path = 'D:\\Backup';
     preferences.fileFontSize = 16;
-    preferences.columns = { left: [200, 80, 100, 220], right: null };
+    preferences.columnWidths = [200, 80, 100, 220];
     await persistPreferences();
     expect(saveConfig).toHaveBeenCalledWith({
       version: 1,
       leftPath: 'C:\\Users\\root',
       rightPath: 'D:\\Backup',
-      columnWeights: { left: [200, 80, 100, 220], right: null },
+      columnWeights: { left: [200, 80, 100, 220], right: [200, 80, 100, 220] },
       fileFontSize: 16,
     });
   });

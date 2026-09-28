@@ -25,7 +25,6 @@
   let scrollTop = $state(0);
   let scrollbarWidth = $state(0);
   let height = $state(400);
-  let columnWidths = $derived(preferences.columns[side]);
   let resizing = $state<{
     index: number;
     pointerId: number;
@@ -34,7 +33,7 @@
   } | null>(null);
   const minimumColumnWidths = [80, 46, 72, 170];
   let columnTemplate = $derived(
-    columnWidths
+    preferences.columnWidths
       ?.map((width, i) => `minmax(${minimumColumnWidths[i]}px, ${width}fr)`)
       .join(' '),
   );
@@ -64,7 +63,7 @@
   $effect(() => {
     items.length;
     height;
-    columnWidths;
+    preferences.columnWidths;
     void tick().then(() => {
       if (scroller)
         scrollbarWidth = scroller.offsetWidth - scroller.clientWidth;
@@ -117,7 +116,7 @@
     if (widths.length !== columns.length) return;
     event.preventDefault();
     event.stopPropagation();
-    preferences.columns[side] = widths;
+    preferences.columnWidths = widths;
     resizing = {
       index,
       pointerId: event.pointerId,
@@ -136,7 +135,7 @@
     )
       return;
     event.preventDefault();
-    preferences.columns[side] = resizeColumn(
+    preferences.columnWidths = resizeColumn(
       resizing.startWidths,
       minimumColumnWidths,
       index,
@@ -146,11 +145,11 @@
 
   function keyboardResize(event: KeyboardEvent, index: number) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    const widths = columnWidths ?? measureColumns();
+    const widths = preferences.columnWidths ?? measureColumns();
     if (widths.length !== columns.length) return;
     event.preventDefault();
     event.stopPropagation();
-    preferences.columns[side] = resizeColumn(
+    preferences.columnWidths = resizeColumn(
       widths,
       minimumColumnWidths,
       index,
@@ -168,7 +167,7 @@
   id={`panel-${side}`}
   class:active
   class:resizing={resizing !== null}
-  class:custom-columns={columnWidths !== null}
+  class:custom-columns={preferences.columnWidths !== null}
   class="panel"
   style:--panel-column-template={columnTemplate}
   aria-label={side === 'left' ? 'Left panel' : 'Right panel'}
@@ -247,7 +246,7 @@
               : 'descending'
             : 'none'}
           onclick={() => sort(panel, item.column)}
-          ondblclick={() => (preferences.columns[side] = null)}
+          ondblclick={() => (preferences.columnWidths = null)}
           title="Double-click to reset column widths"
           >{item.label}{panel.sort.column === item.column
             ? panel.sort.direction === 'asc'
@@ -268,7 +267,7 @@
             onpointerup={() => (resizing = null)}
             onpointercancel={() => (resizing = null)}
             onkeydown={(event) => keyboardResize(event, index)}
-            ondblclick={() => (preferences.columns[side] = null)}
+            ondblclick={() => (preferences.columnWidths = null)}
           ></button>
         {/if}
       </div>

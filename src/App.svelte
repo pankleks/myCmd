@@ -58,6 +58,7 @@
     parent: string;
     destination: string;
     side: Side;
+    permanent: boolean;
   }>();
   let operationSide: Side = 'left';
   let operationId: string | undefined;
@@ -90,8 +91,7 @@
     commander.left.path;
     commander.right.path;
     preferences.fileFontSize;
-    preferences.columns.left;
-    preferences.columns.right;
+    preferences.columnWidths;
     scheduleSave();
   });
   const actions: [string, Action, string][] = [
@@ -125,7 +125,7 @@
     errorTitle = title;
     error = message;
   }
-  function request(action: Action) {
+  function request(action: Action, permanent = false) {
     if (
       !ready ||
       busy ||
@@ -152,6 +152,7 @@
       destination:
         commander[commander.activePanel === 'left' ? 'right' : 'left'].path,
       side: commander.activePanel,
+      permanent: action === 'delete' && permanent,
     };
   }
   async function submit(operation: FileOperation) {
@@ -347,7 +348,12 @@
     if (action) {
       event.preventDefault();
       quickFindClose();
-      request(action);
+      request(
+        action,
+        action === 'delete' &&
+          event.shiftKey &&
+          (event.key === 'Delete' || event.key === 'F8'),
+      );
       return;
     }
     if (ctrl) {

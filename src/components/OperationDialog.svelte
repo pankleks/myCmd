@@ -9,6 +9,7 @@
     entries,
     parent,
     destination,
+    permanent,
     onsubmit,
     onclose,
   }: {
@@ -16,6 +17,7 @@
     entries: FileEntry[];
     parent: string;
     destination: string;
+    permanent: boolean;
     onsubmit: (operation: FileOperation) => void;
     onclose: () => void;
   } = $props();
@@ -24,8 +26,14 @@
     move: 'Move',
     rename: 'Rename',
     createDirectory: 'New folder',
-    delete: 'Delete permanently',
   };
+  let title = $derived(
+    action === 'delete'
+      ? permanent
+        ? 'Delete permanently'
+        : 'Move to Recycle Bin'
+      : labels[action],
+  );
   let value = $state('');
   let dialog: HTMLDialogElement;
   onMount(() => {
@@ -47,7 +55,7 @@
           ? { type: action, path: paths[0], name: value }
           : action === 'createDirectory'
             ? { type: action, parent, name: value }
-            : { type: 'delete', sources: paths };
+            : { type: 'delete', sources: paths, permanent };
     onsubmit(operation);
   }
 </script>
@@ -65,17 +73,27 @@
       submit();
     }}
   >
-    <h2>{labels[action]}</h2>
+    <h2>{title}</h2>
     {#if action === 'delete'}
-      <p>Delete {entries.length} items permanently?</p>
-      <p>
-        {entries.filter((e) => e.type === 'directory').length} folders, {entries.filter(
-          (e) => e.type !== 'directory',
-        ).length} files / links.
-      </p>
-      <p class="danger-text">
-        Folders and all their contents will be deleted. This cannot be undone.
-      </p>
+      {#if permanent}
+        <p>Delete {entries.length} items permanently?</p>
+        <p>
+          {entries.filter((e) => e.type === 'directory').length} folders, {entries.filter(
+            (e) => e.type !== 'directory',
+          ).length} files / links.
+        </p>
+        <p class="danger-text">
+          Folders and all their contents will be deleted. This cannot be undone.
+        </p>
+      {:else}
+        <p>Move {entries.length} items to the Recycle Bin?</p>
+        <p>
+          {entries.filter((e) => e.type === 'directory').length} folders, {entries.filter(
+            (e) => e.type !== 'directory',
+          ).length} files / links.
+        </p>
+        <p>You can restore them from the Recycle Bin.</p>
+      {/if}
     {:else}
       {#if action !== 'createDirectory'}<p>
           {entries.length === 1
@@ -90,9 +108,9 @@
     {/if}
     <div class="dialog-actions">
       <button type="button" onclick={onclose}>Cancel</button><button
-        class:danger={action === 'delete'}
+        class:danger={action === 'delete' && permanent}
         class="primary"
-        type="submit">{labels[action]}</button
+        type="submit">{title}</button
       >
     </div>
   </form>

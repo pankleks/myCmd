@@ -29,6 +29,8 @@ pub enum Operation {
     },
     Delete {
         sources: Vec<PathBuf>,
+        #[serde(default)]
+        permanent: bool,
     },
     Rename {
         path: PathBuf,
@@ -424,7 +426,7 @@ impl Worker {
                 fs::rename(&path, &target).map_err(|e| FsError::io(e, &path))?;
                 self.progress.result_path = Some(filesystem::text(&target));
             }
-            Operation::Delete { sources } => {
+            Operation::Delete { sources, permanent } => {
                 let sources = normalize_sources(sources)?;
                 for p in &sources {
                     protect(p)?;
@@ -433,8 +435,21 @@ impl Worker {
                     self.progress.total_items += n.1;
                 }
                 self.emit();
-                for p in sources {
-                    self.delete(&p)?;
+                if permanent {
+                    for p in sources {
+                        self.delete(&p)?;
+                    }
+                } else {
+                    for p in sources {
+                        self.check()?;
+                        trash::delete(&p).map_err(|e| {
+                            FsError::new(
+                                "trash_error",
+                                format!("{}: {e}", p.display()),
+                            )
+                        })?;
+                        self.tick(&p, 0, 1)?;
+                    }
                 }
             }
             Operation::Copy {
@@ -551,6 +566,28 @@ mod tests {
         }
     }
     #[test]
+    fn delete_defaults_to_recycle_bin() {
+        let operation: Operation = serde_json::from_value(serde_json::json!({
+            "type": "delete",
+            "sources": ["C:\\temp\\item"],
+        }))
+        .unwrap();
+        assert!(
+            matches!(operation, Operation::Delete { permanent: false, .. }),
+            "missing flag must mean recycle bin, never permanent delete"
+        );
+        let operation: Operation = serde_json::from_value(serde_json::json!({
+            "type": "delete",
+            "sources": ["C:\\temp\\item"],
+            "permanent": true,
+        }))
+        .unwrap();
+        assert!(matches!(
+            operation,
+            Operation::Delete { permanent: true, .. }
+        ));
+    }
+    #[test]
     fn recursive_copy_and_delete() {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("source");
@@ -572,6 +609,7 @@ mod tests {
         assert_eq!(w.progress.processed_items, 3);
         w.run(Operation::Delete {
             sources: vec![destination.join("source")],
+            permanent: true,
         })
         .unwrap();
         assert!(!destination.join("source").exists());
@@ -655,7 +693,8 @@ mod tests {
         w.control.cancel.store(true, Ordering::Relaxed);
         assert_eq!(
             w.run(Operation::Delete {
-                sources: vec![source.clone()]
+                sources: vec![source.clone()],
+                permanent: true
             })
             .unwrap_err()
             .code,
@@ -689,6 +728,7 @@ mod tests {
         worker("overwrite")
             .run(Operation::Delete {
                 sources: vec![destination.join("source")],
+                permanent: true,
             })
             .unwrap();
         assert!(source.exists());
