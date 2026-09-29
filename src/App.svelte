@@ -8,12 +8,15 @@
     type Action,
   } from './components/OperationDialog.svelte';
   import ConflictDialog from './components/ConflictDialog.svelte';
+  import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import {
     commander,
     load,
     rows,
     sources,
     toggle,
+    invertSelection,
+    selectByGlob,
     hidden,
     open,
     quickFindAppend,
@@ -21,6 +24,7 @@
     quickFindClose,
     measureDirectory,
     type Side,
+    type SelectionMode,
   } from './state/commander.svelte';
   import {
     preferences,
@@ -50,6 +54,7 @@
   let commandRunning = $state(false);
   let commandInput = $state('');
   let commandError = $state<{ command: string; output: string }>();
+  let selectionDialog = $state<{ mode: SelectionMode }>();
   let commandInputElement: HTMLInputElement;
   let progress = $state<Progress>();
   let conflict = $state<Conflict>();
@@ -124,6 +129,15 @@
     dialog = undefined;
     void tick().then(focusPanel);
   }
+  function closeSelectionDialog() {
+    selectionDialog = undefined;
+    void tick().then(focusPanel);
+  }
+  function applyGlobSelection(pattern: string) {
+    if (!selectionDialog) return;
+    selectByGlob(active, pattern, selectionDialog.mode);
+    closeSelectionDialog();
+  }
   function showError(message: string, title = 'Error') {
     errorTitle = title;
     error = message;
@@ -134,6 +148,7 @@
       busy ||
       commandRunning ||
       dialog ||
+      selectionDialog ||
       conflict ||
       commandError ||
       error ||
@@ -308,6 +323,7 @@
   function keydown(event: KeyboardEvent) {
     if (
       dialog ||
+      selectionDialog ||
       conflict ||
       commandError ||
       error ||
@@ -335,6 +351,31 @@
         return;
       }
       return;
+    }
+    if (
+      ready &&
+      !busy &&
+      !commandRunning &&
+      !active.loading &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !target.closest('button')
+    ) {
+      if (event.key === '*') {
+        event.preventDefault();
+        quickFindClose();
+        invertSelection(active);
+        return;
+      }
+      if (event.key === '+' || event.key === '-') {
+        event.preventDefault();
+        quickFindClose();
+        selectionDialog = {
+          mode: event.key === '+' ? 'extend' : 'shrink',
+        };
+        return;
+      }
     }
     const ctrl = (event.ctrlKey || event.metaKey) && !event.altKey;
     if (event.key === 'Tab' && !ctrl && !event.altKey) {
@@ -616,3 +657,8 @@
     onclose={closeDialog}
   />{/if}
 {#if conflict}<ConflictDialog {conflict} onresolve={resolve} />{/if}
+{#if selectionDialog}<GlobSelectionDialog
+    mode={selectionDialog.mode}
+    onsubmit={applyGlobSelection}
+    onclose={closeSelectionDialog}
+  />{/if}

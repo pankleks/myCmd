@@ -44,6 +44,8 @@ Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
 | Alt+litera                        | Szybkie wyszukiwanie w aktywnym panelu (Esc zamyka)                         |
 | Alt+F1 / Alt+F2                   | Wybór dysku w lewym / prawym panelu                                         |
 | Space / Insert                    | Zaznaczenie (Insert przesuwa kursor; spacja na katalogu liczy jego rozmiar) |
+| *                                 | Odwróć zaznaczenie bieżącej listy                                           |
+| + / -                             | Dodaj / usuń elementy pasujące do maski glob (domyślnie `*.*`)              |
 | Ctrl+A / Esc                      | Zaznacz wszystkie / wyczyść zaznaczenie                                     |
 | Ctrl+klik / Shift+klik            | Zaznaczenie wielu elementów / zakresu                                       |
 | F2                                | Zmień nazwę jednego elementu                                                |

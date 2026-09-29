@@ -5,6 +5,7 @@ import {
   commander,
   dirSizing,
   hidden,
+  invertSelection,
   load,
   matchQuickFind,
   measureDirectory,
@@ -13,6 +14,7 @@ import {
   quickFindBackspace,
   quickFindClose,
   rows,
+  selectByGlob,
   sort,
   sources,
   toggle,
@@ -129,6 +131,45 @@ describe('sorting and selection', () => {
     expect(commander.right.selected.size).toBe(0);
     expect(commander.right.showHidden).toBe(false);
     expect(commander.right.sort.column).toBe('name');
+  });
+  it('inverts only current rows and never selects the parent entry', () => {
+    const p = panel();
+    const a = entry('a');
+    const b = entry('b');
+    p.entries = [a, b];
+    p.selected = new Set([a.path]);
+
+    invertSelection(p);
+    expect(p.selected).toEqual(new Set([b.path]));
+    expect(p.selected.has('/')).toBe(false);
+    invertSelection(p);
+    expect(p.selected).toEqual(new Set([a.path]));
+  });
+  it('extends and shrinks selection by glob, including matching directories', () => {
+    const p = panel();
+    const folder = entry('tools.exe', { type: 'directory' });
+    const executable = entry('app.EXE');
+    const readme = entry('README');
+    p.entries = [folder, executable, readme];
+    p.selected = new Set([readme.path]);
+
+    selectByGlob(p, '*.exe', 'extend');
+    expect(p.selected).toEqual(
+      new Set([folder.path, executable.path, readme.path]),
+    );
+    selectByGlob(p, '*.exe', 'shrink');
+    expect(p.selected).toEqual(new Set([readme.path]));
+  });
+  it('uses *.* to select all current entries, including extensionless names', () => {
+    const p = panel();
+    p.entries = [
+      entry('folder', { type: 'directory' }),
+      entry('README'),
+      entry('app.exe'),
+    ];
+
+    selectByGlob(p, '*.*', 'extend');
+    expect(p.selected).toEqual(new Set(p.entries.map((item) => item.path)));
   });
 });
 

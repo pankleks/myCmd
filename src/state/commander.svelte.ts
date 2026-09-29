@@ -1,5 +1,6 @@
 import { api, errorMessage } from '../filesystem/api';
 import type { Column, FileEntry, PanelState, Root } from '../filesystem/types';
+import { matchesGlob } from '../utils/glob';
 export type Side = 'left' | 'right';
 function panel(): PanelState {
   return {
@@ -96,6 +97,33 @@ export function toggle(panel: PanelState, row?: Row) {
   const next = new Set(panel.selected);
   if (next.has(row.path)) next.delete(row.path);
   else next.add(row.path);
+  panel.selected = next;
+}
+
+export type SelectionMode = 'extend' | 'shrink';
+
+export function invertSelection(panel: PanelState) {
+  const visiblePaths = rows(panel)
+    .filter((row) => !row.parentEntry)
+    .map((row) => row.path);
+  panel.selected = new Set(
+    visiblePaths.filter((path) => !panel.selected.has(path)),
+  );
+}
+
+export function selectByGlob(
+  panel: PanelState,
+  pattern: string,
+  mode: SelectionMode,
+) {
+  const matchingPaths = rows(panel)
+    .filter((row) => !row.parentEntry && matchesGlob(row.name, pattern))
+    .map((row) => row.path);
+  const next = new Set(panel.selected);
+  for (const path of matchingPaths) {
+    if (mode === 'extend') next.add(path);
+    else next.delete(path);
+  }
   panel.selected = next;
 }
 
