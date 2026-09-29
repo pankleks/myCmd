@@ -559,7 +559,7 @@
       1,
       Math.floor(
         (document.getElementById(`list-${commander.activePanel}`)
-          ?.clientHeight ?? 320) / 32,
+          ?.clientHeight ?? 320) / 28,
       ),
     );
     const movement: Record<string, number> = {

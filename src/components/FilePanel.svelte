@@ -37,7 +37,7 @@
       ?.map((width, i) => `minmax(${minimumColumnWidths[i]}px, ${width}fr)`)
       .join(' '),
   );
-  const rowHeight = 32;
+  const rowHeight = 28;
   const fileIcons = fileIconData.icons as Record<
     string,
     { body: string; width: number; height: number }

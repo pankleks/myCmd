@@ -206,7 +206,7 @@ main {
   background: #3a4451;
 }
 .file-row {
-  height: 32px;
+  height: 28px;
   cursor: default;
   user-select: none;
   color: var(--list-foreground);
