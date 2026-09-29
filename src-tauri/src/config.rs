@@ -83,8 +83,7 @@ fn sanitize_weights(weights: Option<[f64; COLUMN_COUNT]>) -> Option<[f64; COLUMN
 }
 
 fn sanitize_path(path: Option<String>) -> Option<String> {
-    path.map(|p| p.trim().to_owned())
-        .filter(|p| !p.is_empty())
+    path.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty())
 }
 
 impl AppConfig {

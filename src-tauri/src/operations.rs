@@ -443,10 +443,7 @@ impl Worker {
                     for p in sources {
                         self.check()?;
                         trash::delete(&p).map_err(|e| {
-                            FsError::new(
-                                "trash_error",
-                                format!("{}: {e}", p.display()),
-                            )
+                            FsError::new("trash_error", format!("{}: {e}", p.display()))
                         })?;
                         self.tick(&p, 0, 1)?;
                     }
@@ -573,7 +570,13 @@ mod tests {
         }))
         .unwrap();
         assert!(
-            matches!(operation, Operation::Delete { permanent: false, .. }),
+            matches!(
+                operation,
+                Operation::Delete {
+                    permanent: false,
+                    ..
+                }
+            ),
             "missing flag must mean recycle bin, never permanent delete"
         );
         let operation: Operation = serde_json::from_value(serde_json::json!({
@@ -584,7 +587,10 @@ mod tests {
         .unwrap();
         assert!(matches!(
             operation,
-            Operation::Delete { permanent: true, .. }
+            Operation::Delete {
+                permanent: true,
+                ..
+            }
         ));
     }
     #[test]
