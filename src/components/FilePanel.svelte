@@ -293,6 +293,11 @@
         class:directory={entry.type === 'directory'}
         class:hidden-entry={entry.hidden}
         onclick={(e) => click(e, index)}
+        onmousedown={(e) => {
+          // Keep focus (and panel activation) deferred until click, so the
+          // stale cursor doesn't flash before jumping to the clicked row.
+          if (e.button === 0) e.preventDefault();
+        }}
         ondblclick={() => void open(panel, entry)}
         onkeydown={(e) => {
           if (e.key === 'Enter') {
