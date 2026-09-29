@@ -14,36 +14,18 @@ pub const MIN_COLUMN_WEIGHT: f64 = 20.0;
 pub const MAX_COLUMN_WEIGHT: f64 = 2000.0;
 pub const COLUMN_COUNT: usize = 4;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ColumnWeights {
     pub left: Option<[f64; COLUMN_COUNT]>,
     pub right: Option<[f64; COLUMN_COUNT]>,
 }
 
-impl Default for ColumnWeights {
-    fn default() -> Self {
-        Self {
-            left: None,
-            right: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ShowHidden {
     pub left: Option<bool>,
     pub right: Option<bool>,
-}
-
-impl Default for ShowHidden {
-    fn default() -> Self {
-        Self {
-            left: None,
-            right: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
