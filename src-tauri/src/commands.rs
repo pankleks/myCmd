@@ -12,6 +12,30 @@ pub async fn list_directory(path: String) -> Result<filesystem::Listing> {
         .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
+pub async fn read_text_preview(path: String) -> Result<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        filesystem::read_text_preview(std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+#[tauri::command]
+pub async fn read_image_preview(path: String) -> Result<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        filesystem::read_image_preview(std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+#[tauri::command]
+pub async fn read_markdown_image(markdown_path: String, source: String) -> Result<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        filesystem::read_markdown_image(std::path::Path::new(&markdown_path), &source)
+    })
+    .await
+    .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+#[tauri::command]
 pub async fn list_roots() -> Result<Vec<filesystem::Root>> {
     tauri::async_runtime::spawn_blocking(filesystem::roots)
         .await

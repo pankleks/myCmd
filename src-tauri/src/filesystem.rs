@@ -1,10 +1,15 @@
 use crate::error::{FsError, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use std::{
     fs,
+    io::Read,
     path::{Component, Path, PathBuf},
     time::UNIX_EPOCH,
 };
+
+pub const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
+pub const MAX_IMAGE_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +66,150 @@ pub fn absolute(p: &Path) -> Result<PathBuf> {
     };
     fs::canonicalize(&p).map_err(|e| FsError::io(e, &p))
 }
+
+pub fn read_text_preview(path: &Path) -> Result<String> {
+    let path = absolute(path)?;
+    let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
+    if !metadata.is_file() {
+        return Err(FsError::new("not_a_file", "Only files can be previewed"));
+    }
+    if metadata.len() > MAX_TEXT_PREVIEW_BYTES {
+        return Err(FsError::new(
+            "file_too_large",
+            "Files larger than 2 MiB cannot be previewed",
+        ));
+    }
+
+    let file = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
+    let mut content = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_TEXT_PREVIEW_BYTES + 1)
+        .read_to_end(&mut content)
+        .map_err(|e| FsError::io(e, &path))?;
+    if content.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+        return Err(FsError::new(
+            "file_too_large",
+            "Files larger than 2 MiB cannot be previewed",
+        ));
+    }
+    if content.contains(&0) {
+        return Err(FsError::new(
+            "binary_file",
+            "Binary files cannot be previewed as text",
+        ));
+    }
+    String::from_utf8(content)
+        .map_err(|_| FsError::new("invalid_encoding", "File is not valid UTF-8 text"))
+}
+
+pub fn read_markdown_image(markdown_path: &Path, source: &str) -> Result<String> {
+    let markdown_path = absolute(markdown_path)?;
+    let base = markdown_path
+        .parent()
+        .ok_or_else(|| FsError::new("invalid_path", "Markdown file has no parent folder"))?;
+    let source = source.split(['?', '#']).next().unwrap_or_default().trim();
+    let decoded = decode_uri_path(source)
+        .ok_or_else(|| FsError::new("invalid_image_path", "Invalid image path"))?;
+    let relative = Path::new(&decoded);
+    if decoded.is_empty()
+        || relative.is_absolute()
+        || decoded.starts_with("//")
+        || has_uri_scheme(&decoded)
+    {
+        return Err(FsError::new(
+            "invalid_image_path",
+            "Only relative local images can be previewed",
+        ));
+    }
+
+    let path = absolute(&base.join(relative))?;
+    image_data_url(&path)
+}
+
+pub fn read_image_preview(path: &Path) -> Result<String> {
+    image_data_url(&absolute(path)?)
+}
+
+fn image_data_url(path: &Path) -> Result<String> {
+    let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
+    if !metadata.is_file() {
+        return Err(FsError::new("not_a_file", "Image source is not a file"));
+    }
+    let mime = match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("avif") => "image/avif",
+        Some("bmp") => "image/bmp",
+        _ => {
+            return Err(FsError::new(
+                "unsupported_image",
+                "This raster image format cannot be previewed",
+            ));
+        }
+    };
+    if metadata.len() > MAX_IMAGE_PREVIEW_BYTES {
+        return Err(FsError::new(
+            "image_too_large",
+            "Images larger than 4 MiB cannot be previewed",
+        ));
+    }
+
+    let file = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
+    let mut content = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_IMAGE_PREVIEW_BYTES + 1)
+        .read_to_end(&mut content)
+        .map_err(|e| FsError::io(e, &path))?;
+    if content.len() as u64 > MAX_IMAGE_PREVIEW_BYTES {
+        return Err(FsError::new(
+            "image_too_large",
+            "Images larger than 4 MiB cannot be previewed",
+        ));
+    }
+
+    Ok(format!("data:{mime};base64,{}", STANDARD.encode(content)))
+}
+
+fn decode_uri_path(source: &str) -> Option<String> {
+    let bytes = source.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = hex_value(*bytes.get(index + 1)?)?;
+            let low = hex_value(*bytes.get(index + 2)?)?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn has_uri_scheme(source: &str) -> bool {
+    let Some(colon) = source.find(':') else {
+        return false;
+    };
+    let first_separator = source.find(['/', '\\']).unwrap_or(usize::MAX);
+    colon < first_separator
+}
+
 pub fn entry(p: &Path) -> Result<Entry> {
     if p.to_str().is_none() {
         return Err(FsError::new(
@@ -243,5 +392,130 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let missing = temp.path().join("missing");
         assert!(directory_size(&missing).is_err());
+    }
+
+    #[test]
+    fn read_text_preview_preserves_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.ts");
+        fs::write(&path, "const answer = 42;\n").unwrap();
+        assert_eq!(read_text_preview(&path).unwrap(), "const answer = 42;\n");
+    }
+
+    #[test]
+    fn read_text_preview_rejects_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let error = read_text_preview(temp.path()).unwrap_err();
+        assert_eq!(error.code, "not_a_file");
+    }
+
+    #[test]
+    fn read_text_preview_rejects_binary_data() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.bin");
+        fs::write(&path, [0, 1, 2]).unwrap();
+        let error = read_text_preview(&path).unwrap_err();
+        assert_eq!(error.code, "binary_file");
+    }
+
+    #[test]
+    fn read_text_preview_rejects_invalid_utf8() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.txt");
+        fs::write(&path, [0xff, 0xfe]).unwrap();
+        let error = read_text_preview(&path).unwrap_err();
+        assert_eq!(error.code, "invalid_encoding");
+    }
+
+    #[test]
+    fn read_text_preview_rejects_large_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("large.txt");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_TEXT_PREVIEW_BYTES + 1).unwrap();
+        let error = read_text_preview(&path).unwrap_err();
+        assert_eq!(error.code, "file_too_large");
+    }
+
+    #[test]
+    fn read_markdown_image_returns_a_data_url_for_relative_raster_image() {
+        let temp = tempfile::tempdir().unwrap();
+        let markdown = temp.path().join("README.md");
+        let image = temp.path().join("diagram.png");
+        fs::write(&markdown, "![diagram](diagram.png)").unwrap();
+        fs::write(&image, b"png").unwrap();
+
+        assert_eq!(
+            read_markdown_image(&markdown, "diagram.png").unwrap(),
+            "data:image/png;base64,cG5n"
+        );
+    }
+
+    #[test]
+    fn read_markdown_image_decodes_spaces_in_relative_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let markdown = temp.path().join("README.md");
+        fs::write(&markdown, "").unwrap();
+        fs::write(temp.path().join("my image.jpg"), b"jpg").unwrap();
+
+        assert!(read_markdown_image(&markdown, "my%20image.jpg")
+            .unwrap()
+            .starts_with("data:image/jpeg;base64,"));
+    }
+
+    #[test]
+    fn read_markdown_image_rejects_remote_sources_and_non_images() {
+        let temp = tempfile::tempdir().unwrap();
+        let markdown = temp.path().join("README.md");
+        fs::write(&markdown, "").unwrap();
+        let remote_error = read_markdown_image(&markdown, "https://example.com/a.png").unwrap_err();
+        assert_eq!(remote_error.code, "invalid_image_path");
+
+        fs::write(temp.path().join("page.html"), "<script>alert(1)</script>").unwrap();
+        let file_error = read_markdown_image(&markdown, "page.html").unwrap_err();
+        assert_eq!(file_error.code, "unsupported_image");
+    }
+
+    #[test]
+    fn read_markdown_image_rejects_large_images() {
+        let temp = tempfile::tempdir().unwrap();
+        let markdown = temp.path().join("README.md");
+        fs::write(&markdown, "").unwrap();
+        let file = fs::File::create(temp.path().join("large.png")).unwrap();
+        file.set_len(MAX_IMAGE_PREVIEW_BYTES + 1).unwrap();
+
+        let error = read_markdown_image(&markdown, "large.png").unwrap_err();
+        assert_eq!(error.code, "image_too_large");
+    }
+
+    #[test]
+    fn read_image_preview_returns_a_data_url_for_raster_images() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("picture.jpg");
+        fs::write(&path, b"jpeg data").unwrap();
+
+        assert_eq!(
+            read_image_preview(&path).unwrap(),
+            "data:image/jpeg;base64,anBlZyBkYXRh"
+        );
+    }
+
+    #[test]
+    fn read_image_preview_rejects_unsupported_types_and_large_images() {
+        let temp = tempfile::tempdir().unwrap();
+        let svg = temp.path().join("picture.svg");
+        fs::write(&svg, "<svg></svg>").unwrap();
+        assert_eq!(
+            read_image_preview(&svg).unwrap_err().code,
+            "unsupported_image"
+        );
+
+        let large = temp.path().join("large.png");
+        let file = fs::File::create(&large).unwrap();
+        file.set_len(MAX_IMAGE_PREVIEW_BYTES + 1).unwrap();
+        assert_eq!(
+            read_image_preview(&large).unwrap_err().code,
+            "image_too_large"
+        );
     }
 }

@@ -10,6 +10,12 @@ export interface CommandResult {
 }
 export const api = {
   list: (path: string) => invoke<Listing>('list_directory', { path }),
+  readTextPreview: (path: string) =>
+    invoke<string>('read_text_preview', { path }),
+  readImagePreview: (path: string) =>
+    invoke<string>('read_image_preview', { path }),
+  readMarkdownImage: (markdownPath: string, source: string) =>
+    invoke<string>('read_markdown_image', { markdownPath, source }),
   roots: () => invoke<Root[]>('list_roots'),
   open: (path: string) => invoke<void>('open_file', { path }),
   measureDirectory: (path: string) =>

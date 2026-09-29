@@ -10,6 +10,7 @@
   import ConflictDialog from './components/ConflictDialog.svelte';
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
+  import FileViewerDialog from './components/FileViewerDialog.svelte';
   import {
     commander,
     load,
@@ -49,6 +50,7 @@
   import { displayPath } from './utils/paths';
   import { isQuickFindTrigger } from './utils/keyboard';
   let ready = $state(false);
+  let previewMode = $state(false);
   let error = $state('');
   let errorTitle = $state('Error');
   let busy = $state(false);
@@ -57,6 +59,11 @@
   let commandError = $state<{ command: string; output: string }>();
   let selectionDialog = $state<{ mode: SelectionMode }>();
   let settingsOpen = $state(false);
+  let viewer = $state<{
+    path: string;
+    name: string;
+    extension: string;
+  }>();
   let commandInputElement: HTMLInputElement;
   let progress = $state<Progress>();
   let conflict = $state<Conflict>();
@@ -73,6 +80,26 @@
   const refreshTimers: Partial<Record<Side, ReturnType<typeof setTimeout>>> =
     {};
   let active = $derived(commander[commander.activePanel]);
+  let previewSide = $derived(
+    commander.activePanel === 'left' ? 'right' : 'left',
+  );
+  let previewTarget = $derived.by(() => {
+    if (!previewMode || active.loading) return undefined;
+    const entry = rows(active)[active.cursor];
+    if (
+      !entry ||
+      entry.parentEntry ||
+      entry.type === 'directory' ||
+      entry.directoryTarget
+    )
+      return undefined;
+    return {
+      path: entry.path,
+      name: entry.name,
+      extension: entry.extension,
+      key: `${commander.activePanel}:${active.revision}:${entry.path}:${entry.size}:${entry.modified ?? ''}`,
+    };
+  });
   let percent = $derived(
     progress
       ? Math.min(
@@ -144,6 +171,31 @@
     settingsOpen = false;
     void tick().then(focusPanel);
   }
+  function closeViewer() {
+    viewer = undefined;
+    void tick().then(focusPanel);
+  }
+  function viewCurrentFile() {
+    if (!ready || busy || commandRunning || active.loading) return;
+    const entry = rows(active)[active.cursor];
+    if (!entry || entry.parentEntry) return;
+    if (entry.type === 'directory' || entry.directoryTarget) {
+      showError('Select a file to view.');
+      return;
+    }
+    quickFindClose();
+    viewer = {
+      path: entry.path,
+      name: entry.name,
+      extension: entry.extension,
+    };
+  }
+  function togglePreviewPane() {
+    if (!ready || busy || commandRunning) return;
+    quickFindClose();
+    previewMode = !previewMode;
+    void tick().then(focusPanel);
+  }
   function applySettings(settings: {
     fileFontSize: number;
     showHidden: boolean;
@@ -166,6 +218,7 @@
       dialog ||
       selectionDialog ||
       settingsOpen ||
+      viewer ||
       conflict ||
       commandError ||
       error ||
@@ -342,6 +395,7 @@
       dialog ||
       selectionDialog ||
       settingsOpen ||
+      viewer ||
       conflict ||
       commandError ||
       error ||
@@ -396,18 +450,41 @@
       }
     }
     const ctrl = (event.ctrlKey || event.metaKey) && !event.altKey;
+    if (
+      event.key === 'F3' &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      togglePreviewPane();
+      return;
+    }
     if (event.key === 'Tab' && !ctrl && !event.altKey) {
       event.preventDefault();
       quickFindClose();
       commander.activePanel =
         commander.activePanel === 'left' ? 'right' : 'left';
-      focusPanel();
+      if (previewMode) previewMode = false;
+      void tick().then(focusPanel);
       return;
     }
     if (event.key === 'F9' && !ctrl && !event.altKey) {
       event.preventDefault();
       quickFindClose();
       settingsOpen = true;
+      return;
+    }
+    if (
+      event.key === 'F3' &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      viewCurrentFile();
       return;
     }
     const action =
@@ -614,13 +691,45 @@
 </script>
 
 <svelte:window onkeydown={keydown} />
+{#snippet previewPane()}
+  {#if previewTarget}
+    {@const key = previewTarget.key}
+    {#key key}
+      <FileViewerDialog
+        path={previewTarget.path}
+        name={previewTarget.name}
+        extension={previewTarget.extension}
+        inline
+        onclose={() => {}}
+      />
+    {/key}
+  {:else}
+    <section class="panel preview-panel" aria-label="File preview">
+      <div class="viewer-header">
+        <div class="viewer-heading"><h2>Preview</h2></div>
+      </div>
+      <div class="preview-empty">
+        {active.loading ? 'Loading files…' : 'Select a file to preview.'}
+      </div>
+    </section>
+  {/if}
+{/snippet}
 <main style:--file-font-size={`${preferences.fileFontSize}px`}>
   <div class="panels">
     <FilePanel
       panel={commander.left}
       side="left"
       roots={commander.roots}
-    /><FilePanel panel={commander.right} side="right" roots={commander.roots} />
+      hidden={previewMode && previewSide === 'left'}
+    />
+    {#if previewMode && previewSide === 'left'}{@render previewPane()}{/if}
+    <FilePanel
+      panel={commander.right}
+      side="right"
+      roots={commander.roots}
+      hidden={previewMode && previewSide === 'right'}
+    />
+    {#if previewMode && previewSide === 'right'}{@render previewPane()}{/if}
   </div>
   {#if error}<ErrorDialog
       title={errorTitle}
@@ -680,7 +789,16 @@
       {#each actions as [key, action, label]}<button
           disabled={!ready || busy || commandRunning}
           onclick={() => request(action)}><kbd>{key}</kbd>{label}</button
-        >{/each}<button
+        >{#if key === 'F2'}<button
+            disabled={!ready || busy || commandRunning}
+            onclick={viewCurrentFile}><kbd>F3</kbd>View</button
+          >{/if}{/each}<button
+        class:pressed={previewMode}
+        aria-pressed={previewMode}
+        disabled={!ready || busy || commandRunning}
+        onclick={togglePreviewPane}
+        title="Toggle preview pane"><kbd>Shift+F3</kbd>Preview pane</button
+      ><button
         disabled={!ready || busy || commandRunning}
         onclick={() => {
           quickFindClose();
@@ -689,6 +807,7 @@
       >
     </footer>{/if}
 </main>
+{#if viewer}<FileViewerDialog {...viewer} onclose={closeViewer} />{/if}
 {#if dialog}<OperationDialog
     {...dialog}
     onsubmit={submit}

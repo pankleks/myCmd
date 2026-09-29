@@ -12,6 +12,9 @@ fn main() {
         .manage(watcher::DirectoryWatchers::default())
         .invoke_handler(tauri::generate_handler![
             commands::list_directory,
+            commands::read_text_preview,
+            commands::read_image_preview,
+            commands::read_markdown_image,
             commands::list_roots,
             commands::open_file,
             commands::measure_directory,

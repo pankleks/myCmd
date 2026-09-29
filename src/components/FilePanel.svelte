@@ -17,8 +17,17 @@
   import { displayPath } from '../utils/paths';
   import { resizeColumn } from '../utils/resizeColumns';
   import { preferences } from '../state/preferences.svelte';
-  let { panel, side, roots }: { panel: PanelState; side: Side; roots: Root[] } =
-    $props();
+  let {
+    panel,
+    side,
+    roots,
+    hidden = false,
+  }: {
+    panel: PanelState;
+    side: Side;
+    roots: Root[];
+    hidden?: boolean;
+  } = $props();
   let draft = $state('');
   let scroller: HTMLDivElement;
   let header: HTMLDivElement;
@@ -168,6 +177,7 @@
   class:active
   class:resizing={resizing !== null}
   class:custom-columns={preferences.columnWidths !== null}
+  class:panel-hidden={hidden}
   class="panel"
   style:--panel-column-template={columnTemplate}
   aria-label={side === 'left' ? 'Left panel' : 'Right panel'}
