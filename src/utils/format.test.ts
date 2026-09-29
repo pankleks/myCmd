@@ -17,3 +17,7 @@ it('represents missing dates and handles the Unix epoch', () => {
   expect(date(0)).not.toBe('—');
   expect(date(0)).not.toContain('Invalid');
 });
+it('uses 24-hour time regardless of locale defaults', () => {
+  expect(date(0)).not.toMatch(/AM|PM/i);
+  expect(date(1756492800)).not.toMatch(/AM|PM/i);
+});

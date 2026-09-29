@@ -6,11 +6,12 @@ export function bytes(value: number) {
 export function date(value?: number) {
   return value == null
     ? '—'
-    : new Date(value * 1000).toLocaleString('en-US', {
+    : new Date(value * 1000).toLocaleString(undefined, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
+        hourCycle: 'h23',
       });
 }
