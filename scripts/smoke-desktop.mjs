@@ -177,7 +177,7 @@ try {
   await until(
     () =>
       evaluate(
-        `document.querySelector('.operation-status')?.textContent.includes('Gotowy')`,
+        `!document.querySelector('.operation-status') && !document.querySelector('dialog[open]') && !document.querySelector('#system-command')?.disabled`,
       ),
     'real filesystem loaded',
   );
@@ -219,12 +219,12 @@ try {
   await until(
     () =>
       evaluate(
-        `window.smokeConflict?.operationId === ${JSON.stringify(id)} && document.querySelector('dialog[open]')?.textContent.includes('Element już istnieje')`,
+        `window.smokeConflict?.operationId === ${JSON.stringify(id)} && !!document.querySelector('dialog[open] [data-conflict-action="skip"]')`,
       ),
     'conflict dialog',
   );
   await evaluate(
-    `Array.from(document.querySelectorAll('dialog button')).find(b => b.textContent === 'Pomiń').click()`,
+    `document.querySelector('dialog[open] [data-conflict-action="skip"]').click()`,
   );
   await until(
     () =>

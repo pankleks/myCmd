@@ -57,15 +57,6 @@ fn run_shell(
 #[cfg(not(windows))]
 const INTERACTIVE_STDERR_MARKER: &str = "__mycmd_stderr_begin__";
 
-/// Exit code 127 with "not found"-style stderr means the command name could
-/// not be resolved: typically a shell function or alias (e.g. zoxide's `z`)
-/// that only exists in interactive shells.
-#[cfg(not(windows))]
-fn looks_like_unknown_command(result: &CommandResult) -> bool {
-    result.exit_code == Some(127)
-        && (result.stderr.contains("not found") || result.stderr.contains("Unknown command"))
-}
-
 #[cfg(not(windows))]
 fn strip_interactive_prelude(stderr: &str) -> String {
     match stderr
@@ -96,18 +87,13 @@ fn execute(command: &str, cwd: &str) -> std::result::Result<CommandResult, Strin
     #[cfg(not(windows))]
     {
         let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
-        let first = run_shell(&shell, false, command, cwd)?;
-        if looks_like_unknown_command(&first) {
-            // Retry as an interactive shell so ~/.bashrc and friends are
-            // sourced and functions/aliases become available.
-            let second = run_shell(&shell, true, command, cwd)?;
-            Ok(CommandResult {
-                stderr: strip_interactive_prelude(&second.stderr),
-                ..second
-            })
-        } else {
-            Ok(first)
-        }
+        // Load aliases/functions up front. Never replay a command: a failing
+        // compound command may already have performed destructive actions.
+        let result = run_shell(&shell, true, command, cwd)?;
+        Ok(CommandResult {
+            stderr: strip_interactive_prelude(&result.stderr),
+            ..result
+        })
     }
 }
 
@@ -157,7 +143,7 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn retries_unknown_commands_in_an_interactive_shell() {
+    fn uses_an_interactive_shell_without_retrying() {
         #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
         let _guard = SHELL_LOCK.lock().unwrap();
@@ -181,5 +167,28 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.stdout.trim(), "interactive-retry");
         assert!(!result.stderr.contains(INTERACTIVE_STDERR_MARKER));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn failed_compound_command_does_not_repeat_side_effects() {
+        let _guard = SHELL_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let previous = env::var_os("SHELL");
+        env::set_var("SHELL", "/bin/sh");
+        let result = execute(
+            "echo once >> count; __mycmd_missing_command__",
+            dir.path().to_str().unwrap(),
+        );
+        match previous {
+            Some(value) => env::set_var("SHELL", value),
+            None => env::remove_var("SHELL"),
+        }
+        let result = result.unwrap();
+        assert!(!result.success);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("count")).unwrap(),
+            "once\n"
+        );
     }
 }

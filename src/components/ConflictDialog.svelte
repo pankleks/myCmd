@@ -67,7 +67,10 @@
   >
   {#if error}<p class="danger-text" role="alert">{error}</p>{/if}
   <div class="dialog-actions">
-    <button disabled={submitting} onclick={() => resolve('skip')}>Skip</button
+    <button
+      data-conflict-action="skip"
+      disabled={submitting}
+      onclick={() => resolve('skip')}>Skip</button
     ><button disabled={submitting} onclick={() => resolve('rename')}
       >Rename</button
     ><button disabled={submitting} onclick={() => resolve('overwrite')}

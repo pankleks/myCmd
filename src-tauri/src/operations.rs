@@ -298,7 +298,7 @@ impl Worker {
             ));
         }
         if moving && !overwrite {
-            match fs::rename(source, &target) {
+            match rename_noreplace(source, &target) {
                 Ok(()) => {
                     let n = self.measure(&target)?;
                     self.tick(&target, n.0, n.1)?;
@@ -423,7 +423,7 @@ impl Worker {
                     return Err(FsError::new("already_exists", "Destination already exists"));
                 }
                 self.check()?;
-                fs::rename(&path, &target).map_err(|e| FsError::io(e, &path))?;
+                rename_noreplace(&path, &target).map_err(|e| FsError::io(e, &path))?;
                 self.progress.result_path = Some(filesystem::text(&target));
             }
             Operation::Delete { sources, permanent } => {
@@ -489,6 +489,65 @@ impl Worker {
         Ok(())
     }
 }
+/// Atomic rename without replacing an entry created after conflict checking.
+fn rename_noreplace(source: &Path, destination: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let source = std::ffi::CString::new(source.as_os_str().as_bytes())
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+        let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+        // Both C strings remain valid for the duration of the syscall.
+        #[cfg(target_os = "macos")]
+        let result =
+            unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) };
+        #[cfg(target_os = "linux")]
+        let result = unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                source.as_ptr(),
+                libc::AT_FDCWD,
+                destination.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        return Err(std::io::Error::from(std::io::ErrorKind::Unsupported));
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn MoveFileExW(source: *const u16, destination: *const u16, flags: u32) -> i32;
+        }
+        let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+        let destination: Vec<u16> = destination
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        if source[..source.len() - 1].contains(&0)
+            || destination[..destination.len() - 1].contains(&0)
+        {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+        }
+        // No REPLACE_EXISTING flag; buffers are valid, NUL-terminated strings.
+        if unsafe { MoveFileExW(source.as_ptr(), destination.as_ptr(), 0) } != 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+}
+
 fn protect(p: &Path) -> Result<()> {
     if p.file_name().is_none() || p.parent().is_none() {
         return Err(FsError::new(
@@ -536,6 +595,27 @@ fn remove_leaf(p: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn atomic_rename_preserves_existing_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        fs::write(&source, "new").unwrap();
+        fs::write(&destination, "keep").unwrap();
+        assert!(rename_noreplace(&source, &destination).is_err());
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "keep");
+        assert_eq!(fs::read_to_string(&source).unwrap(), "new");
+    }
+    #[test]
+    fn atomic_rename_moves_to_a_missing_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        fs::write(&source, "payload").unwrap();
+        rename_noreplace(&source, &destination).unwrap();
+        assert!(!source.exists());
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "payload");
+    }
     fn worker(policy: &str) -> Worker {
         Worker {
             app: None,
