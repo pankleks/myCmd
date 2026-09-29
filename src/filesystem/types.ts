@@ -14,6 +14,13 @@ export interface Listing {
   path: string;
   parent?: string;
   entries: FileEntry[];
+  skippedEntries?: number;
+  warnings?: ListingWarning[];
+}
+export interface ListingWarning {
+  code: string;
+  message: string;
+  path?: string;
 }
 export interface Root {
   name: string;
@@ -32,5 +39,7 @@ export interface PanelState {
   showHidden: boolean;
   loading: boolean;
   error?: string;
+  skippedEntries?: number;
+  warnings?: ListingWarning[];
   revision: number;
 }

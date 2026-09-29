@@ -17,6 +17,7 @@
   import { displayPath } from '../utils/paths';
   import { resizeColumn } from '../utils/resizeColumns';
   import { preferences } from '../state/preferences.svelte';
+  import { errorMessage } from '../filesystem/api';
   let {
     panel,
     side,
@@ -357,12 +358,27 @@
       style:height={`${Math.max(0, items.length - end) * rowHeight}px`}
     ></div>
     {#if !items.length && !panel.loading}<div class="empty">
-        This folder is empty
+        {panel.skippedEntries
+          ? 'No readable items in this folder'
+          : 'This folder is empty'}
       </div>{/if}
   </div>
   {#if panel.error}<div class="panel-error" role="alert">
       {panel.error}
     </div>{/if}
+  {#if panel.skippedEntries}
+    <details class="panel-warning">
+      <summary>{panel.skippedEntries} entries could not be listed</summary>
+      <ul>
+        {#each panel.warnings ?? [] as warning}<li>
+            {errorMessage(warning)}
+          </li>{/each}
+      </ul>
+      {#if panel.skippedEntries > (panel.warnings?.length ?? 0)}<p>
+          Showing the first {panel.warnings?.length ?? 0} warnings.
+        </p>{/if}
+    </details>
+  {/if}
   {#if commander.quickFind?.side === side}
     <div class="quick-find" role="status">
       <span>Search:</span><span class="quick-find-query"

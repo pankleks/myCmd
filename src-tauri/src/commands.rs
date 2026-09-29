@@ -5,6 +5,8 @@ use crate::{
     operations::{Manager, Operation, Resolution},
 };
 use tauri::{AppHandle, State};
+
+pub type DirectorySizing = crate::cancellation::Registry;
 #[tauri::command]
 pub async fn list_directory(path: String) -> Result<filesystem::Listing> {
     tauri::async_runtime::spawn_blocking(move || filesystem::list(std::path::Path::new(&path)))
@@ -28,7 +30,10 @@ pub async fn read_image_preview(path: String) -> Result<String> {
     .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
-pub async fn read_markdown_image(markdown_path: String, source: String) -> Result<String> {
+pub async fn read_markdown_image(
+    markdown_path: String,
+    source: String,
+) -> Result<filesystem::PreviewImage> {
     tauri::async_runtime::spawn_blocking(move || {
         filesystem::read_markdown_image(std::path::Path::new(&markdown_path), &source)
     })
@@ -61,12 +66,25 @@ pub fn save_config(config: AppConfig) -> Result<()> {
 }
 
 #[tauri::command]
-pub async fn measure_directory(path: String) -> Result<u64> {
+pub async fn measure_directory(
+    path: String,
+    request_id: String,
+    sizing: State<'_, DirectorySizing>,
+) -> Result<u64> {
+    let request = sizing.register(request_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        filesystem::directory_size(std::path::Path::new(&path))
+        filesystem::directory_size_checked(std::path::Path::new(&path), || request.check())
     })
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+
+#[tauri::command]
+pub fn cancel_directory_sizing(
+    request_ids: Vec<String>,
+    sizing: State<'_, DirectorySizing>,
+) -> Result<()> {
+    sizing.cancel(&request_ids)
 }
 
 #[tauri::command]

@@ -25,6 +25,8 @@
     quickFindBackspace,
     quickFindClose,
     measureDirectory,
+    dirSizing,
+    cancelDirectorySizing,
     type Side,
     type SelectionMode,
   } from './state/commander.svelte';
@@ -51,6 +53,8 @@
   import { displayPath } from './utils/paths';
   import { isQuickFindTrigger } from './utils/keyboard';
   import { createOperationController } from './operations/controller.svelte';
+  import { createCommandController } from './operations/commandController.svelte';
+  import { createDirectoryRefresh } from './utils/directoryRefresh';
   let ready = $state(false);
   let previewMode = $state(false);
   let error = $state('');
@@ -77,7 +81,16 @@
     },
   });
   let busy = $derived(operations.state.busy);
-  let commandRunning = $state(false);
+  const commands = createCommandController({
+    run: api.runCommand,
+    cancel: api.cancelCommand,
+    refresh: () => Promise.all([load(commander.left), load(commander.right)]),
+    report: (command, output) => {
+      commandError = { command, output };
+    },
+    cancelFailed: (cause) => showError(errorMessage(cause)),
+  });
+  let commandRunning = $derived(commands.state.busy);
   let commandInput = $state('');
   let commandError = $state<{ command: string; output: string }>();
   let selectionDialog = $state<{ mode: SelectionMode }>();
@@ -98,8 +111,6 @@
     side: Side;
     permanent: boolean;
   }>();
-  const refreshTimers: Partial<Record<Side, ReturnType<typeof setTimeout>>> =
-    {};
   let active = $derived(commander[commander.activePanel]);
   let previewSide = $derived(
     commander.activePanel === 'left' ? 'right' : 'left',
@@ -289,27 +300,17 @@
     const command = commandInput.trim();
     if (!command || !ready || busy || commandRunning || !active.path) return;
     commandInput = '';
-    commandRunning = true;
     error = '';
-    try {
-      const result = await api.runCommand(command, active.path);
-      if (!result.success) {
-        commandError = {
-          command,
-          output:
-            [result.stderr, result.stdout].filter(Boolean).join('\n').trim() ||
-            'The command failed without output.',
-        };
-      }
-      await Promise.all([load(commander.left), load(commander.right)]);
-    } catch (e) {
-      commandError = { command, output: errorMessage(e) };
-    } finally {
-      commandRunning = false;
-    }
+    await commands.run(command, active.path);
   }
   onMount(() => {
     let disposed = false;
+    const directoryRefresh = createDirectoryRefresh<Side>({
+      path: (side) => commander[side].path,
+      enabled: () => ready && !busy && !commandRunning && !disposed,
+      refresh: (side) => load(commander[side]),
+      failed: (cause) => showError(errorMessage(cause)),
+    });
     const unlisten: UnlistenFn[] = [];
     async function init() {
       if (!isTauri()) {
@@ -330,15 +331,8 @@
         const filesystemChanges = await listen<string>(
           'filesystem-changed',
           ({ payload }) => {
-            if (!ready || busy || commandRunning) return;
             for (const side of ['left', 'right'] as const) {
-              const panel = commander[side];
-              if (panel.path !== payload) continue;
-              clearTimeout(refreshTimers[side]);
-              refreshTimers[side] = setTimeout(() => {
-                refreshTimers[side] = undefined;
-                if (!disposed && !busy && !commandRunning) void load(panel);
-              }, 180);
+              directoryRefresh.schedule(side, payload);
             }
           },
         );
@@ -369,7 +363,7 @@
     return () => {
       disposed = true;
       operations.dispose();
-      for (const timer of Object.values(refreshTimers)) clearTimeout(timer);
+      directoryRefresh.dispose();
       unlisten.forEach((fn) => fn());
     };
   });
@@ -723,6 +717,22 @@
         void tick().then(() => commandInputElement?.focus());
       }}
     />{/if}
+  {#if dirSizing.paths.length}<button
+      data-sizing-cancel
+      disabled={dirSizing.cancelling}
+      onclick={() => {
+        void cancelDirectorySizing().catch((cause) =>
+          showError(errorMessage(cause)),
+        );
+      }}>Cancel sizing</button
+    >{/if}
+  {#if commands.state.executing}<button
+      data-command-cancel
+      disabled={commands.state.cancelling}
+      onclick={() => {
+        void commands.cancel();
+      }}>Cancel command</button
+    >{/if}
   {#if busy || !ready}
     <div class="operation-status" role="status" aria-live="polite">
       {#if progress}<span

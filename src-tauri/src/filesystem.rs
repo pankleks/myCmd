@@ -10,6 +10,8 @@ use std::{
 
 pub const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
+pub const MAX_IMAGE_PREVIEW_PIXELS: usize = 16_000_000;
+pub const MAX_IMAGE_PREVIEW_DIMENSION: usize = 16_384;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,10 +28,13 @@ pub struct Entry {
     pub directory_target: bool,
 }
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Listing {
     pub path: String,
     pub parent: Option<String>,
     pub entries: Vec<Entry>,
+    pub skipped_entries: usize,
+    pub warnings: Vec<FsError>,
 }
 #[derive(Serialize)]
 pub struct Root {
@@ -41,18 +46,28 @@ pub fn text(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
+#[cfg(test)]
 pub fn directory_size(p: &Path) -> Result<u64> {
+    directory_size_checked(p, || Ok(()))
+}
+
+pub fn directory_size_checked(p: &Path, check: impl Fn() -> Result<()>) -> Result<u64> {
+    check()?;
     let root = absolute(p)?;
     let mut total = 0u64;
     let mut stack = vec![root];
     while let Some(dir) = stack.pop() {
+        check()?;
         for entry in fs::read_dir(&dir).map_err(|e| FsError::io(e, &dir))? {
+            check()?;
             let path = entry.map_err(|e| FsError::io(e, &dir))?.path();
             let meta = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
             if meta.is_dir() && !meta.file_type().is_symlink() {
                 stack.push(path);
             } else if meta.is_file() {
-                total += meta.len();
+                total = total.checked_add(meta.len()).ok_or_else(|| {
+                    FsError::new("size_overflow", "Total file size exceeds supported range")
+                })?;
             }
         }
     }
@@ -101,7 +116,15 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
         .map_err(|_| FsError::new("invalid_encoding", "File is not valid UTF-8 text"))
 }
 
-pub fn read_markdown_image(markdown_path: &Path, source: &str) -> Result<String> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImage {
+    pub data_url: String,
+    pub width: usize,
+    pub height: usize,
+}
+
+pub fn read_markdown_image(markdown_path: &Path, source: &str) -> Result<PreviewImage> {
     let markdown_path = absolute(markdown_path)?;
     let base = markdown_path
         .parent()
@@ -126,11 +149,11 @@ pub fn read_markdown_image(markdown_path: &Path, source: &str) -> Result<String>
 }
 
 pub fn read_image_preview(path: &Path) -> Result<String> {
-    image_data_url(&absolute(path)?)
+    Ok(image_data_url(&absolute(path)?)?.data_url)
 }
 
-fn image_data_url(path: &Path) -> Result<String> {
-    let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
+fn image_data_url(path: &Path) -> Result<PreviewImage> {
+    let metadata = fs::metadata(path).map_err(|e| FsError::io(e, path))?;
     if !metadata.is_file() {
         return Err(FsError::new("not_a_file", "Image source is not a file"));
     }
@@ -160,11 +183,11 @@ fn image_data_url(path: &Path) -> Result<String> {
         ));
     }
 
-    let file = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
+    let file = fs::File::open(path).map_err(|e| FsError::io(e, path))?;
     let mut content = Vec::with_capacity(metadata.len() as usize);
     file.take(MAX_IMAGE_PREVIEW_BYTES + 1)
         .read_to_end(&mut content)
-        .map_err(|e| FsError::io(e, &path))?;
+        .map_err(|e| FsError::io(e, path))?;
     if content.len() as u64 > MAX_IMAGE_PREVIEW_BYTES {
         return Err(FsError::new(
             "image_too_large",
@@ -172,7 +195,36 @@ fn image_data_url(path: &Path) -> Result<String> {
         ));
     }
 
-    Ok(format!("data:{mime};base64,{}", STANDARD.encode(content)))
+    let size = validate_image_dimensions(&content)?;
+    Ok(PreviewImage {
+        data_url: format!("data:{mime};base64,{}", STANDARD.encode(content)),
+        width: size.width,
+        height: size.height,
+    })
+}
+
+fn validate_image_dimensions(content: &[u8]) -> Result<imagesize::ImageSize> {
+    let size = imagesize::blob_size(content)
+        .map_err(|_| FsError::new("invalid_image", "Image dimensions could not be read"))?;
+    if size.width == 0 || size.height == 0 {
+        return Err(FsError::new(
+            "invalid_image",
+            "Image dimensions must be nonzero",
+        ));
+    }
+    if size.width > MAX_IMAGE_PREVIEW_DIMENSION
+        || size.height > MAX_IMAGE_PREVIEW_DIMENSION
+        || size
+            .width
+            .checked_mul(size.height)
+            .is_none_or(|pixels| pixels > MAX_IMAGE_PREVIEW_PIXELS)
+    {
+        return Err(FsError::new(
+            "image_too_large",
+            "Image exceeds preview limits (16 million pixels or 16384 pixels per side)",
+        ));
+    }
+    Ok(size)
 }
 
 fn decode_uri_path(source: &str) -> Option<String> {
@@ -263,18 +315,39 @@ pub fn entry(p: &Path) -> Result<Entry> {
 }
 pub fn list(p: &Path) -> Result<Listing> {
     let p = absolute(p)?;
-    let entries = fs::read_dir(&p)
-        .map_err(|e| FsError::io(e, &p))?
-        .map(|e| {
-            e.map_err(|e| FsError::io(e, &p))
-                .and_then(|e| entry(&e.path()))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let results = fs::read_dir(&p).map_err(|e| FsError::io(e, &p))?.map(|e| {
+        e.map_err(|e| FsError::io(e, &p))
+            .and_then(|e| entry(&e.path()))
+    });
+    let (entries, skipped_entries, warnings) = collect_listing_entries(results);
     Ok(Listing {
         path: text(&p),
         parent: p.parent().map(text),
         entries,
+        skipped_entries,
+        warnings,
     })
+}
+
+fn collect_listing_entries(
+    results: impl Iterator<Item = Result<Entry>>,
+) -> (Vec<Entry>, usize, Vec<FsError>) {
+    let mut entries = Vec::new();
+    let mut skipped = 0;
+    let mut warnings = Vec::new();
+    for result in results {
+        match result {
+            Ok(entry) => entries.push(entry),
+            Err(error) => {
+                skipped += 1;
+                // Bound diagnostic payloads even when thousands of entries fail.
+                if warnings.len() < 20 {
+                    warnings.push(error);
+                }
+            }
+        }
+    }
+    (entries, skipped, warnings)
 }
 pub fn validate_name(name: &str) -> Result<()> {
     let mut parts = Path::new(name).components();
@@ -375,6 +448,136 @@ pub fn roots() -> Vec<Root> {
 mod tests {
     use super::*;
     use std::io::Write;
+    const PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+
+    fn png() -> Vec<u8> {
+        STANDARD.decode(PNG_BASE64).unwrap()
+    }
+
+    fn jpeg_header() -> Vec<u8> {
+        vec![
+            0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 0, 1, 0, 1, 3, 1, 17, 0, 2, 17, 0, 3, 17, 0, 0xff,
+            0xd9,
+        ]
+    }
+
+    #[test]
+    fn image_preview_rejects_small_files_with_huge_dimensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("huge.png");
+        let mut image = png();
+        // PNG IHDR dimensions; no pixel decoding or giant allocation needed.
+        image[16..20].copy_from_slice(&5000u32.to_be_bytes());
+        image[20..24].copy_from_slice(&5000u32.to_be_bytes());
+        fs::write(&path, &image).unwrap();
+        assert_eq!(
+            read_image_preview(&path).unwrap_err().code,
+            "image_too_large"
+        );
+        let markdown = dir.path().join("README.md");
+        fs::write(&markdown, "").unwrap();
+        assert_eq!(
+            read_markdown_image(&markdown, "huge.png").unwrap_err().code,
+            "image_too_large"
+        );
+    }
+
+    #[test]
+    fn image_dimensions_reject_zero_and_excessive_sides() {
+        let mut image = png();
+        image[16..20].copy_from_slice(&0u32.to_be_bytes());
+        assert_eq!(
+            validate_image_dimensions(&image).unwrap_err().code,
+            "invalid_image"
+        );
+        image[16..20].copy_from_slice(&16385u32.to_be_bytes());
+        assert_eq!(
+            validate_image_dimensions(&image).unwrap_err().code,
+            "image_too_large"
+        );
+    }
+
+    #[test]
+    fn image_dimensions_accept_the_pixel_limit_boundary() {
+        let mut image = png();
+        image[16..20].copy_from_slice(&4000u32.to_be_bytes());
+        image[20..24].copy_from_slice(&4000u32.to_be_bytes());
+        validate_image_dimensions(&image).unwrap();
+        image[20..24].copy_from_slice(&4001u32.to_be_bytes());
+        assert_eq!(
+            validate_image_dimensions(&image).unwrap_err().code,
+            "image_too_large"
+        );
+    }
+
+    #[test]
+    fn image_preview_rejects_unreadable_image_headers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("invalid.png");
+        fs::write(&path, "not an image").unwrap();
+        assert_eq!(read_image_preview(&path).unwrap_err().code, "invalid_image");
+    }
+
+    #[test]
+    fn listing_retains_valid_entries_when_another_entry_disappears() {
+        let dir = tempfile::tempdir().unwrap();
+        let valid = dir.path().join("valid.txt");
+        fs::write(&valid, "content").unwrap();
+        let (entries, skipped, warnings) = collect_listing_entries(
+            vec![entry(&valid), entry(&dir.path().join("removed.txt"))].into_iter(),
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "valid.txt");
+        assert_eq!(skipped, 1);
+        assert_eq!(warnings[0].code, "not_found");
+    }
+
+    #[test]
+    fn listing_bounds_warning_samples_without_losing_the_count() {
+        let (entries, skipped, warnings) = collect_listing_entries(
+            (0..100).map(|_| Err(FsError::new("permission_denied", "Cannot read entry"))),
+        );
+        assert!(entries.is_empty());
+        assert_eq!(skipped, 100);
+        assert_eq!(warnings.len(), 20);
+        let listing = Listing {
+            path: "/example".into(),
+            parent: None,
+            entries,
+            skipped_entries: skipped,
+            warnings,
+        };
+        let json = serde_json::to_value(listing).unwrap();
+        assert_eq!(json["skippedEntries"], 100);
+        assert!(json.get("skipped_entries").is_none());
+    }
+
+    #[test]
+    fn listing_still_rejects_directory_level_failures() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("file");
+        fs::write(&file, "content").unwrap();
+        assert!(list(&file).is_err());
+        assert!(list(&dir.path().join("missing")).is_err());
+    }
+
+    // Linux filesystems permit arbitrary filename bytes; APFS rejects them.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn listing_skips_non_unicode_names_without_hiding_valid_files() {
+        use std::os::unix::ffi::OsStringExt;
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("valid.txt"), "content").unwrap();
+        fs::write(
+            dir.path().join(std::ffi::OsString::from_vec(vec![0xff])),
+            "content",
+        )
+        .unwrap();
+        let listing = list(dir.path()).unwrap();
+        assert_eq!(listing.entries.len(), 1);
+        assert_eq!(listing.skipped_entries, 1);
+        assert_eq!(listing.warnings[0].code, "invalid_path");
+    }
 
     #[test]
     fn directory_size_sums_nested_files() {
@@ -392,6 +595,28 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let missing = temp.path().join("missing");
         assert!(directory_size(&missing).is_err());
+    }
+
+    #[test]
+    fn directory_size_checks_cancellation_between_entries() {
+        use std::cell::Cell;
+        let temp = tempfile::tempdir().unwrap();
+        for index in 0..10 {
+            fs::write(temp.path().join(format!("file-{index}")), b"content").unwrap();
+        }
+        let checks = Cell::new(0);
+        let error = directory_size_checked(temp.path(), || {
+            checks.set(checks.get() + 1);
+            if checks.get() >= 4 {
+                Err(FsError::new("cancelled", "Directory sizing cancelled"))
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err();
+        assert_eq!(error.code, "cancelled");
+        assert_eq!(checks.get(), 4);
+        assert_eq!(directory_size(temp.path()).unwrap(), 70);
     }
 
     #[test]
@@ -443,12 +668,21 @@ mod tests {
         let markdown = temp.path().join("README.md");
         let image = temp.path().join("diagram.png");
         fs::write(&markdown, "![diagram](diagram.png)").unwrap();
-        fs::write(&image, b"png").unwrap();
+        fs::write(&image, png()).unwrap();
 
+        let image = read_markdown_image(&markdown, "diagram.png").unwrap();
+        assert_eq!((image.width, image.height), (1, 1));
         assert_eq!(
-            read_markdown_image(&markdown, "diagram.png").unwrap(),
-            "data:image/png;base64,cG5n"
+            image.data_url,
+            format!("data:image/png;base64,{PNG_BASE64}")
         );
+        let json = serde_json::to_value(image).unwrap();
+        assert!(json["dataUrl"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png"));
+        assert_eq!(json["width"], 1);
+        assert_eq!(json["height"], 1);
     }
 
     #[test]
@@ -456,10 +690,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let markdown = temp.path().join("README.md");
         fs::write(&markdown, "").unwrap();
-        fs::write(temp.path().join("my image.jpg"), b"jpg").unwrap();
+        fs::write(temp.path().join("my image.jpg"), jpeg_header()).unwrap();
 
         assert!(read_markdown_image(&markdown, "my%20image.jpg")
             .unwrap()
+            .data_url
             .starts_with("data:image/jpeg;base64,"));
     }
 
@@ -492,11 +727,11 @@ mod tests {
     fn read_image_preview_returns_a_data_url_for_raster_images() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("picture.jpg");
-        fs::write(&path, b"jpeg data").unwrap();
+        fs::write(&path, jpeg_header()).unwrap();
 
         assert_eq!(
             read_image_preview(&path).unwrap(),
-            "data:image/jpeg;base64,anBlZyBkYXRh"
+            format!("data:image/jpeg;base64,{}", STANDARD.encode(jpeg_header()))
         );
     }
 

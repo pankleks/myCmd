@@ -62,7 +62,23 @@ Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
 
 Kliknięcie nagłówka sortuje kolumnę. Katalogi pozostają na początku. Każdy panel ma niezależne sortowanie i zaznaczenie; widoczność plików ukrytych jest wspólna dla obu paneli (Ctrl+H lub F9). Lista jest wirtualizowana. Szerokość kolumn (wspólna dla obu paneli – resize jednego resizuje drugi) zmienisz myszą (uchwyt między nagłówkami) albo strzałkami po przejściu Tabem na uchwyt; dwuklik na nagłówku resetuje szerokości. Zwykłe pisanie trafia do pola komend (i przenosi tam fokus). Alt+litery przy fokusie w polu komend lub ścieżki wpisują polskie znaki do tego pola. Alt+litery (lewy lub prawy) przy fokusie na panelu plików otwierają szybkie wyszukiwanie.
 
+## Obliczanie rozmiarów katalogów
+
+Podczas obliczania rozmiarów katalogów przycisk „Cancel sizing” anuluje aktywne pomiary w obu panelach. Przerwanie jest sprawdzane między wpisami systemu plików; nie przerywa już trwającego blokującego wywołania systemowego (np. na niedostępnym udziale sieciowym). Anulowany katalog można zmierzyć ponownie.
+
+## Test przenoszenia między woluminami
+
+Test faktycznego przenoszenia między systemami plików (Unix) jest domyślnie pomijany, ponieważ wymaga drugiego zamontowanego woluminu. Można go uruchomić poleceniem `MYCMD_TEST_TRANSFER_VOLUME=/ścieżka/do/woluminu cargo test --manifest-path src-tauri/Cargo.toml --locked cross_device_move_uses_real_copy_and_remove_fallback -- --ignored`. Test sprawdza różne identyfikatory urządzeń i tworzy wyłącznie własne katalogi tymczasowe; nie używa istniejących plików na woluminie.
+
+## Podgląd obrazów
+
+Markdown dopuszcza maksymalnie 24 obrazy, 12 MiB danych obrazów i 32 miliony pikseli łącznie. Budżet pikseli korzysta z wymiarów odczytanych przez Rust przed dekodowaniem obrazu w WebView.
+
+Podgląd obrazów (F3 lub panel Shift+F3) i lokalnych obrazów w Markdown ma limity na pojedynczy plik: 4 MiB danych, 16 milionów pikseli oraz 16384 piksele na każdy wymiar. Wymiary są odczytywane z nagłówka bez dekodowania całego obrazu. Uszkodzone lub nieczytelne nagłówki są odrzucane. Są to ograniczenia rozmiaru obrazu, nie pełny limit pamięci WebView ani liczby klatek animacji; plik odrzucony można otworzyć w aplikacji systemowej.
+
 ## Konfiguracja
+
+Polecenia powłoki są wykonywane tylko raz, mają limit czasu 120 sekund i przycisk anulowania. Przechwycone wyjście jest ograniczone do 1 MiB na każdy strumień (stdout/stderr); dalsze dane są odczytywane i odrzucane, aby nie blokować procesu. Anulowanie i timeout próbują zakończyć grupę procesów na Unix oraz drzewo procesu przez `taskkill /T /F` na Windows. To nie jest sandbox: odłączone procesy mogą uniknąć zakończenia, a wykonane wcześniej zmiany nie są cofane. Oczekiwanie na zamknięcie strumieni potomków jest ograniczone, a już odczytane dane są zachowywane z ostrzeżeniem o niepełnym wyjściu. Nieblokujący odczyt na Unix oraz sprawdzanie dostępnych danych przez `PeekNamedPipe` na Windows pozwalają zakończyć wątki czytające po tym limicie, nawet gdy potomek zachowa otwarty strumień. Implementacja Windows wymaga potwierdzenia testami natywnymi w CI.
 
 Aplikacja zapisuje automatycznie (z opóźnieniem ~250 ms) plik `config.json`:
 
@@ -98,6 +114,8 @@ Kopiowanie zachowuje uprawnienia oraz czasy dostępu i modyfikacji plików; nowe
 Nie jest to snapshot systemu plików: zapis współbieżny tuż po ostatniej weryfikacji nadal może wystąpić. Nie należy przenosić aktywnie zapisywanych plików. Kopiowanie między woluminami nie gwarantuje zachowania właściciela, wszystkich ACL, czasu utworzenia, relacji twardych dowiązań ani alternatywnych strumieni Windows. Dla danych wymagających pełnego zachowania tych właściwości użyj natywnego narzędzia backupu lub przenoszenia.
 
 Dowiązania są rozpoznawane, kopiowane jako dowiązania i nie są śledzone w rekursji. Utworzenie dowiązania na Windows może wymagać włączonego Developer Mode lub odpowiednich uprawnień. Ścieżki są przetwarzane w Rust jako `PathBuf`, z kanonikalizacją katalogów (w tym ścieżek UNC i długich ścieżek Windows). Ścieżki niepoprawne w Unicode są odrzucane przy listowaniu zamiast udostępniania niejednoznacznych nazw.
+
+Wpisy, które zniknęły podczas odczytu, są nieczytelne lub mają nazwy niepoprawne w Unicode, nie blokują listowania pozostałej zawartości. Panel pokazuje liczbę pominiętych wpisów i rozwijane szczegóły (maksymalnie 20 ostrzeżeń). Błąd otwarcia całego katalogu nadal zachowuje poprzednią listę i pokazuje błąd.
 
 ## Weryfikacja platform
 

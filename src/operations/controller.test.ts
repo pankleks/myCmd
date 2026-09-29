@@ -51,6 +51,29 @@ function conflict(operationId = 'own'): Conflict {
 }
 
 describe('operation controller', () => {
+  it('reports native failure and refresh failure while releasing busy state', async () => {
+    const { deps, controller } = setup();
+    const nativeError = { code: 'permission_denied', message: 'Cannot copy' };
+    const refreshError = new Error('Cannot refresh');
+    deps.completed.mockRejectedValue(refreshError);
+    await controller.start(operation, 'left');
+    controller.progress({ ...progress('own', 'failed'), error: nativeError });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deps.failed).toHaveBeenCalledWith(nativeError);
+    expect(deps.failed).toHaveBeenCalledWith(refreshError);
+    expect(controller.state.busy).toBe(false);
+  });
+
+  it('reports cancellation transport failures without clearing the active operation', async () => {
+    const { deps, controller } = setup();
+    const error = new Error('Cancel IPC failed');
+    deps.cancel.mockRejectedValue(error);
+    await controller.start(operation, 'left');
+    await controller.cancel();
+    expect(deps.failed).toHaveBeenCalledWith(error);
+    expect(controller.state.busy).toBe(true);
+  });
   it('ignores unrelated progress and conflicts', async () => {
     const { deps, controller } = setup();
     await controller.start(operation, 'left');

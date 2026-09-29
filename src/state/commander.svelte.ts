@@ -84,6 +84,8 @@ export async function load(
     panel.path = result.path;
     panel.parent = result.parent;
     panel.entries = result.entries;
+    panel.skippedEntries = result.skippedEntries ?? 0;
+    panel.warnings = result.warnings ?? [];
     const existingPaths = new Set(result.entries.map((entry) => entry.path));
     panel.selected = same
       ? new Set([...panel.selected].filter((p) => existingPaths.has(p)))
@@ -134,20 +136,39 @@ export function selectByGlob(
   panel.selected = next;
 }
 
-export const dirSizing = $state({ paths: [] as string[] });
-const sizingInFlight = new Set<string>();
+export const dirSizing = $state({ paths: [] as string[], cancelling: false });
+const sizingInFlight = new Map<
+  string,
+  { promise: Promise<number>; id: string }
+>();
 const measuredDirectories = new WeakSet<FileEntry>();
 
+export async function cancelDirectorySizing() {
+  if (!dirSizing.paths.length || dirSizing.cancelling) return;
+  dirSizing.cancelling = true;
+  try {
+    const ids = [...sizingInFlight.values()].map((request) => request.id);
+    for (let offset = 0; offset < ids.length; offset += 64)
+      await api.cancelDirectorySizing(ids.slice(offset, offset + 64));
+  } finally {
+    dirSizing.cancelling = false;
+  }
+}
+
 export async function measureDirectory(panel: PanelState, row?: Row) {
+  if (dirSizing.cancelling) return;
   if (!row || row.parentEntry || row.type !== 'directory') return;
   if (measuredDirectories.has(row)) return;
-  if (sizingInFlight.has(row.path)) return;
   const revision = panel.revision;
-  sizingInFlight.add(row.path);
-  if (!dirSizing.paths.includes(row.path))
-    dirSizing.paths = [...dirSizing.paths, row.path];
+  let pending = sizingInFlight.get(row.path);
   try {
-    const size = await api.measureDirectory(row.path);
+    if (!pending) {
+      const id = crypto.randomUUID();
+      pending = { id, promise: api.measureDirectory(row.path, id) };
+      sizingInFlight.set(row.path, pending);
+      dirSizing.paths = [...dirSizing.paths, row.path];
+    }
+    const size = await pending.promise;
     if (panel.revision !== revision) return;
     const entry = panel.entries.find((e) => e.path === row.path);
     if (entry) {
@@ -162,8 +183,10 @@ export async function measureDirectory(panel: PanelState, row?: Row) {
   } catch {
     // Keep showing <DIR> when the size cannot be computed.
   } finally {
-    sizingInFlight.delete(row.path);
-    dirSizing.paths = dirSizing.paths.filter((p) => p !== row.path);
+    if (pending && sizingInFlight.get(row.path) === pending) {
+      sizingInFlight.delete(row.path);
+      dirSizing.paths = dirSizing.paths.filter((p) => p !== row.path);
+    }
   }
 }
 export function sources(panel: PanelState): Row[] {

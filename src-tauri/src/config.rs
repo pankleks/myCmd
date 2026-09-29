@@ -190,8 +190,8 @@ mod tests {
         )
         .expect("write fixture");
         let config = load_from(&path);
-        assert_eq!(config.show_hidden, false);
-        assert_eq!(config.show_function_bar, true);
+        assert!(!config.show_hidden);
+        assert!(config.show_function_bar);
     }
 
     #[test]
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(sanitized.column_weights.left, None);
         assert_eq!(sanitized.column_weights.right, None);
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
-        assert_eq!(sanitized.show_hidden, true);
-        assert_eq!(sanitized.show_function_bar, true);
+        assert!(sanitized.show_hidden);
+        assert!(sanitized.show_function_bar);
     }
 }

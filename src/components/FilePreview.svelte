@@ -29,6 +29,7 @@
   let error = $state('');
   let editorError = $state('');
   let openError = $state('');
+  let opening = $state(false);
   let sourceContent = $state<string>();
   let previewHtml = $state('');
   let imagePreview = $state('');
@@ -110,12 +111,16 @@
   }
 
   async function openInDefaultApp() {
+    if (disposed || opening) return;
+    opening = true;
     openError = '';
     try {
       await api.open(path);
-      onopened?.();
+      if (!disposed) onopened?.();
     } catch (cause) {
-      openError = errorMessage(cause);
+      if (!disposed) openError = errorMessage(cause);
+    } finally {
+      if (!disposed) opening = false;
     }
   }
 </script>
@@ -171,8 +176,10 @@
   {#if footerActions || error || editorError}<div
       class="dialog-actions viewer-actions"
     >
-      {#if error || editorError}<button type="button" onclick={openInDefaultApp}
-          >Open in default app</button
+      {#if error || editorError}<button
+          type="button"
+          disabled={opening}
+          onclick={openInDefaultApp}>Open in default app</button
         >{/if}
       {@render footerActions?.()}
     </div>{/if}

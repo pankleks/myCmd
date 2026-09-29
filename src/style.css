@@ -305,6 +305,23 @@ main {
   max-height: 95px;
   overflow: auto;
 }
+.panel-warning {
+  flex: none;
+  max-height: 120px;
+  overflow: auto;
+  padding: 6px 9px;
+  background: #3c3424;
+  color: #f4d59a;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.panel-warning summary {
+  cursor: pointer;
+}
+.panel-warning ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
 .operation-status {
   height: 38px;
   display: flex;

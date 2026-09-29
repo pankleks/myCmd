@@ -1,8 +1,10 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import type { PreviewImage } from '../filesystem/api';
 
 const MAX_IMAGES = 24;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_PIXELS = 32_000_000;
 const sanitizeOptions = {
   USE_PROFILES: { html: true },
   FORBID_TAGS: [
@@ -21,7 +23,7 @@ const sanitizeOptions = {
 
 export async function renderMarkdownPreview(
   content: string,
-  loadImage: (source: string) => Promise<string>,
+  loadImage: (source: string) => Promise<PreviewImage>,
   isCancelled: () => boolean = () => false,
 ): Promise<string> {
   const html = await marked.parse(content, { gfm: true });
@@ -35,14 +37,30 @@ export async function renderMarkdownPreview(
   // Strip original URLs before inserting the document into the live DOM.
   for (const image of images) image.removeAttribute('src');
   let totalBytes = 0;
+  let totalPixels = 0;
   for (const [index, image] of images.entries()) {
     if (isCancelled()) return '';
     const source = sources[index];
-    if (!source || index >= MAX_IMAGES || totalBytes >= MAX_IMAGE_BYTES)
+    if (
+      !source ||
+      index >= MAX_IMAGES ||
+      totalBytes >= MAX_IMAGE_BYTES ||
+      totalPixels >= MAX_IMAGE_PIXELS
+    )
       continue;
     try {
-      const dataUrl = await loadImage(source);
+      const { dataUrl, width, height } = await loadImage(source);
       if (isCancelled()) return '';
+      const pixels = width * height;
+      if (
+        !Number.isSafeInteger(width) ||
+        !Number.isSafeInteger(height) ||
+        width <= 0 ||
+        height <= 0 ||
+        !Number.isSafeInteger(pixels)
+      )
+        continue;
+      if (totalPixels + pixels > MAX_IMAGE_PIXELS) break;
       // Accept only raster data returned by the local image reader.
       if (
         !/^data:image\/(png|jpeg|gif|webp|avif|bmp);base64,[A-Za-z0-9+/]*={0,2}$/.test(
@@ -59,6 +77,7 @@ export async function renderMarkdownPreview(
       const bytes = Math.floor((payload.length * 3) / 4) - padding;
       if (totalBytes + bytes > MAX_IMAGE_BYTES) break;
       totalBytes += bytes;
+      totalPixels += pixels;
       image.setAttribute('src', dataUrl);
       image.setAttribute('loading', 'lazy');
       image.setAttribute('decoding', 'async');

@@ -154,6 +154,18 @@ impl Manager {
             .map_err(|_| FsError::new("cancelled", "Operation has ended"))
     }
 }
+enum TransferStep {
+    Finished(bool),
+    Directory(Box<DirectoryTransfer>),
+}
+struct DirectoryTransfer {
+    source: PathBuf,
+    target: PathBuf,
+    metadata: fs::Metadata,
+    created: bool,
+    children: fs::ReadDir,
+    complete: bool,
+}
 struct Worker {
     app: Option<AppHandle>,
     control: Arc<Control>,
@@ -189,15 +201,37 @@ impl Worker {
         }
     }
     fn measure(&self, p: &Path) -> Result<(u64, u64)> {
-        self.check()?;
-        let m = fs::symlink_metadata(p).map_err(|e| FsError::io(e, p))?;
-        let mut total = (if m.is_file() { m.len() } else { 0 }, 1);
-        if m.is_dir() {
-            for e in fs::read_dir(p).map_err(|e| FsError::io(e, p))? {
-                let child = e.map_err(|e| FsError::io(e, p))?.path();
-                let n = self.measure(&child)?;
-                total.0 += n.0;
-                total.1 += n.1;
+        let mut total = (0u64, 0u64);
+        let mut directories: Vec<(PathBuf, fs::ReadDir)> = Vec::new();
+        let mut next = Some(p.to_owned());
+        while let Some(path) = next.take() {
+            self.check()?;
+            let metadata = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
+            total.0 = total
+                .0
+                .checked_add(if metadata.is_file() {
+                    metadata.len()
+                } else {
+                    0
+                })
+                .ok_or_else(|| {
+                    FsError::new("size_overflow", "Total file size exceeds supported range")
+                })?;
+            total.1 = total.1.checked_add(1).ok_or_else(|| {
+                FsError::new("size_overflow", "Item count exceeds supported range")
+            })?;
+            if metadata.is_dir() {
+                let entries = fs::read_dir(&path).map_err(|e| FsError::io(e, &path))?;
+                directories.push((path, entries));
+            }
+            // Retain only the active branch, not every sibling's allocated path.
+            while let Some((directory, entries)) = directories.last_mut() {
+                self.check()?;
+                if let Some(entry) = entries.next() {
+                    next = Some(entry.map_err(|e| FsError::io(e, directory))?.path());
+                    break;
+                }
+                directories.pop();
             }
         }
         Ok(total)
@@ -235,6 +269,53 @@ impl Worker {
         }
     }
     fn transfer(&mut self, source: &Path, destination: &Path, moving: bool) -> Result<bool> {
+        let mut stack = Vec::new();
+        match self.transfer_item(source, destination, moving)? {
+            TransferStep::Finished(complete) => return Ok(complete),
+            TransferStep::Directory(directory) => stack.push(directory),
+        }
+        loop {
+            self.check()?;
+            let directory = stack.last_mut().unwrap();
+            if let Some(child) = directory.children.next() {
+                let child = child.map_err(|e| FsError::io(e, &directory.source))?;
+                let target = directory.target.join(child.file_name());
+                match self.transfer_item(&child.path(), &target, moving)? {
+                    TransferStep::Finished(complete) => {
+                        stack.last_mut().unwrap().complete &= complete
+                    }
+                    TransferStep::Directory(child) => stack.push(child),
+                }
+            } else {
+                let directory = stack.pop().unwrap();
+                drop(directory.children);
+                if directory.created {
+                    preserve_directory_metadata(
+                        &directory.source,
+                        &directory.target,
+                        &directory.metadata,
+                    )
+                    .map_err(|e| FsError::io(e, &directory.target))?;
+                }
+                if moving && directory.complete {
+                    fs::remove_dir(&directory.source)
+                        .map_err(|e| FsError::io(e, &directory.source))?;
+                }
+                self.record_progress(&directory.source, 0, 1);
+                if let Some(parent) = stack.last_mut() {
+                    parent.complete &= directory.complete;
+                } else {
+                    return Ok(directory.complete);
+                }
+            }
+        }
+    }
+    fn transfer_item(
+        &mut self,
+        source: &Path,
+        destination: &Path,
+        moving: bool,
+    ) -> Result<TransferStep> {
         self.check()?;
         let meta = fs::symlink_metadata(source).map_err(|e| FsError::io(e, source))?;
         let mut target = destination.to_owned();
@@ -265,7 +346,7 @@ impl Worker {
                 "skip" => {
                     let n = self.measure(source)?;
                     self.tick(source, n.0, n.1)?;
-                    return Ok(false);
+                    return Ok(TransferStep::Finished(false));
                 }
                 "cancel" => return Err(FsError::new("cancelled", "Operation cancelled")),
                 "rename" => {
@@ -309,7 +390,7 @@ impl Worker {
             match rename_noreplace(source, &target) {
                 Ok(()) => {
                     self.record_progress(&target, n.0, n.1);
-                    return Ok(true);
+                    return Ok(TransferStep::Finished(true));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {}
                 Err(e) => return Err(FsError::io(e, &target)),
@@ -319,20 +400,14 @@ impl Worker {
             if !overwrite {
                 fs::create_dir(&target).map_err(|e| FsError::io(e, &target))?;
             }
-            let mut complete = true;
-            for item in fs::read_dir(source).map_err(|e| FsError::io(e, source))? {
-                let item = item.map_err(|e| FsError::io(e, source))?;
-                complete &= self.transfer(&item.path(), &target.join(item.file_name()), moving)?;
-            }
-            if !overwrite {
-                preserve_directory_metadata(source, &target, &meta)
-                    .map_err(|e| FsError::io(e, &target))?;
-            }
-            if moving && complete {
-                fs::remove_dir(source).map_err(|e| FsError::io(e, source))?;
-            }
-            self.record_progress(source, 0, 1);
-            return Ok(complete);
+            return Ok(TransferStep::Directory(Box::new(DirectoryTransfer {
+                source: source.to_owned(),
+                target,
+                metadata: meta,
+                created: !overwrite,
+                children: fs::read_dir(source).map_err(|e| FsError::io(e, source))?,
+                complete: true,
+            })));
         }
         if meta.is_symlink() {
             if overwrite {
@@ -412,20 +487,43 @@ impl Worker {
             remove_leaf(source)?;
         }
         self.record_progress(source, 0, 1);
-        Ok(true)
+        Ok(TransferStep::Finished(true))
     }
     fn delete(&mut self, p: &Path) -> Result<()> {
-        self.check()?;
-        let m = fs::symlink_metadata(p).map_err(|e| FsError::io(e, p))?;
-        if m.is_dir() {
-            for e in fs::read_dir(p).map_err(|e| FsError::io(e, p))? {
-                self.delete(&e.map_err(|e| FsError::io(e, p))?.path())?;
+        let mut directories: Vec<(PathBuf, fs::ReadDir)> = Vec::new();
+        let mut next = Some(p.to_owned());
+        while let Some(path) = next.take() {
+            self.check()?;
+            let metadata = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
+            if metadata.is_dir() {
+                let entries = fs::read_dir(&path).map_err(|e| FsError::io(e, &path))?;
+                directories.push((path, entries));
+            } else {
+                remove_leaf(&path)?;
+                self.record_progress(
+                    &path,
+                    if metadata.is_file() {
+                        metadata.len()
+                    } else {
+                        0
+                    },
+                    1,
+                );
             }
-            fs::remove_dir(p).map_err(|e| FsError::io(e, p))?;
-        } else {
-            remove_leaf(p)?;
+            while let Some((directory, entries)) = directories.last_mut() {
+                self.check()?;
+                if let Some(entry) = entries.next() {
+                    next = Some(entry.map_err(|e| FsError::io(e, directory))?.path());
+                    break;
+                }
+                let (directory, entries) = directories.pop().unwrap();
+                // Close the iterator before removing its directory (Windows).
+                drop(entries);
+                self.check()?;
+                fs::remove_dir(&directory).map_err(|e| FsError::io(e, &directory))?;
+                self.record_progress(&directory, 0, 1);
+            }
         }
-        self.record_progress(p, if m.is_file() { m.len() } else { 0 }, 1);
         Ok(())
     }
     fn run(&mut self, op: Operation) -> Result<()> {
@@ -847,6 +945,156 @@ mod tests {
         rename_noreplace(&source, &destination).unwrap();
         assert!(!source.exists());
         assert_eq!(fs::read_to_string(&destination).unwrap(), "payload");
+    }
+    #[test]
+    fn iterative_measure_and_delete_handle_nested_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("tree");
+        fs::create_dir(&root).unwrap();
+        let mut path = root.clone();
+        // Keep total path length within Windows limits as well.
+        for _ in 0..40 {
+            path = path.join("d");
+            fs::create_dir(&path).unwrap();
+            fs::write(path.join("f"), b"abc").unwrap();
+        }
+        let mut worker = worker("overwrite");
+        assert_eq!(worker.measure(&root).unwrap(), (120, 81));
+        worker.delete(&root).unwrap();
+        assert!(!root.exists());
+        assert_eq!(worker.progress.processed_bytes, 120);
+        assert_eq!(worker.progress.processed_items, 81);
+    }
+
+    #[test]
+    fn streaming_measure_counts_wide_trees_and_empty_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("tree");
+        fs::create_dir_all(root.join("empty/nested")).unwrap();
+        for index in 0..256 {
+            fs::write(root.join(format!("file-{index}")), b"abc").unwrap();
+        }
+        assert_eq!(worker("overwrite").measure(&root).unwrap(), (768, 259));
+        assert_eq!(
+            worker("overwrite").measure(&root.join("empty")).unwrap(),
+            (0, 2)
+        );
+        assert_eq!(
+            worker("overwrite").measure(&root.join("file-0")).unwrap(),
+            (3, 1)
+        );
+        let mut deleter = worker("overwrite");
+        deleter.delete(&root).unwrap();
+        assert!(!root.exists());
+        assert_eq!(deleter.progress.processed_bytes, 768);
+        assert_eq!(deleter.progress.processed_items, 259);
+    }
+
+    #[test]
+    fn iterative_transfer_copies_and_merges_a_nested_move() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let target = temp.path().join("target");
+        fs::create_dir(&source).unwrap();
+        let mut leaf = source.clone();
+        for _ in 0..40 {
+            leaf = leaf.join("d");
+            fs::create_dir(&leaf).unwrap();
+        }
+        fs::write(leaf.join("payload"), b"content").unwrap();
+        let mut copier = worker("overwrite");
+        assert!(copier.transfer(&source, &target, false).unwrap());
+        let relative = leaf.strip_prefix(&source).unwrap();
+        assert_eq!(
+            fs::read(target.join(relative).join("payload")).unwrap(),
+            b"content"
+        );
+        assert!(source.exists());
+        assert_eq!(copier.progress.processed_items, 42);
+        // Existing destination directories force the copy-and-remove merge path.
+        let mut mover = worker("overwrite");
+        assert!(mover.transfer(&source, &target, true).unwrap());
+        assert!(!source.exists());
+        assert_eq!(
+            fs::read(target.join(relative).join("payload")).unwrap(),
+            b"content"
+        );
+        assert_eq!(mover.progress.processed_items, 42);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "requires MYCMD_TEST_TRANSFER_VOLUME pointing to a different mounted filesystem"]
+    fn cross_device_move_uses_real_copy_and_remove_fallback() {
+        use std::os::unix::fs::MetadataExt;
+        let volume = std::env::var_os("MYCMD_TEST_TRANSFER_VOLUME")
+            .expect("Set MYCMD_TEST_TRANSFER_VOLUME to a writable mounted filesystem");
+        let source_temp = tempfile::tempdir().unwrap();
+        let destination_temp = tempfile::tempdir_in(volume).unwrap();
+        assert_ne!(
+            fs::metadata(source_temp.path()).unwrap().dev(),
+            fs::metadata(destination_temp.path()).unwrap().dev(),
+            "Test requires genuinely different filesystems"
+        );
+        let source = source_temp.path().join("tree");
+        fs::create_dir_all(source.join("nested")).unwrap();
+        fs::write(source.join("nested/file"), b"cross-device payload").unwrap();
+        std::os::unix::fs::symlink("nested/file", source.join("link")).unwrap();
+        let modified = filetime::FileTime::from_unix_time(1_600_000_000, 0);
+        filetime::set_file_mtime(source.join("nested/file"), modified).unwrap();
+        filetime::set_file_mtime(&source, modified).unwrap();
+        let target = destination_temp.path().join("tree");
+        let mut mover = worker("overwrite");
+        assert!(mover.transfer(&source, &target, true).unwrap());
+        assert!(!source.exists());
+        assert_eq!(
+            fs::read(target.join("nested/file")).unwrap(),
+            b"cross-device payload"
+        );
+        assert_eq!(
+            fs::read_link(target.join("link")).unwrap(),
+            PathBuf::from("nested/file")
+        );
+        assert_eq!(
+            filetime::FileTime::from_last_modification_time(
+                &fs::metadata(target.join("nested/file")).unwrap()
+            ),
+            modified
+        );
+        assert_eq!(
+            filetime::FileTime::from_last_modification_time(&fs::metadata(&target).unwrap()),
+            modified
+        );
+        assert_eq!(mover.progress.processed_items, 4);
+        assert_eq!(mover.progress.processed_bytes, 20);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn iterative_delete_and_measure_do_not_follow_directory_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = temp.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("keep"), b"safe").unwrap();
+        let root = temp.path().join("tree");
+        fs::create_dir(&root).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        let mut worker = worker("overwrite");
+        assert_eq!(worker.measure(&root).unwrap(), (0, 2));
+        worker.delete(&root).unwrap();
+        assert_eq!(fs::read(outside.join("keep")).unwrap(), b"safe");
+    }
+
+    #[test]
+    fn iterative_walks_honor_cancellation_before_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("keep");
+        fs::write(&path, b"safe").unwrap();
+        let mut worker = worker("overwrite");
+        worker.control.cancel.store(true, Ordering::Relaxed);
+        assert_eq!(worker.measure(&path).unwrap_err().code, "cancelled");
+        assert_eq!(worker.delete(&path).unwrap_err().code, "cancelled");
+        assert_eq!(fs::read(&path).unwrap(), b"safe");
     }
     fn worker(policy: &str) -> Worker {
         Worker {

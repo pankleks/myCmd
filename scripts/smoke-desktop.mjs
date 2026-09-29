@@ -31,6 +31,17 @@ const destination = join(fixture, 'destination');
 await mkdir(join(source, 'nested'), { recursive: true });
 await mkdir(destination);
 await writeFile(join(source, 'nested', 'sample.txt'), 'smoke payload');
+await writeFile(
+  join(source, 'preview.md'),
+  '# Native preview\n\n**Markdown works**\n\n![Local image](preview.png)',
+);
+await writeFile(
+  join(source, 'preview.png'),
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+    'base64',
+  ),
+);
 const server = createServer();
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
@@ -182,6 +193,64 @@ try {
     'real filesystem loaded',
   );
   assert.equal(await evaluate(`document.querySelectorAll('.panel').length`), 2);
+  async function submitCommand(command) {
+    await evaluate(`(() => {
+      const input = document.querySelector('#system-command');
+      input.value = ${JSON.stringify(command)};
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      input.form.requestSubmit();
+    })()`);
+  }
+  const shellStarted = join(fixture, 'shell-started.txt');
+  await submitCommand(
+    `echo started > "${shellStarted}" & powershell.exe -NoProfile -Command "Start-Sleep -Seconds 30"`,
+  );
+  await until(async () => {
+    try {
+      await access(shellStarted);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'shell command started');
+  await until(
+    () => evaluate(`!!document.querySelector('[data-command-cancel]')`),
+    'shell Cancel button',
+  );
+  await evaluate(`document.querySelector('[data-command-cancel]').click()`);
+  await until(
+    () =>
+      evaluate(
+        `!!document.querySelector('dialog[open]')?.textContent.includes('Command cancelled.') && !document.querySelector('#system-command').disabled`,
+      ),
+    'shell cancellation completed',
+  );
+  await evaluate(`document.querySelector('dialog[open] button').click()`);
+  await until(
+    () => evaluate(`!document.querySelector('dialog[open]')`),
+    'shell error dialog closed',
+  );
+  const shellRecovered = join(fixture, 'shell-recovered.txt');
+  await submitCommand(`echo recovered > "${shellRecovered}"`);
+  await until(async () => {
+    try {
+      await access(shellRecovered);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'shell command after cancellation');
+  await until(
+    () =>
+      evaluate(
+        `!document.querySelector('#system-command').disabled && !document.querySelector('[data-command-cancel]')`,
+      ),
+    'shell ready after recovery',
+  );
+  assert.equal(
+    await evaluate(`!!document.querySelector('dialog[open]')`),
+    false,
+  );
   await evaluate(`(async () => {
     window.smokeProgress = {}; window.smokeConflict = null;
     const ipc = window.__TAURI_INTERNALS__;
@@ -227,6 +296,91 @@ try {
         `document.activeElement.id === 'list-left' && document.querySelector('#list-left')?.textContent.includes('nested')`,
       ),
     'source navigation',
+  );
+  async function selectPreviewFile(name) {
+    await evaluate(`(() => {
+      const row = Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.querySelector('.filename')?.textContent.includes(${JSON.stringify(name)}));
+      if (!row) throw new Error('Preview fixture not visible');
+      row.click();
+    })()`);
+  }
+  async function previewKey(shiftKey = false) {
+    await evaluate(
+      `document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'F3', shiftKey:${shiftKey}, bubbles:true, cancelable:true}))`,
+    );
+  }
+  await selectPreviewFile('preview.md');
+  await previewKey();
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('dialog.file-viewer[open] .markdown-preview h1')?.textContent === 'Native preview'`,
+      ),
+    'native F3 Markdown preview',
+  );
+  await until(
+    () =>
+      evaluate(
+        `(() => { const image = document.querySelector('dialog.file-viewer[open] .markdown-preview img'); return !!image?.complete && image.naturalWidth === 1; })()`,
+      ),
+    'native embedded Markdown image decode',
+  );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('dialog.file-viewer .markdown-preview strong')?.textContent`,
+    ),
+    'Markdown works',
+  );
+  await evaluate(
+    `document.querySelector('dialog.file-viewer .viewer-close').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `!document.querySelector('dialog[open]') && document.activeElement.id === 'list-left'`,
+      ),
+    'Markdown preview closed',
+  );
+  await selectPreviewFile('preview.png');
+  await previewKey();
+  await until(
+    () =>
+      evaluate(
+        `(() => { const image = document.querySelector('dialog.file-viewer[open] .image-preview img'); return !!image?.complete && image.naturalWidth === 1; })()`,
+      ),
+    'native F3 image decode',
+  );
+  await evaluate(
+    `document.querySelector('dialog.file-viewer .viewer-close').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `!document.querySelector('dialog[open]') && document.activeElement.id === 'list-left'`,
+      ),
+    'image preview closed',
+  );
+  await selectPreviewFile('preview.md');
+  await previewKey(true);
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('.preview-panel .markdown-preview h1')?.textContent === 'Native preview'`,
+      ),
+    'Shift+F3 Markdown panel',
+  );
+  await selectPreviewFile('preview.png');
+  await until(
+    () =>
+      evaluate(
+        `(() => { const image = document.querySelector('.preview-panel .image-preview img'); return !!image?.complete && image.naturalWidth === 1; })()`,
+      ),
+    'preview panel follows cursor',
+  );
+  await previewKey(true);
+  await until(
+    () => evaluate(`!document.querySelector('.preview-panel')`),
+    'preview panel disabled',
   );
   await evaluate(`(() => {
     Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.textContent.includes('[nested]')).click();
@@ -318,7 +472,7 @@ try {
   });
   await assert.rejects(access(join(destination, 'archive')));
   console.log(
-    'PASS: native startup, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input and F7 keyboard flow.',
+    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image previews, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input and F7 keyboard flow.',
   );
 } catch (error) {
   await writeFile(join(diagnostics, 'error.txt'), error.stack ?? String(error));

@@ -7,6 +7,15 @@ export interface CommandResult {
   success: boolean;
   stdout: string;
   stderr: string;
+  cancelled: boolean;
+  timedOut: boolean;
+  outputTruncated: boolean;
+  outputIncomplete: boolean;
+}
+export interface PreviewImage {
+  dataUrl: string;
+  width: number;
+  height: number;
 }
 export const api = {
   list: (path: string) => invoke<Listing>('list_directory', { path }),
@@ -15,11 +24,13 @@ export const api = {
   readImagePreview: (path: string) =>
     invoke<string>('read_image_preview', { path }),
   readMarkdownImage: (markdownPath: string, source: string) =>
-    invoke<string>('read_markdown_image', { markdownPath, source }),
+    invoke<PreviewImage>('read_markdown_image', { markdownPath, source }),
   roots: () => invoke<Root[]>('list_roots'),
   open: (path: string) => invoke<void>('open_file', { path }),
-  measureDirectory: (path: string) =>
-    invoke<number>('measure_directory', { path }),
+  measureDirectory: (path: string, requestId: string) =>
+    invoke<number>('measure_directory', { path, requestId }),
+  cancelDirectorySizing: (requestIds: string[]) =>
+    invoke<void>('cancel_directory_sizing', { requestIds }),
   start: (operation: FileOperation) =>
     invoke<string>('start_operation', { operation }),
   cancel: (operationId: string) =>
@@ -27,8 +38,10 @@ export const api = {
   resolve: (operationId: string, resolution: Resolution) =>
     invoke<void>('resolve_conflict', { operationId, resolution }),
   watch: (paths: string[]) => invoke<void>('watch_directories', { paths }),
-  runCommand: (command: string, cwd: string) =>
-    invoke<CommandResult>('run_system_command', { command, cwd }),
+  runCommand: (command: string, cwd: string, commandId: string) =>
+    invoke<CommandResult>('run_system_command', { command, cwd, commandId }),
+  cancelCommand: (commandId: string) =>
+    invoke<void>('cancel_system_command', { commandId }),
   loadConfig: () => invoke<AppConfig>('load_config'),
   saveConfig: (config: AppConfig) => invoke<void>('save_config', { config }),
 };

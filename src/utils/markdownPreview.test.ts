@@ -2,12 +2,72 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderMarkdownPreview } from './markdownPreview';
 
-const image = 'data:image/png;base64,cG5n';
+const image = { dataUrl: 'data:image/png;base64,cG5n', width: 1, height: 1 };
 function documentFor(html: string) {
   return new DOMParser().parseFromString(html, 'text/html');
 }
 
 describe('Markdown preview', () => {
+  it('stops loading at the aggregate pixel budget even for tiny compressed images', async () => {
+    const loader = vi
+      .fn()
+      .mockResolvedValue({ ...image, width: 4000, height: 4000 });
+    const html = await renderMarkdownPreview(
+      '![](a.png) ![](b.png) ![](c.png)',
+      loader,
+    );
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(documentFor(html).querySelectorAll('img[src]')).toHaveLength(2);
+  });
+
+  it('does not publish an image that would cross the pixel budget', async () => {
+    const loader = vi
+      .fn()
+      .mockResolvedValue({ ...image, width: 4000, height: 3000 });
+    const html = await renderMarkdownPreview(
+      '![](a.png) ![](b.png) ![](c.png)',
+      loader,
+    );
+    expect(loader).toHaveBeenCalledTimes(3);
+    expect(documentFor(html).querySelectorAll('img[src]')).toHaveLength(2);
+  });
+
+  it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER])(
+    'rejects invalid image dimensions (%s)',
+    async (width) => {
+      const loader = vi.fn().mockResolvedValue({ ...image, width, height: 2 });
+      const html = await renderMarkdownPreview('![](a.png)', loader);
+      expect(documentFor(html).querySelector('img')?.hasAttribute('src')).toBe(
+        false,
+      );
+    },
+  );
+  it('does not load images when rendering is already cancelled', async () => {
+    const loader = vi.fn();
+    expect(
+      await renderMarkdownPreview('![](image.png)', loader, () => true),
+    ).toBe('');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('adds a fallback description when an undescribed image cannot be loaded', async () => {
+    const html = await renderMarkdownPreview(
+      '![](missing.png)',
+      vi.fn().mockRejectedValue(new Error('missing')),
+    );
+    const img = documentFor(html).querySelector('img');
+    expect(img?.getAttribute('alt')).toBe('Image unavailable in preview');
+    expect(img?.hasAttribute('src')).toBe(false);
+  });
+
+  it('does not load images without a source attribute', async () => {
+    const loader = vi.fn();
+    const html = await renderMarkdownPreview('<img alt="no source">', loader);
+    expect(loader).not.toHaveBeenCalled();
+    expect(documentFor(html).querySelector('img')?.hasAttribute('src')).toBe(
+      false,
+    );
+  });
   it('renders Markdown while removing active HTML and navigable links', async () => {
     const html = await renderMarkdownPreview(
       '# Heading\n\n**bold** [link](https://example.com)\n<script>alert(1)</script><iframe src="https://example.com"></iframe><img src="picture.png" onerror="alert(1)" style="color:red" srcset="other.png 2x">',
@@ -18,7 +78,7 @@ describe('Markdown preview', () => {
     expect(doc.querySelector('strong')?.textContent).toBe('bold');
     expect(doc.querySelector('script, iframe, a')).toBeNull();
     expect(doc.querySelector('[onerror], [style], [srcset]')).toBeNull();
-    expect(doc.querySelector('img')?.getAttribute('src')).toBe(image);
+    expect(doc.querySelector('img')?.getAttribute('src')).toBe(image.dataUrl);
   });
 
   it('does not retain original image URLs when local loading fails', async () => {
@@ -34,7 +94,10 @@ describe('Markdown preview', () => {
   it('rejects non-raster URLs returned by the loader', async () => {
     const html = await renderMarkdownPreview(
       '![](image.svg)',
-      vi.fn().mockResolvedValue('data:image/svg+xml;base64,PHN2Zz4='),
+      vi.fn().mockResolvedValue({
+        ...image,
+        dataUrl: 'data:image/svg+xml;base64,PHN2Zz4=',
+      }),
     );
     expect(documentFor(html).querySelector('img')?.hasAttribute('src')).toBe(
       false,
@@ -54,13 +117,13 @@ describe('Markdown preview', () => {
   });
 
   it('stops reading images once the aggregate budget is exhausted', async () => {
-    const loader = vi
-      .fn()
-      .mockResolvedValue(
+    const loader = vi.fn().mockResolvedValue({
+      ...image,
+      dataUrl:
         'data:image/png;base64,' +
-          'AAAA'.repeat((4 * 1024 * 1024 - 1) / 3) +
-          'AA==',
-      );
+        'AAAA'.repeat((4 * 1024 * 1024 - 1) / 3) +
+        'AA==',
+    });
     await renderMarkdownPreview(
       Array.from({ length: 10 }, () => '![](image.png)').join('\n'),
       loader,

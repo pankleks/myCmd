@@ -4,6 +4,7 @@ import { api } from '../filesystem/api';
 import { inReactiveRoot } from '../test/reactivity.svelte';
 import {
   commander,
+  cancelDirectorySizing,
   createPanel,
   dirSizing,
   invertSelection,
@@ -22,7 +23,12 @@ import {
 } from './commander.svelte';
 
 vi.mock('../filesystem/api', () => ({
-  api: { list: vi.fn(), open: vi.fn(), measureDirectory: vi.fn() },
+  api: {
+    list: vi.fn(),
+    open: vi.fn(),
+    measureDirectory: vi.fn(),
+    cancelDirectorySizing: vi.fn(),
+  },
   errorMessage: (error: { message: string }) => error.message,
 }));
 
@@ -273,6 +279,87 @@ describe('quick find', () => {
 });
 
 describe('directory sizing', () => {
+  it('cancels active sizing once and leaves cancelled sizes unchanged', async () => {
+    const result = deferred<number>();
+    const cancellation = deferred<void>();
+    vi.mocked(api.measureDirectory).mockReturnValue(result.promise);
+    vi.mocked(api.cancelDirectorySizing).mockReturnValue(cancellation.promise);
+    const p = createPanel();
+    p.entries = [entry('directory', { type: 'directory', size: 0 })];
+    const pending = measureDirectory(p, rows(p)[0]);
+    const cancelling = cancelDirectorySizing();
+    await cancelDirectorySizing();
+    await measureDirectory(p, rows(p)[0]);
+    expect(api.cancelDirectorySizing).toHaveBeenCalledTimes(1);
+    expect(api.cancelDirectorySizing).toHaveBeenCalledWith([
+      vi.mocked(api.measureDirectory).mock.calls[0][1],
+    ]);
+    expect(api.measureDirectory).toHaveBeenCalledTimes(1);
+    cancellation.resolve();
+    await cancelling;
+    result.reject({ code: 'cancelled', message: 'Directory sizing cancelled' });
+    await pending;
+    expect(p.entries[0].size).toBe(0);
+    expect(dirSizing.paths).toEqual([]);
+    expect(dirSizing.cancelling).toBe(false);
+  });
+
+  it('allows retrying a cancelled measurement and cancellation transport failures', async () => {
+    const p = createPanel();
+    p.entries = [entry('cancelled', { type: 'directory', size: 0 })];
+    vi.mocked(api.measureDirectory)
+      .mockRejectedValueOnce({ code: 'cancelled', message: 'cancelled' })
+      .mockResolvedValueOnce(512);
+    await measureDirectory(p, rows(p)[0]);
+    expect(p.entries[0].size).toBe(0);
+    await measureDirectory(p, rows(p)[0]);
+    expect(p.entries[0].size).toBe(512);
+    const pendingResult = deferred<number>();
+    p.entries = [entry('pending', { type: 'directory', size: 0 })];
+    vi.mocked(api.measureDirectory).mockReturnValue(pendingResult.promise);
+    const pending = measureDirectory(p, rows(p)[0]);
+    vi.mocked(api.cancelDirectorySizing).mockRejectedValueOnce(
+      new Error('IPC failed'),
+    );
+    await expect(cancelDirectorySizing()).rejects.toThrow('IPC failed');
+    expect(dirSizing.cancelling).toBe(false);
+    pendingResult.resolve(0);
+    await pending;
+    await cancelDirectorySizing();
+    expect(api.cancelDirectorySizing).toHaveBeenCalledTimes(1);
+  });
+  it('shares one sizing request and updates both panels displaying the same directory', async () => {
+    const result = deferred<number>();
+    vi.mocked(api.measureDirectory).mockReturnValue(result.promise);
+    const left = createPanel();
+    const right = createPanel();
+    left.entries = [entry('shared', { type: 'directory' })];
+    right.entries = [entry('shared', { type: 'directory' })];
+    const first = measureDirectory(left, rows(left)[0]);
+    const second = measureDirectory(right, rows(right)[0]);
+    expect(api.measureDirectory).toHaveBeenCalledTimes(1);
+    result.resolve(4096);
+    await Promise.all([first, second]);
+    expect(left.entries[0].size).toBe(4096);
+    expect(right.entries[0].size).toBe(4096);
+  });
+
+  it('ignores a stale panel without discarding the other panel shared sizing result', async () => {
+    const result = deferred<number>();
+    vi.mocked(api.measureDirectory).mockReturnValue(result.promise);
+    const left = createPanel();
+    const right = createPanel();
+    left.entries = [entry('shared', { type: 'directory', size: 0 })];
+    right.entries = [entry('shared', { type: 'directory', size: 0 })];
+    const first = measureDirectory(left, rows(left)[0]);
+    const second = measureDirectory(right, rows(right)[0]);
+    left.revision++;
+    result.resolve(4096);
+    await Promise.all([first, second]);
+    expect(left.entries[0].size).toBe(0);
+    expect(right.entries[0].size).toBe(4096);
+    expect(api.measureDirectory).toHaveBeenCalledTimes(1);
+  });
   it('preserves cursor identity when measured sizes reorder rows', async () => {
     const p = createPanel();
     p.entries = [
@@ -292,7 +379,10 @@ describe('directory sizing', () => {
     vi.mocked(api.measureDirectory).mockResolvedValue(1536);
     await measureDirectory(p, rows(p)[1]);
     await measureDirectory(p, rows(p)[1]);
-    expect(api.measureDirectory).toHaveBeenCalledWith(dir.path);
+    expect(api.measureDirectory).toHaveBeenCalledWith(
+      dir.path,
+      expect.any(String),
+    );
     expect(api.measureDirectory).toHaveBeenCalledTimes(1);
     expect(p.entries[0].size).toBe(1536);
   });
@@ -379,6 +469,45 @@ describe('directory sizing', () => {
 });
 
 describe('asynchronous navigation', () => {
+  it('shows partial listing warnings and clears them after a successful refresh', async () => {
+    const p = panel();
+    vi.mocked(api.list)
+      .mockResolvedValueOnce({
+        path: '/home',
+        entries: [entry('valid')],
+        skippedEntries: 1,
+        warnings: [{ code: 'not_found', message: 'An entry disappeared' }],
+      })
+      .mockResolvedValueOnce({ path: '/home', entries: [entry('valid')] });
+    await load(p);
+    expect(p.entries).toHaveLength(1);
+    expect(p.skippedEntries).toBe(1);
+    expect(p.warnings?.[0].code).toBe('not_found');
+    expect(p.error).toBeUndefined();
+    await load(p);
+    expect(p.skippedEntries).toBe(0);
+    expect(p.warnings).toEqual([]);
+  });
+
+  it('ignores stale listing warnings after newer navigation completes', async () => {
+    const old = deferred<Listing>();
+    vi.mocked(api.list)
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce({ path: '/new', entries: [] });
+    const p = panel();
+    const pending = load(p, '/old');
+    await load(p, '/new');
+    old.resolve({
+      path: '/old',
+      entries: [],
+      skippedEntries: 1,
+      warnings: [{ code: 'not_found', message: 'stale' }],
+    });
+    await pending;
+    expect(p.path).toBe('/new');
+    expect(p.skippedEntries).toBe(0);
+    expect(p.warnings).toEqual([]);
+  });
   it('ignores an older successful response when navigation finishes out of order', async () => {
     const first = deferred<Listing>();
     const second = deferred<Listing>();
