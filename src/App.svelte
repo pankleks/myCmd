@@ -9,6 +9,7 @@
   } from './components/OperationDialog.svelte';
   import ConflictDialog from './components/ConflictDialog.svelte';
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
+  import SettingsDialog from './components/SettingsDialog.svelte';
   import {
     commander,
     load,
@@ -17,7 +18,6 @@
     toggle,
     invertSelection,
     selectByGlob,
-    hidden,
     open,
     quickFindAppend,
     quickFindBackspace,
@@ -30,6 +30,7 @@
     preferences,
     loadPreferences,
     scheduleSave,
+    setShowHidden,
   } from './state/preferences.svelte';
   import {
     DEFAULT_FILE_FONT_SIZE,
@@ -55,6 +56,7 @@
   let commandInput = $state('');
   let commandError = $state<{ command: string; output: string }>();
   let selectionDialog = $state<{ mode: SelectionMode }>();
+  let settingsOpen = $state(false);
   let commandInputElement: HTMLInputElement;
   let progress = $state<Progress>();
   let conflict = $state<Conflict>();
@@ -96,10 +98,10 @@
     if (!ready) return;
     commander.left.path;
     commander.right.path;
-    commander.left.showHidden;
-    commander.right.showHidden;
     preferences.fileFontSize;
     preferences.columnWidths;
+    preferences.showHidden;
+    preferences.showFunctionBar;
     scheduleSave();
   });
   const actions: [string, Action, string][] = [
@@ -138,6 +140,20 @@
     selectByGlob(active, pattern, selectionDialog.mode);
     closeSelectionDialog();
   }
+  function closeSettings() {
+    settingsOpen = false;
+    void tick().then(focusPanel);
+  }
+  function applySettings(settings: {
+    fileFontSize: number;
+    showHidden: boolean;
+    showFunctionBar: boolean;
+  }) {
+    preferences.fileFontSize = settings.fileFontSize;
+    preferences.showFunctionBar = settings.showFunctionBar;
+    setShowHidden(settings.showHidden);
+    closeSettings();
+  }
   function showError(message: string, title = 'Error') {
     errorTitle = title;
     error = message;
@@ -149,6 +165,7 @@
       commandRunning ||
       dialog ||
       selectionDialog ||
+      settingsOpen ||
       conflict ||
       commandError ||
       error ||
@@ -324,6 +341,7 @@
     if (
       dialog ||
       selectionDialog ||
+      settingsOpen ||
       conflict ||
       commandError ||
       error ||
@@ -386,6 +404,12 @@
       focusPanel();
       return;
     }
+    if (event.key === 'F9' && !ctrl && !event.altKey) {
+      event.preventDefault();
+      quickFindClose();
+      settingsOpen = true;
+      return;
+    }
     const action =
       actions.find(([key]) => key === event.key)?.[1] ??
       (event.key === 'Delete' ? 'delete' : undefined);
@@ -412,7 +436,7 @@
           break;
         case 'h':
           event.preventDefault();
-          hidden(active);
+          setShowHidden(!preferences.showHidden);
           break;
         case 'r':
           event.preventDefault();
@@ -644,12 +668,18 @@
       disabled={!ready || busy || commandRunning || !active.path}
     />
   </form>
-  <footer>
-    {#each actions as [key, action, label]}<button
+  {#if preferences.showFunctionBar}<footer>
+      {#each actions as [key, action, label]}<button
+          disabled={!ready || busy || commandRunning}
+          onclick={() => request(action)}><kbd>{key}</kbd>{label}</button
+        >{/each}<button
         disabled={!ready || busy || commandRunning}
-        onclick={() => request(action)}><kbd>{key}</kbd>{label}</button
-      >{/each}
-  </footer>
+        onclick={() => {
+          quickFindClose();
+          settingsOpen = true;
+        }}><kbd>F9</kbd>Settings</button
+      >
+    </footer>{/if}
 </main>
 {#if dialog}<OperationDialog
     {...dialog}
@@ -661,4 +691,11 @@
     mode={selectionDialog.mode}
     onsubmit={applyGlobSelection}
     onclose={closeSelectionDialog}
+  />{/if}
+{#if settingsOpen}<SettingsDialog
+    fileFontSize={preferences.fileFontSize}
+    showHidden={preferences.showHidden}
+    showFunctionBar={preferences.showFunctionBar}
+    onsubmit={applySettings}
+    onclose={closeSettings}
   />{/if}

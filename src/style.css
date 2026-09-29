@@ -357,7 +357,7 @@ main {
 }
 footer {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 6px;
 }
 footer button {
@@ -425,6 +425,23 @@ dialog input:not([type='checkbox']) {
   gap: 6px;
   margin-top: 14px;
   font-size: 13px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+.settings-row input[type='number'] {
+  width: 84px;
+  flex: none;
+}
+.settings-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: #365b97;
 }
 dl {
   font-size: 14px;

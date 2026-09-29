@@ -1,5 +1,5 @@
 use crate::error::{FsError, Result};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -21,11 +21,17 @@ pub struct ColumnWeights {
     pub right: Option<[f64; COLUMN_COUNT]>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ShowHidden {
-    pub left: Option<bool>,
-    pub right: Option<bool>,
+fn default_true() -> bool {
+    true
+}
+
+/// Older files stored a per-panel `{left, right}` object; only an explicit
+/// boolean true enables hidden files now, everything else means false.
+fn bool_or_legacy<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<bool, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value.as_bool().unwrap_or(false))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,7 +42,10 @@ pub struct AppConfig {
     pub right_path: Option<String>,
     pub column_weights: ColumnWeights,
     pub file_font_size: Option<u32>,
-    pub show_hidden: ShowHidden,
+    #[serde(deserialize_with = "bool_or_legacy")]
+    pub show_hidden: bool,
+    #[serde(default = "default_true")]
+    pub show_function_bar: bool,
 }
 
 impl Default for AppConfig {
@@ -47,7 +56,8 @@ impl Default for AppConfig {
             right_path: None,
             column_weights: ColumnWeights::default(),
             file_font_size: None,
-            show_hidden: ShowHidden::default(),
+            show_hidden: false,
+            show_function_bar: true,
         }
     }
 }
@@ -82,6 +92,7 @@ impl AppConfig {
                 .file_font_size
                 .map(|size| size.clamp(MIN_FILE_FONT_SIZE, MAX_FILE_FONT_SIZE)),
             show_hidden: self.show_hidden,
+            show_function_bar: self.show_function_bar,
         }
     }
 }
@@ -163,13 +174,24 @@ mod tests {
                 right: None,
             },
             file_font_size: Some(20),
-            show_hidden: ShowHidden {
-                left: Some(true),
-                right: None,
-            },
+            show_hidden: true,
+            show_function_bar: false,
         };
         save_to(&path, &config).expect("save");
         assert_eq!(load_from(&path), config.sanitized());
+    }
+
+    #[test]
+    fn legacy_show_hidden_object_loads_as_false() {
+        let (_dir, path) = temp_path("config.json");
+        fs::write(
+            &path,
+            r#"{"version":1,"showHidden":{"left":true,"right":false}}"#,
+        )
+        .expect("write fixture");
+        let config = load_from(&path);
+        assert_eq!(config.show_hidden, false);
+        assert_eq!(config.show_function_bar, true);
     }
 
     #[test]
@@ -183,10 +205,8 @@ mod tests {
                 right: Some([f64::NAN, 78.0, 113.0, 218.0]),
             },
             file_font_size: Some(99),
-            show_hidden: ShowHidden {
-                left: None,
-                right: Some(false),
-            },
+            show_hidden: true,
+            show_function_bar: true,
         };
         let sanitized = config.sanitized();
         assert_eq!(sanitized.version, CONFIG_VERSION);
@@ -195,12 +215,7 @@ mod tests {
         assert_eq!(sanitized.column_weights.left, None);
         assert_eq!(sanitized.column_weights.right, None);
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
-        assert_eq!(
-            sanitized.show_hidden,
-            ShowHidden {
-                left: None,
-                right: Some(false),
-            }
-        );
+        assert_eq!(sanitized.show_hidden, true);
+        assert_eq!(sanitized.show_function_bar, true);
     }
 }

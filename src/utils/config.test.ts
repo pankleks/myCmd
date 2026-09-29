@@ -52,14 +52,28 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: [175, 78, 113, 218],
       fileFontSize: 20,
-      showHidden: { left: false, right: false },
+      showHidden: false,
+      showFunctionBar: true,
     });
   });
 
-  it('normalizes the hidden-files visibility', () => {
+  it('treats only an explicit true as visible hidden files', () => {
+    expect(normalizeConfig({ showHidden: true }).showHidden).toBe(true);
+    expect(normalizeConfig({ showHidden: false }).showHidden).toBe(false);
     expect(
-      normalizeConfig({ showHidden: { left: true, right: 'yes' } }).showHidden,
-    ).toEqual({ left: true, right: false });
+      normalizeConfig({ showHidden: { left: true, right: false } }).showHidden,
+    ).toBe(false);
+    expect(normalizeConfig({}).showHidden).toBe(false);
+  });
+
+  it('defaults the function bar to visible', () => {
+    expect(normalizeConfig({}).showFunctionBar).toBe(true);
+    expect(normalizeConfig({ showFunctionBar: false }).showFunctionBar).toBe(
+      false,
+    );
+    expect(normalizeConfig({ showFunctionBar: true }).showFunctionBar).toBe(
+      true,
+    );
   });
 
   it('migrates split panel widths into one shared value', () => {
@@ -79,7 +93,8 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
-      showHidden: { left: false, right: false },
+      showHidden: false,
+      showFunctionBar: true,
     });
     expect(normalizeConfig('oops')).toEqual(normalizeConfig(null));
   });
@@ -91,7 +106,8 @@ describe('normalizeConfig', () => {
       rightPath: '/tmp',
       columnWeights: { left: null, right: null },
       fileFontSize: 16,
-      showHidden: { left: true, right: false },
+      showHidden: true,
+      showFunctionBar: false,
     });
     expect(buildSavePayload(normalized)).toEqual({
       version: 1,
@@ -99,7 +115,8 @@ describe('normalizeConfig', () => {
       rightPath: '/tmp',
       columnWeights: { left: null, right: null },
       fileFontSize: 16,
-      showHidden: { left: true, right: false },
+      showHidden: true,
+      showFunctionBar: false,
     });
   });
 });

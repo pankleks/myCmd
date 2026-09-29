@@ -185,14 +185,6 @@ export function sort(panel: PanelState, column: Column) {
     rows(panel).findIndex((e) => e.path === current),
   );
 }
-export function hidden(panel: PanelState) {
-  panel.showHidden = !panel.showHidden;
-  const visible = rows(panel);
-  panel.selected = new Set(
-    [...panel.selected].filter((p) => visible.some((e) => e.path === p)),
-  );
-  panel.cursor = Math.min(panel.cursor, Math.max(0, visible.length - 1));
-}
 
 const FOLD_EXTRA: Record<string, string> = {
   ł: 'l',

@@ -53,12 +53,13 @@ Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
 | F7                                | Utwórz katalog                                                              |
 | F8 / Delete                       | Przenieś do Kosza po potwierdzeniu                                          |
 | Shift+F8 / Shift+Delete           | Usuń trwale po potwierdzeniu                                                |
+| F9                                | Ustawienia (font, ukryte pliki, pasek przycisków)                           |
 | Ctrl+H                            | Pokaż/ukryj pliki ukryte                                                    |
 | Ctrl+R                            | Odśwież panel                                                               |
 | Ctrl+L                            | Edytuj ścieżkę                                                              |
 | Ctrl++ / Ctrl+- / Ctrl+0          | Większy / mniejszy / domyślny font listy plików                             |
 
-Kliknięcie nagłówka sortuje kolumnę. Katalogi pozostają na początku. Każdy panel ma niezależne sortowanie, zaznaczenie i widoczność plików ukrytych. Lista jest wirtualizowana. Szerokość kolumn (wspólna dla obu paneli – resize jednego resizuje drugi) zmienisz myszą (uchwyt między nagłówkami) albo strzałkami po przejściu Tabem na uchwyt; dwuklik na nagłówku resetuje szerokości. Zwykłe pisanie trafia do pola komend (i przenosi tam fokus). Alt+litery przy fokusie w polu komend lub ścieżki wpisują polskie znaki do tego pola. Alt+litery (lewy lub prawy) przy fokusie na panelu plików otwierają szybkie wyszukiwanie.
+Kliknięcie nagłówka sortuje kolumnę. Katalogi pozostają na początku. Każdy panel ma niezależne sortowanie i zaznaczenie; widoczność plików ukrytych jest wspólna dla obu paneli (Ctrl+H lub F9). Lista jest wirtualizowana. Szerokość kolumn (wspólna dla obu paneli – resize jednego resizuje drugi) zmienisz myszą (uchwyt między nagłówkami) albo strzałkami po przejściu Tabem na uchwyt; dwuklik na nagłówku resetuje szerokości. Zwykłe pisanie trafia do pola komend (i przenosi tam fokus). Alt+litery przy fokusie w polu komend lub ścieżki wpisują polskie znaki do tego pola. Alt+litery (lewy lub prawy) przy fokusie na panelu plików otwierają szybkie wyszukiwanie.
 
 ## Konfiguracja
 
@@ -70,7 +71,7 @@ Aplikacja zapisuje automatycznie (z opóźnieniem ~250 ms) plik `config.json`:
 | Linux   | `~/.config/mycmd/config.json`                     |
 | macOS   | `~/Library/Application Support/mycmd/config.json` |
 
-Zapisywane są: aktualne katalogi obu paneli, wspólna szerokość kolumn, rozmiar fontu listy plików (12–24 px, domyślnie 18) oraz pokazywanie plików ukrytych (osobno lewy/prawy panel). Przy starcie aplikacja odtwarza katalogi (nieistniejące zastępuje katalogiem domowym), kolumny i font. Uszkodzony lub brakujący plik oznacza domyślne ustawienia. Zmienna środowiskowa `MYCMD_CONFIG_DIR` nadpisuje katalog konfiguracji (używana m.in. przez testy).
+Zapisywane są: aktualne katalogi obu paneli, wspólna szerokość kolumn, rozmiar fontu listy plików (12–24 px, domyślnie 18), wspólne pokazywanie plików ukrytych (domyślnie wyłączone) oraz widoczność dolnego paska przycisków funkcyjnych (domyślnie włączony). Font, ukryte pliki i pasek przycisków zmienisz w oknie ustawień (F9). Przy starcie aplikacja odtwarza katalogi (nieistniejące zastępuje katalogiem domowym), kolumny i font. Uszkodzony lub brakujący plik oznacza domyślne ustawienia. Zmienna środowiskowa `MYCMD_CONFIG_DIR` nadpisuje katalog konfiguracji (używana m.in. przez testy).
 
 ## Operacje i architektura
 

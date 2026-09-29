@@ -5,7 +5,7 @@ import {
   normalizeConfig,
 } from '../utils/config';
 import { displayPath } from '../utils/paths';
-import { commander } from './commander.svelte';
+import { commander, rows } from './commander.svelte';
 
 export interface SavedPaths {
   leftPath: string | null;
@@ -15,7 +15,21 @@ export interface SavedPaths {
 export const preferences = $state({
   fileFontSize: DEFAULT_FILE_FONT_SIZE,
   columnWidths: null as number[] | null,
+  showHidden: false,
+  showFunctionBar: true,
 });
+
+export function setShowHidden(value: boolean) {
+  preferences.showHidden = value;
+  for (const panel of [commander.left, commander.right]) {
+    panel.showHidden = value;
+    const visible = rows(panel);
+    panel.selected = new Set(
+      [...panel.selected].filter((p) => visible.some((e) => e.path === p)),
+    );
+    panel.cursor = Math.min(panel.cursor, Math.max(0, visible.length - 1));
+  }
+}
 
 export async function loadPreferences(): Promise<SavedPaths> {
   let raw: unknown = null;
@@ -27,8 +41,8 @@ export async function loadPreferences(): Promise<SavedPaths> {
   const normalized = normalizeConfig(raw);
   preferences.fileFontSize = normalized.fileFontSize;
   preferences.columnWidths = normalized.columns;
-  commander.left.showHidden = normalized.showHidden.left;
-  commander.right.showHidden = normalized.showHidden.right;
+  preferences.showFunctionBar = normalized.showFunctionBar;
+  setShowHidden(normalized.showHidden);
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
 }
 
@@ -38,10 +52,8 @@ export async function persistPreferences(): Promise<void> {
     rightPath: commander.right.path ? displayPath(commander.right.path) : null,
     columns: preferences.columnWidths,
     fileFontSize: preferences.fileFontSize,
-    showHidden: {
-      left: commander.left.showHidden,
-      right: commander.right.showHidden,
-    },
+    showHidden: preferences.showHidden,
+    showFunctionBar: preferences.showFunctionBar,
   });
   try {
     await api.saveConfig(payload);

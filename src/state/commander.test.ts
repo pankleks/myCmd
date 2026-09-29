@@ -4,7 +4,6 @@ import { api } from '../filesystem/api';
 import {
   commander,
   dirSizing,
-  hidden,
   invertSelection,
   load,
   matchQuickFind,
@@ -109,24 +108,19 @@ describe('sorting and selection', () => {
     toggle(p, rows(p)[2]);
     expect(sources(p).map((e) => e.name)).toEqual(['a']);
   });
-  it('removes hidden items from the selection and clamps the cursor', () => {
+  it('hides hidden items unless the panel shows them', () => {
     const p = panel();
     p.parent = undefined;
     p.entries = [entry('.secret', { hidden: true })];
     expect(rows(p)).toEqual([]);
-    hidden(p);
-    toggle(p, rows(p)[0]);
-    expect(p.selected.size).toBe(1);
-    hidden(p);
-    expect(p.selected.size).toBe(0);
-    expect(p.cursor).toBe(0);
-    expect(sources(p)).toEqual([]);
+    p.showHidden = true;
+    expect(rows(p).map((e) => e.name)).toEqual(['.secret']);
   });
   it('keeps panel state independent', () => {
     commander.left.entries = [entry('a')];
     commander.right.entries = [entry('a')];
     toggle(commander.left, rows(commander.left)[1]);
-    hidden(commander.left);
+    commander.left.showHidden = true;
     sort(commander.left, 'size');
     expect(commander.right.selected.size).toBe(0);
     expect(commander.right.showHidden).toBe(false);
