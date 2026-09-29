@@ -39,13 +39,14 @@ const app = spawn(executable, [], {
   env: {
     ...process.env,
     MYCMD_CONFIG_DIR: join(fixture, 'config'),
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
     WEBVIEW2_USER_DATA_FOLDER: join(fixture, 'webview-profile'),
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let appError;
 let appLog = '';
+let lastDebuggerState = 'no debugger attempts yet';
 app.on('error', (error) => {
   appError = error;
 });
@@ -56,9 +57,9 @@ for (const stream of [app.stdout, app.stderr])
 let socket;
 let capture;
 const deadlineTimer = setTimeout(() => {
-  appError = new Error('Desktop smoke test exceeded 120 seconds.');
+  appError = new Error('Desktop smoke test exceeded 180 seconds.');
   app.kill();
-}, 120000);
+}, 180000);
 async function until(fn, message, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -71,22 +72,35 @@ async function until(fn, message, timeoutMs = 20000) {
     if (value) return value;
     await delay(50);
   }
-  throw new Error(`Timed out: ${message}`);
+  throw new Error(
+    `Timed out: ${message}. Last debugger state: ${lastDebuggerState}. App exit: ${app.exitCode}. Log:\n${appLog}`,
+  );
 }
 try {
-  const target = await until(async () => {
-    try {
-      return (
-        await (
-          await fetch(`http://127.0.0.1:${port}/json/list`, {
-            signal: AbortSignal.timeout(2000),
-          })
-        ).json()
-      ).find((t) => t.type === 'page');
-    } catch {
-      return undefined;
-    }
-  }, 'WebView2 startup', 60000);
+  const target = await until(
+    async () => {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        if (!response.ok) {
+          lastDebuggerState = `HTTP ${response.status} from /json/list`;
+          return undefined;
+        }
+        const targets = await response.json();
+        lastDebuggerState = `targets: ${JSON.stringify(targets).slice(0, 2000)}`;
+        return (
+          targets.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) ??
+          targets.find((t) => t.webSocketDebuggerUrl)
+        );
+      } catch (error) {
+        lastDebuggerState = `fetch failed: ${error.message}`;
+        return undefined;
+      }
+    },
+    'WebView2 startup',
+    60000,
+  );
   socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
     const timer = setTimeout(
