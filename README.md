@@ -55,6 +55,7 @@ Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
 | Shift+F8 / Shift+Delete           | Usuń trwale po potwierdzeniu                                                |
 | F9                                | Ustawienia (font, ukryte pliki, pasek przycisków)                           |
 | Ctrl+H                            | Pokaż/ukryj pliki ukryte                                                    |
+| Ctrl+I                            | Otwórz ten sam katalog w drugim panelu                                      |
 | Ctrl+R                            | Odśwież panel                                                               |
 | Ctrl+L                            | Edytuj ścieżkę                                                              |
 | Ctrl++ / Ctrl+- / Ctrl+0          | Większy / mniejszy / domyślny font listy plików                             |

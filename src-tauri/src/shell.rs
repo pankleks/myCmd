@@ -54,16 +54,19 @@ fn run_shell(
 /// Marker printed to stderr before the real command when retrying in an
 /// interactive shell. Everything up to and including it (shell startup
 /// warnings, rc-file noise) is stripped from the captured stderr.
+#[cfg(not(windows))]
 const INTERACTIVE_STDERR_MARKER: &str = "__mycmd_stderr_begin__";
 
 /// Exit code 127 with "not found"-style stderr means the command name could
 /// not be resolved: typically a shell function or alias (e.g. zoxide's `z`)
 /// that only exists in interactive shells.
+#[cfg(not(windows))]
 fn looks_like_unknown_command(result: &CommandResult) -> bool {
     result.exit_code == Some(127)
         && (result.stderr.contains("not found") || result.stderr.contains("Unknown command"))
 }
 
+#[cfg(not(windows))]
 fn strip_interactive_prelude(stderr: &str) -> String {
     match stderr
         .lines()
@@ -143,6 +146,7 @@ mod tests {
         assert!(output.stderr.is_empty());
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn strips_shell_startup_noise_before_the_marker() {
         let stderr = "bash: cannot set terminal process group (123): Inappropriate ioctl for device\nbash: no job control in this shell\n__mycmd_stderr_begin__\nboom\n";

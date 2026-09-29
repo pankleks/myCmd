@@ -442,6 +442,14 @@
           event.preventDefault();
           void load(active);
           break;
+        case 'i':
+          event.preventDefault();
+          if (active.path) {
+            const other =
+              commander[commander.activePanel === 'left' ? 'right' : 'left'];
+            void load(other, active.path, rows(active)[active.cursor]?.path);
+          }
+          break;
         case 'l':
           event.preventDefault();
           (
