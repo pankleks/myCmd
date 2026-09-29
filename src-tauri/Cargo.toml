@@ -16,8 +16,10 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "6"
 open = "5"
 same-file = "1"
+filetime = "0.2"
 tempfile = "3"
 notify = "8"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+xattr = "1"

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileEntry, Listing, PanelState } from '../filesystem/types';
 import { api } from '../filesystem/api';
+import { inReactiveRoot } from '../test/reactivity.svelte';
 import {
   commander,
+  createPanel,
   dirSizing,
   invertSelection,
   load,
@@ -66,6 +68,36 @@ beforeEach(() => {
 });
 
 describe('sorting and selection', () => {
+  it('caches reactive rows across cursor and selection changes', () => {
+    inReactiveRoot(() => {
+      const p = createPanel();
+      p.entries = [entry('b'), entry('a')];
+      const visible = rows(p);
+      expect(visible.map((item) => item.name)).toEqual(['a', 'b']);
+      p.cursor = 1;
+      p.selected = new Set(['/home/a']);
+      expect(rows(p)).toBe(visible);
+      p.sort = { column: 'name', direction: 'desc' };
+      expect(rows(p)).not.toBe(visible);
+      expect(rows(p).map((item) => item.name)).toEqual(['b', 'a']);
+    });
+  });
+
+  it('invalidates cached rows for visibility and relevant entry changes', () => {
+    const p = createPanel();
+    p.entries = [
+      entry('a', { hidden: true }),
+      entry('b', { size: 2 }),
+      entry('c', { size: 1 }),
+    ];
+    expect(rows(p).map((item) => item.name)).toEqual(['b', 'c']);
+    p.showHidden = true;
+    expect(rows(p)).toHaveLength(3);
+    p.sort = { column: 'size', direction: 'asc' };
+    expect(rows(p).map((item) => item.name)).toEqual(['a', 'c', 'b']);
+    p.entries[1].size = 0;
+    expect(rows(p).map((item) => item.name)).toEqual(['a', 'b', 'c']);
+  });
   it.each(['name', 'extension', 'size', 'modified'] as const)(
     'keeps parent and directories first when sorting %s in both directions',
     (column) => {
@@ -241,6 +273,18 @@ describe('quick find', () => {
 });
 
 describe('directory sizing', () => {
+  it('preserves cursor identity when measured sizes reorder rows', async () => {
+    const p = createPanel();
+    p.entries = [
+      entry('a', { type: 'directory', size: 0 }),
+      entry('b', { type: 'directory', size: 1 }),
+    ];
+    p.sort = { column: 'size', direction: 'asc' };
+    p.cursor = 1;
+    vi.mocked(api.measureDirectory).mockResolvedValue(100);
+    await measureDirectory(p, rows(p)[0]);
+    expect(rows(p)[p.cursor].name).toBe('b');
+  });
   it('stores the measured size and skips repeat measurements in the current list', async () => {
     const p = panel();
     const dir = entry('docs', { type: 'directory', size: 0 });

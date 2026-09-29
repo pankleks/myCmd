@@ -11,6 +11,7 @@
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
   import FileViewerDialog from './components/FileViewerDialog.svelte';
+  import FilePreviewPanel from './components/FilePreviewPanel.svelte';
   import {
     commander,
     load,
@@ -49,11 +50,33 @@
   import { bytes } from './utils/format';
   import { displayPath } from './utils/paths';
   import { isQuickFindTrigger } from './utils/keyboard';
+  import { createOperationController } from './operations/controller.svelte';
   let ready = $state(false);
   let previewMode = $state(false);
   let error = $state('');
   let errorTitle = $state('Error');
-  let busy = $state(false);
+  const operations = createOperationController({
+    start: api.start,
+    cancel: api.cancel,
+    resolve: api.resolve,
+    failed: (cause) => showError(errorMessage(cause), 'Operation failed'),
+    completed: async (payload, side) => {
+      await Promise.all([
+        load(
+          commander.left,
+          undefined,
+          side === 'left' ? payload.resultPath : undefined,
+        ),
+        load(
+          commander.right,
+          undefined,
+          side === 'right' ? payload.resultPath : undefined,
+        ),
+      ]);
+      commander[side].selected = new Set();
+    },
+  });
+  let busy = $derived(operations.state.busy);
   let commandRunning = $state(false);
   let commandInput = $state('');
   let commandError = $state<{ command: string; output: string }>();
@@ -65,8 +88,8 @@
     extension: string;
   }>();
   let commandInputElement: HTMLInputElement;
-  let progress = $state<Progress>();
-  let conflict = $state<Conflict>();
+  let progress = $derived(operations.state.progress);
+  let conflict = $derived(operations.state.conflict);
   let dialog = $state<{
     action: Action;
     entries: FileEntry[];
@@ -75,8 +98,6 @@
     side: Side;
     permanent: boolean;
   }>();
-  let operationSide: Side = 'left';
-  let operationId: string | undefined;
   const refreshTimers: Partial<Record<Side, ReturnType<typeof setTimeout>>> =
     {};
   let active = $derived(commander[commander.activePanel]);
@@ -141,8 +162,10 @@
   function focusPanel() {
     document.getElementById(`list-${commander.activePanel}`)?.focus();
   }
-  function openDrivePicker(side: Side) {
+  async function openDrivePicker(side: Side) {
+    if (previewMode && side !== commander.activePanel) previewMode = false;
     commander.activePanel = side;
+    await tick();
     const picker = document.getElementById(
       `drive-${side}`,
     ) as HTMLSelectElement | null;
@@ -244,24 +267,14 @@
     };
   }
   async function submit(operation: FileOperation) {
-    operationSide = dialog!.side;
-    busy = true;
-    progress = undefined;
-    operationId = undefined;
+    const side = dialog!.side;
     closeDialog();
-    try {
-      const id = await api.start(operation);
-      if (busy) operationId = id;
-    } catch (e) {
-      showError(errorMessage(e), 'Operation failed');
-      busy = false;
-    }
+    await operations.start(operation, side);
   }
   async function resolve(resolution: Resolution) {
     if (!conflict) return;
     try {
-      await api.resolve(conflict.operationId, resolution);
-      conflict = undefined;
+      await operations.resolve(resolution);
       await tick();
       focusPanel();
     } catch (e) {
@@ -269,13 +282,7 @@
     }
   }
   async function cancel() {
-    const id = operationId ?? progress?.operationId;
-    if (id)
-      try {
-        await api.cancel(id);
-      } catch (e) {
-        showError(errorMessage(e), 'Operation failed');
-      }
+    await operations.cancel();
   }
   async function runCommand(event?: SubmitEvent) {
     event?.preventDefault();
@@ -312,37 +319,12 @@
         return;
       }
       try {
-        const p = await listen<Progress>(
-          'operation-progress',
-          ({ payload }) => {
-            progress = payload;
-            operationId = payload.operationId;
-            if (['completed', 'failed', 'cancelled'].includes(payload.state)) {
-              busy = false;
-              conflict = undefined;
-              if (payload.error && payload.state === 'failed')
-                showError(errorMessage(payload.error), 'Operation failed');
-              void Promise.all([
-                load(
-                  commander.left,
-                  undefined,
-                  operationSide === 'left' ? payload.resultPath : undefined,
-                ),
-                load(
-                  commander.right,
-                  undefined,
-                  operationSide === 'right' ? payload.resultPath : undefined,
-                ),
-              ]).then(() => {
-                commander[operationSide].selected = new Set();
-              });
-            }
-          },
+        const p = await listen<Progress>('operation-progress', ({ payload }) =>
+          operations.progress(payload),
         );
         unlisten.push(p);
-        const c = await listen<Conflict>(
-          'operation-conflict',
-          ({ payload }) => (conflict = payload),
+        const c = await listen<Conflict>('operation-conflict', ({ payload }) =>
+          operations.conflict(payload),
         );
         unlisten.push(c);
         const filesystemChanges = await listen<string>(
@@ -386,10 +368,35 @@
     void init();
     return () => {
       disposed = true;
+      operations.dispose();
       for (const timer of Object.values(refreshTimers)) clearTimeout(timer);
       unlisten.forEach((fn) => fn());
     };
   });
+  function previewShortcut(event: KeyboardEvent) {
+    if (
+      dialog ||
+      selectionDialog ||
+      settingsOpen ||
+      viewer ||
+      conflict ||
+      commandError ||
+      error ||
+      event.isComposing
+    )
+      return;
+    if (
+      event.key === 'F3' &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) togglePreviewPane();
+    }
+  }
   function keydown(event: KeyboardEvent) {
     if (
       dialog ||
@@ -412,7 +419,7 @@
       (event.key === 'F1' || event.key === 'F2')
     ) {
       event.preventDefault();
-      openDrivePicker(event.key === 'F1' ? 'left' : 'right');
+      void openDrivePicker(event.key === 'F1' ? 'left' : 'right');
       return;
     }
     if (target.closest('input, select, textarea, dialog')) {
@@ -450,17 +457,6 @@
       }
     }
     const ctrl = (event.ctrlKey || event.metaKey) && !event.altKey;
-    if (
-      event.key === 'F3' &&
-      event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
-      event.preventDefault();
-      togglePreviewPane();
-      return;
-    }
     if (event.key === 'Tab' && !ctrl && !event.altKey) {
       event.preventDefault();
       quickFindClose();
@@ -690,29 +686,9 @@
   }
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydowncapture={previewShortcut} onkeydown={keydown} />
 {#snippet previewPane()}
-  {#if previewTarget}
-    {@const key = previewTarget.key}
-    {#key key}
-      <FileViewerDialog
-        path={previewTarget.path}
-        name={previewTarget.name}
-        extension={previewTarget.extension}
-        inline
-        onclose={() => {}}
-      />
-    {/key}
-  {:else}
-    <section class="panel preview-panel" aria-label="File preview">
-      <div class="viewer-header">
-        <div class="viewer-heading"><h2>Preview</h2></div>
-      </div>
-      <div class="preview-empty">
-        {active.loading ? 'Loading files…' : 'Select a file to preview.'}
-      </div>
-    </section>
-  {/if}
+  <FilePreviewPanel target={previewTarget} loading={active.loading} />
 {/snippet}
 <main style:--file-font-size={`${preferences.fileFontSize}px`}>
   <div class="panels">

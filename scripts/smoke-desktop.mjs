@@ -213,16 +213,43 @@ try {
     await readFile(join(destination, 'nested', 'sample.txt'), 'utf8'),
     'smoke payload',
   );
-  const id = await invoke('start_operation', {
-    operation: { type: 'copy', sources: [join(source, 'nested')], destination },
-  });
+  // Start the conflict through the UI. Unrelated IPC operations must not
+  // hijack the app's operation controller.
+  await evaluate(`(() => {
+    const input = document.querySelector('#panel-left .pathbar input');
+    input.value = ${JSON.stringify(source)};
+    input.dispatchEvent(new Event('input', {bubbles:true}));
+    input.form.requestSubmit();
+  })()`);
   await until(
     () =>
       evaluate(
-        `window.smokeConflict?.operationId === ${JSON.stringify(id)} && !!document.querySelector('dialog[open] [data-conflict-action="skip"]')`,
+        `document.activeElement.id === 'list-left' && document.querySelector('#list-left')?.textContent.includes('nested')`,
+      ),
+    'source navigation',
+  );
+  await evaluate(`(() => {
+    Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.textContent.includes('[nested]')).click();
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'F5',bubbles:true,cancelable:true}));
+  })()`);
+  await until(
+    () => evaluate(`!!document.querySelector('dialog[open] input')`),
+    'copy dialog',
+  );
+  await evaluate(`(() => {
+    const input = document.querySelector('dialog[open] input');
+    input.value = ${JSON.stringify(destination)};
+    input.dispatchEvent(new Event('input', {bubbles:true}));
+    input.form.requestSubmit();
+  })()`);
+  await until(
+    () =>
+      evaluate(
+        `!!window.smokeConflict?.operationId && !!document.querySelector('dialog[open] [data-conflict-action="skip"]')`,
       ),
     'conflict dialog',
   );
+  const id = await evaluate('window.smokeConflict.operationId');
   await evaluate(
     `document.querySelector('dialog[open] [data-conflict-action="skip"]').click()`,
   );

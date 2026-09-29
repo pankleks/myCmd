@@ -176,13 +176,17 @@ impl Worker {
         }
     }
     fn tick(&mut self, p: &Path, bytes: u64, items: u64) -> Result<()> {
+        self.record_progress(p, bytes, items);
+        self.check()
+    }
+    // Accounting after a committed mutation must not turn it into a failure.
+    fn record_progress(&mut self, p: &Path, bytes: u64, items: u64) {
         self.progress.current_item = Some(filesystem::text(p));
         self.progress.processed_bytes += bytes;
         self.progress.processed_items += items;
         if self.last_emit.elapsed() > Duration::from_millis(80) {
             self.emit();
         }
-        self.check()
     }
     fn measure(&self, p: &Path) -> Result<(u64, u64)> {
         self.check()?;
@@ -298,10 +302,13 @@ impl Worker {
             ));
         }
         if moving && !overwrite {
+            // Measure before committing, while errors/cancellation can still
+            // leave the source untouched.
+            let n = self.measure(source)?;
+            self.check()?;
             match rename_noreplace(source, &target) {
                 Ok(()) => {
-                    let n = self.measure(&target)?;
-                    self.tick(&target, n.0, n.1)?;
+                    self.record_progress(&target, n.0, n.1);
                     return Ok(true);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {}
@@ -318,13 +325,13 @@ impl Worker {
                 complete &= self.transfer(&item.path(), &target.join(item.file_name()), moving)?;
             }
             if !overwrite {
-                fs::set_permissions(&target, meta.permissions())
+                preserve_directory_metadata(source, &target, &meta)
                     .map_err(|e| FsError::io(e, &target))?;
             }
             if moving && complete {
                 fs::remove_dir(source).map_err(|e| FsError::io(e, source))?;
             }
-            self.tick(source, 0, 1)?;
+            self.record_progress(source, 0, 1);
             return Ok(complete);
         }
         if meta.is_symlink() {
@@ -336,19 +343,32 @@ impl Worker {
             }
             let link = fs::read_link(source).map_err(|e| FsError::io(e, source))?;
             #[cfg(unix)]
-            std::os::unix::fs::symlink(link, &target).map_err(|e| FsError::io(e, &target))?;
+            std::os::unix::fs::symlink(&link, &target).map_err(|e| FsError::io(e, &target))?;
             #[cfg(windows)]
             {
                 use std::os::windows::fs::{symlink_dir, symlink_file, FileTypeExt};
                 if meta.file_type().is_symlink_dir() {
-                    symlink_dir(link, &target)
+                    symlink_dir(&link, &target)
                 } else {
-                    symlink_file(link, &target)
+                    symlink_file(&link, &target)
                 }
                 .map_err(|e| FsError::io(e, &target))?;
             }
+            if moving {
+                let current = fs::symlink_metadata(source).map_err(|_| source_changed(source))?;
+                if !current.is_symlink()
+                    || !unchanged_metadata(&meta, &current)
+                    || fs::read_link(source).map_err(|_| source_changed(source))? != link
+                {
+                    return Err(source_changed(source));
+                }
+            }
         } else if meta.is_file() {
             let mut input = fs::File::open(source).map_err(|e| FsError::io(e, source))?;
+            let snapshot = SourceSnapshot::new(&input, source)?;
+            if !unchanged_metadata(&meta, &snapshot.metadata) {
+                return Err(source_changed(source));
+            }
             let mut temp = tempfile::NamedTempFile::new_in(target.parent().unwrap())
                 .map_err(|e| FsError::io(e, &target))?;
             let mut buffer = vec![0; 1024 * 1024];
@@ -364,29 +384,34 @@ impl Worker {
                     .map_err(|e| FsError::io(e, &target))?;
                 self.tick(source, n as u64, 0)?;
             }
-            temp.as_file()
-                .set_permissions(meta.permissions())
+            preserve_file_metadata(&input, temp.as_file(), &snapshot.metadata)
                 .map_err(|e| FsError::io(e, &target))?;
             temp.as_file()
                 .sync_all()
                 .map_err(|e| FsError::io(e, &target))?;
             self.check()?;
+            snapshot.verify(&input, source)?;
             if overwrite {
                 temp.persist(&target)
             } else {
                 temp.persist_noclobber(&target)
             }
             .map_err(|e| FsError::io(e.error, &target))?;
+            if moving {
+                // Retain the source if it changed after destination commit.
+                snapshot.verify(&input, source)?;
+                remove_leaf(source)?;
+            }
         } else {
             return Err(FsError::new(
                 "invalid_path",
                 "Special filesystem objects are not supported",
             ));
         }
-        if moving {
+        if moving && meta.is_symlink() {
             remove_leaf(source)?;
         }
-        self.tick(source, 0, 1)?;
+        self.record_progress(source, 0, 1);
         Ok(true)
     }
     fn delete(&mut self, p: &Path) -> Result<()> {
@@ -400,7 +425,8 @@ impl Worker {
         } else {
             remove_leaf(p)?;
         }
-        self.tick(p, if m.is_file() { m.len() } else { 0 }, 1)
+        self.record_progress(p, if m.is_file() { m.len() } else { 0 }, 1);
+        Ok(())
     }
     fn run(&mut self, op: Operation) -> Result<()> {
         match op {
@@ -548,6 +574,108 @@ fn rename_noreplace(source: &Path, destination: &Path) -> std::io::Result<()> {
     }
 }
 
+struct SourceSnapshot {
+    identity: same_file::Handle,
+    metadata: fs::Metadata,
+}
+
+impl SourceSnapshot {
+    fn new(file: &fs::File, source: &Path) -> Result<Self> {
+        Ok(Self {
+            identity: same_file::Handle::from_file(
+                file.try_clone().map_err(|e| FsError::io(e, source))?,
+            )
+            .map_err(|e| FsError::io(e, source))?,
+            metadata: file.metadata().map_err(|e| FsError::io(e, source))?,
+        })
+    }
+
+    fn verify(&self, file: &fs::File, source: &Path) -> Result<()> {
+        let current = fs::symlink_metadata(source).map_err(|_| source_changed(source))?;
+        let opened = file.metadata().map_err(|_| source_changed(source))?;
+        let identity = same_file::Handle::from_path(source).map_err(|_| source_changed(source))?;
+        if !current.is_file()
+            || identity != self.identity
+            || !unchanged_metadata(&self.metadata, &current)
+            || !unchanged_metadata(&self.metadata, &opened)
+        {
+            return Err(source_changed(source));
+        }
+        Ok(())
+    }
+}
+
+fn source_changed(source: &Path) -> FsError {
+    let mut error = FsError::new(
+        "source_changed",
+        "Source changed during transfer; original was not removed",
+    );
+    error.path = Some(filesystem::text(source));
+    error
+}
+
+fn unchanged_metadata(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    let unchanged = before.len() == after.len() && before.modified().ok() == after.modified().ok();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        unchanged
+            && before.dev() == after.dev()
+            && before.ino() == after.ino()
+            && before.ctime() == after.ctime()
+            && before.ctime_nsec() == after.ctime_nsec()
+    }
+    #[cfg(not(unix))]
+    {
+        unchanged
+    }
+}
+
+fn preserve_file_metadata(
+    source: &fs::File,
+    destination: &fs::File,
+    metadata: &fs::Metadata,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use xattr::FileExt;
+        for name in source.list_xattr()? {
+            if let Some(value) = source.get_xattr(&name)? {
+                destination.set_xattr(&name, &value)?;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = source;
+    destination.set_permissions(metadata.permissions())?;
+    destination.set_times(
+        fs::FileTimes::new()
+            .set_accessed(metadata.accessed()?)
+            .set_modified(metadata.modified()?),
+    )
+}
+
+fn preserve_directory_metadata(
+    source: &Path,
+    destination: &Path,
+    metadata: &fs::Metadata,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    for name in xattr::list(source)? {
+        if let Some(value) = xattr::get(source, &name)? {
+            xattr::set(destination, &name, &value)?;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = source;
+    filetime::set_file_times(
+        destination,
+        filetime::FileTime::from_last_access_time(metadata),
+        filetime::FileTime::from_last_modification_time(metadata),
+    )?;
+    fs::set_permissions(destination, metadata.permissions())
+}
+
 fn protect(p: &Path) -> Result<()> {
     if p.file_name().is_none() || p.parent().is_none() {
         return Err(FsError::new(
@@ -595,6 +723,110 @@ fn remove_leaf(p: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn snapshot_rejects_modified_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("source");
+        fs::write(&path, "old").unwrap();
+        let file = fs::File::open(&path).unwrap();
+        let snapshot = SourceSnapshot::new(&file, &path).unwrap();
+        fs::write(&path, "new content").unwrap();
+        assert_eq!(
+            snapshot.verify(&file, &path).unwrap_err().code,
+            "source_changed"
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), "new content");
+    }
+
+    #[test]
+    fn committed_progress_does_not_fail_on_late_cancellation() {
+        let mut w = worker("overwrite");
+        w.control.cancel.store(true, Ordering::Relaxed);
+        w.record_progress(Path::new("committed"), 10, 1);
+        assert_eq!(w.progress.processed_bytes, 10);
+        assert_eq!(w.progress.processed_items, 1);
+        assert_eq!(w.check().unwrap_err().code, "cancelled");
+    }
+
+    #[test]
+    fn recursive_copy_preserves_directory_modified_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let destination = dir.path().join("out");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&destination).unwrap();
+        fs::write(source.join("file"), "payload").unwrap();
+        let time = filetime::FileTime::from_unix_time(1_000_000, 0);
+        filetime::set_file_mtime(&source, time).unwrap();
+        worker("overwrite")
+            .transfer(&source, &destination.join("source"), false)
+            .unwrap();
+        assert_eq!(
+            filetime::FileTime::from_last_modification_time(
+                &fs::metadata(destination.join("source")).unwrap()
+            ),
+            time
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_replaced_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("source");
+        let old = dir.path().join("old");
+        fs::write(&path, "old").unwrap();
+        let file = fs::File::open(&path).unwrap();
+        let snapshot = SourceSnapshot::new(&file, &path).unwrap();
+        fs::rename(&path, &old).unwrap();
+        fs::write(&path, "new").unwrap();
+        assert_eq!(
+            snapshot.verify(&file, &path).unwrap_err().code,
+            "source_changed"
+        );
+    }
+
+    #[test]
+    fn fallback_move_preserves_file_modified_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        fs::write(&source, "payload").unwrap();
+        fs::write(&destination, "old").unwrap();
+        let time = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        fs::File::options()
+            .write(true)
+            .open(&source)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(time))
+            .unwrap();
+        // Overwrite intentionally exercises copy-and-remove, even on one volume.
+        worker("overwrite")
+            .transfer(&source, &destination, true)
+            .unwrap();
+        assert!(!source.exists());
+        assert_eq!(
+            fs::metadata(&destination).unwrap().modified().unwrap(),
+            time
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fallback_move_preserves_extended_attributes() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        fs::write(&source, "payload").unwrap();
+        fs::write(&destination, "old").unwrap();
+        xattr::set(&source, "user.mycmd-test", b"metadata").unwrap();
+        worker("overwrite")
+            .transfer(&source, &destination, true)
+            .unwrap();
+        assert_eq!(
+            xattr::get(&destination, "user.mycmd-test").unwrap(),
+            Some(b"metadata".to_vec())
+        );
+    }
     #[test]
     fn atomic_rename_preserves_existing_destination() {
         let dir = tempfile::tempdir().unwrap();

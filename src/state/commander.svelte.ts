@@ -1,9 +1,9 @@
 import { api, errorMessage } from '../filesystem/api';
 import type { Column, FileEntry, PanelState, Root } from '../filesystem/types';
-import { matchesGlob } from '../utils/glob';
+import { globToRegExp } from '../utils/glob';
 export type Side = 'left' | 'right';
-function panel(): PanelState {
-  return {
+export function createPanel(): PanelState {
+  const state: PanelState = $state({
     path: '',
     entries: [],
     cursor: 0,
@@ -12,12 +12,17 @@ function panel(): PanelState {
     showHidden: false,
     loading: false,
     revision: 0,
-  };
+    get visibleRows(): Row[] {
+      return visible;
+    },
+  });
+  const visible: Row[] = $derived(buildRows(state));
+  return state;
 }
 export const commander = $state({
   activePanel: 'left' as Side,
-  left: panel(),
-  right: panel(),
+  left: createPanel(),
+  right: createPanel(),
   roots: [] as Root[],
   quickFind: null as { side: Side; query: string; matched: boolean } | null,
 });
@@ -29,6 +34,10 @@ const collator = new Intl.Collator(undefined, {
   sensitivity: 'base',
 });
 export function rows(panel: PanelState): Row[] {
+  return panel.visibleRows ?? buildRows(panel);
+}
+
+function buildRows(panel: PanelState): Row[] {
   const items: Row[] = panel.entries
     .filter((e) => panel.showHidden || !e.hidden)
     .sort((a, b) => {
@@ -75,12 +84,9 @@ export async function load(
     panel.path = result.path;
     panel.parent = result.parent;
     panel.entries = result.entries;
+    const existingPaths = new Set(result.entries.map((entry) => entry.path));
     panel.selected = same
-      ? new Set(
-          [...panel.selected].filter((p) =>
-            result.entries.some((e) => e.path === p),
-          ),
-        )
+      ? new Set([...panel.selected].filter((p) => existingPaths.has(p)))
       : new Set();
     const index = rows(panel).findIndex(
       (e) => e.path === (focusPath ?? (same ? oldCursor : undefined)),
@@ -116,8 +122,9 @@ export function selectByGlob(
   pattern: string,
   mode: SelectionMode,
 ) {
+  const matcher = globToRegExp(pattern);
   const matchingPaths = rows(panel)
-    .filter((row) => !row.parentEntry && matchesGlob(row.name, pattern))
+    .filter((row) => !row.parentEntry && matcher.test(row.name))
     .map((row) => row.path);
   const next = new Set(panel.selected);
   for (const path of matchingPaths) {
@@ -144,8 +151,13 @@ export async function measureDirectory(panel: PanelState, row?: Row) {
     if (panel.revision !== revision) return;
     const entry = panel.entries.find((e) => e.path === row.path);
     if (entry) {
+      const current = rows(panel)[panel.cursor]?.path;
       entry.size = size;
       measuredDirectories.add(entry);
+      panel.cursor = Math.max(
+        0,
+        rows(panel).findIndex((item) => item.path === current),
+      );
     }
   } catch {
     // Keep showing <DIR> when the size cannot be computed.

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../filesystem/api';
 import type { FileEntry } from '../filesystem/types';
 import { DEFAULT_FILE_FONT_SIZE } from '../utils/config';
-import { commander } from './commander.svelte';
+import { commander, createPanel, rows } from './commander.svelte';
 import {
   loadPreferences,
   persistPreferences,
@@ -30,6 +30,8 @@ beforeEach(() => {
   commander.right.path = '';
   commander.left.showHidden = false;
   commander.right.showHidden = false;
+  commander.left = createPanel();
+  commander.right = createPanel();
 });
 
 describe('loadPreferences', () => {
@@ -115,6 +117,43 @@ describe('persistPreferences', () => {
 });
 
 describe('setShowHidden', () => {
+  function file(name: string, hidden = false): FileEntry {
+    return {
+      name,
+      path: `/files/${name}`,
+      type: 'file',
+      extension: 'txt',
+      size: 0,
+      hidden,
+      readonly: false,
+      directoryTarget: false,
+    };
+  }
+
+  it('preserves cursor identity as hidden rows are inserted and removed', () => {
+    for (const panel of [commander.left, commander.right]) {
+      panel.entries = [file('.secret', true), file('a'), file('b')];
+      panel.cursor = 1;
+    }
+    setShowHidden(true);
+    for (const panel of [commander.left, commander.right]) {
+      expect(rows(panel)[panel.cursor].name).toBe('b');
+      expect(panel.cursor).toBe(2);
+    }
+    setShowHidden(false);
+    for (const panel of [commander.left, commander.right]) {
+      expect(rows(panel)[panel.cursor].name).toBe('b');
+      expect(panel.cursor).toBe(1);
+    }
+  });
+
+  it('chooses a valid fallback when the current file becomes hidden', () => {
+    commander.left.entries = [file('.secret', true), file('a')];
+    setShowHidden(true);
+    commander.left.cursor = 0;
+    setShowHidden(false);
+    expect(rows(commander.left)[commander.left.cursor].name).toBe('a');
+  });
   it('syncs both panels and prunes the selection', async () => {
     const file = (name: string, path: string, hidden = false): FileEntry => ({
       name,

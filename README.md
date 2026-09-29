@@ -78,6 +78,9 @@ Zapisywane są: aktualne katalogi obu paneli, wspólna szerokość kolumn, rozmi
 
 - `src/state/commander.svelte.ts`: stan paneli w runach Svelte 5.
 - `src/state/preferences.svelte.ts`: preferencje (font, kolumny) z autozapisem.
+- `src/operations/controller.svelte.ts`: cykl życia operacji, filtrowanie zdarzeń po ID, konflikty i anulowanie; blokada nowych operacji trwa do zakończenia odświeżenia paneli.
+- `src/components/FilePreview.svelte`: wspólny podgląd tekstu, Markdown i obrazów; niezależne kontenery `FileViewerDialog.svelte` oraz `FilePreviewPanel.svelte`.
+- `src/utils/markdownPreview.ts`: sanitizacja Markdown i ograniczone ładowanie lokalnych obrazów, testowane w środowisku DOM.
 - `src/utils/config.ts`: normalizacja i walidacja konfiguracji.
 - `src/filesystem/api.ts`: typowany most IPC; frontend nie wykonuje operacji systemu plików.
 - `src-tauri/src/commands.rs`: cienkie komendy IPC.
@@ -89,6 +92,10 @@ Zapisywane są: aktualne katalogi obu paneli, wspólna szerokość kolumn, rozmi
 Operacje używają zaznaczenia lub elementu pod kursorem. Jednocześnie interfejs uruchamia jedną operację. Konflikty można pomijać, automatycznie/ręcznie zmieniać nazwę, nadpisywać lub anulować; dostępna jest reguła dla całej operacji. Nadpisanie katalogów scala zawartość, a konflikty wewnątrz obsługuje ten sam mechanizm. Nadpisanie niezgodnych typów oraz docelowych dowiązań jest odrzucane — należy wybrać pominięcie lub zmianę nazwy.
 
 Pliki są kopiowane porcjami do plików tymczasowych w katalogu docelowym i publikowane dopiero po zakończeniu zapisu. Przenoszenie używa natywnej zmiany położenia; po błędzie między systemami plików stosuje kopiowanie i usunięcie źródła. Pominięte źródła pozostają na miejscu. Anulowanie pozostawia ukończone elementy i usuwa bieżący tymczasowy plik; nie cofa wcześniejszych zmian. Usuwanie jest trwałe.
+
+Kopiowanie zachowuje uprawnienia oraz czasy dostępu i modyfikacji plików; nowe katalogi otrzymują metadane po skopiowaniu zawartości. Na Unix kopiowane są również dostępne rozszerzone atrybuty. Błąd zachowania tych metadanych przerywa transfer przed usunięciem źródła. Scalanie z istniejącym katalogiem nie zastępuje jego metadanych. Transfer weryfikuje tożsamość, rozmiar i czas modyfikacji źródłowego pliku przed publikacją oraz przed usunięciem; na Unix sprawdza też ctime. Wykryta zmiana pozostawia źródło i zgłasza `source_changed`; jeśli cel został już opublikowany, pozostają obie kopie.
+
+Nie jest to snapshot systemu plików: zapis współbieżny tuż po ostatniej weryfikacji nadal może wystąpić. Nie należy przenosić aktywnie zapisywanych plików. Kopiowanie między woluminami nie gwarantuje zachowania właściciela, wszystkich ACL, czasu utworzenia, relacji twardych dowiązań ani alternatywnych strumieni Windows. Dla danych wymagających pełnego zachowania tych właściwości użyj natywnego narzędzia backupu lub przenoszenia.
 
 Dowiązania są rozpoznawane, kopiowane jako dowiązania i nie są śledzone w rekursji. Utworzenie dowiązania na Windows może wymagać włączonego Developer Mode lub odpowiednich uprawnień. Ścieżki są przetwarzane w Rust jako `PathBuf`, z kanonikalizacją katalogów (w tym ścieżek UNC i długich ścieżek Windows). Ścieżki niepoprawne w Unicode są odrzucane przy listowaniu zamiast udostępniania niejednoznacznych nazw.
 

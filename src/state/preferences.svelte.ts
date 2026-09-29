@@ -22,12 +22,18 @@ export const preferences = $state({
 export function setShowHidden(value: boolean) {
   preferences.showHidden = value;
   for (const panel of [commander.left, commander.right]) {
+    const current = rows(panel)[panel.cursor]?.path;
     panel.showHidden = value;
     const visible = rows(panel);
+    const visiblePaths = new Set(visible.map((entry) => entry.path));
     panel.selected = new Set(
-      [...panel.selected].filter((p) => visible.some((e) => e.path === p)),
+      [...panel.selected].filter((p) => visiblePaths.has(p)),
     );
-    panel.cursor = Math.min(panel.cursor, Math.max(0, visible.length - 1));
+    const index = visible.findIndex((entry) => entry.path === current);
+    panel.cursor =
+      index >= 0
+        ? index
+        : Math.min(panel.cursor, Math.max(0, visible.length - 1));
   }
 }
 

@@ -22,6 +22,7 @@ export interface Root {
 }
 export type Column = 'name' | 'extension' | 'size' | 'modified';
 export interface PanelState {
+  readonly visibleRows?: (FileEntry & { parentEntry?: boolean })[];
   path: string;
   parent?: string;
   entries: FileEntry[];
