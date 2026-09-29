@@ -10,10 +10,15 @@ pub struct CommandResult {
     pub stderr: String,
 }
 
-fn execute(command: &str, cwd: &str) -> std::result::Result<CommandResult, String> {
+fn run_shell(
+    shell: &std::ffi::OsStr,
+    interactive: bool,
+    command: &str,
+    cwd: &str,
+) -> std::result::Result<CommandResult, String> {
     #[cfg(windows)]
     let output = {
-        let shell = env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
+        let _ = interactive;
         Command::new(shell)
             .arg("/C")
             .arg(command)
@@ -22,12 +27,20 @@ fn execute(command: &str, cwd: &str) -> std::result::Result<CommandResult, Strin
     };
     #[cfg(not(windows))]
     let output = {
-        let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
-        Command::new(shell)
-            .arg("-c")
-            .arg(command)
-            .current_dir(cwd)
-            .output()
+        let mut shell_command = Command::new(shell);
+        if interactive {
+            shell_command.arg("-i");
+        }
+        shell_command.arg("-c");
+        if interactive {
+            // Print a marker first: interactive shells emit startup warnings
+            // and rc-file noise on stderr before running the command, and the
+            // marker lets us strip all of it locale-independently.
+            shell_command.arg(format!("echo {INTERACTIVE_STDERR_MARKER} >&2\n{command}"));
+        } else {
+            shell_command.arg(command);
+        }
+        shell_command.current_dir(cwd).output()
     };
     let output = output.map_err(|error| error.to_string())?;
     Ok(CommandResult {
@@ -36,6 +49,63 @@ fn execute(command: &str, cwd: &str) -> std::result::Result<CommandResult, Strin
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     })
+}
+
+/// Marker printed to stderr before the real command when retrying in an
+/// interactive shell. Everything up to and including it (shell startup
+/// warnings, rc-file noise) is stripped from the captured stderr.
+const INTERACTIVE_STDERR_MARKER: &str = "__mycmd_stderr_begin__";
+
+/// Exit code 127 with "not found"-style stderr means the command name could
+/// not be resolved: typically a shell function or alias (e.g. zoxide's `z`)
+/// that only exists in interactive shells.
+fn looks_like_unknown_command(result: &CommandResult) -> bool {
+    result.exit_code == Some(127)
+        && (result.stderr.contains("not found") || result.stderr.contains("Unknown command"))
+}
+
+fn strip_interactive_prelude(stderr: &str) -> String {
+    match stderr
+        .lines()
+        .position(|line| line == INTERACTIVE_STDERR_MARKER)
+    {
+        Some(index) => {
+            let mut stripped = stderr
+                .lines()
+                .skip(index + 1)
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !stripped.is_empty() && stderr.ends_with('\n') {
+                stripped.push('\n');
+            }
+            stripped
+        }
+        None => stderr.to_string(),
+    }
+}
+
+fn execute(command: &str, cwd: &str) -> std::result::Result<CommandResult, String> {
+    #[cfg(windows)]
+    {
+        let shell = env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
+        run_shell(&shell, false, command, cwd)
+    }
+    #[cfg(not(windows))]
+    {
+        let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
+        let first = run_shell(&shell, false, command, cwd)?;
+        if looks_like_unknown_command(&first) {
+            // Retry as an interactive shell so ~/.bashrc and friends are
+            // sourced and functions/aliases become available.
+            let second = run_shell(&shell, true, command, cwd)?;
+            Ok(CommandResult {
+                stderr: strip_interactive_prelude(&second.stderr),
+                ..second
+            })
+        } else {
+            Ok(first)
+        }
+    }
 }
 
 #[tauri::command]
@@ -51,9 +121,15 @@ pub async fn run_system_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // execute() reads the SHELL environment variable, so tests that change it
+    // must serialize with every other test that runs commands.
+    static SHELL_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn executes_in_the_requested_directory_and_captures_output() {
+        let _guard = SHELL_LOCK.lock().unwrap();
         let cwd = env::current_dir().unwrap();
         let cwd = cwd.to_str().unwrap();
         let pwd = if cfg!(windows) { "cd" } else { "pwd" };
@@ -65,5 +141,41 @@ mod tests {
         assert!(output.success);
         assert_eq!(output.stdout.trim(), "mycmd-shell-test");
         assert!(output.stderr.is_empty());
+    }
+
+    #[test]
+    fn strips_shell_startup_noise_before_the_marker() {
+        let stderr = "bash: cannot set terminal process group (123): Inappropriate ioctl for device\nbash: no job control in this shell\n__mycmd_stderr_begin__\nboom\n";
+        assert_eq!(strip_interactive_prelude(stderr), "boom\n");
+        assert_eq!(strip_interactive_prelude("plain\n"), "plain\n");
+        assert_eq!(strip_interactive_prelude(""), "");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn retries_unknown_commands_in_an_interactive_shell() {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+        let _guard = SHELL_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join("fake-shell");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\nif [ \"$1\" = \"-i\" ]; then\n  echo interactive-retry\n  exit 0\nfi\necho \"$2: command not found\" >&2\nexit 127\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let previous = env::var_os("SHELL");
+        env::set_var("SHELL", &fake);
+        let result = execute("whatever", dir.path().to_str().unwrap());
+        match previous {
+            Some(value) => env::set_var("SHELL", value),
+            None => env::remove_var("SHELL"),
+        }
+        let result = result.unwrap();
+        assert!(result.success);
+        assert_eq!(result.stdout.trim(), "interactive-retry");
+        assert!(!result.stderr.contains(INTERACTIVE_STDERR_MARKER));
     }
 }
