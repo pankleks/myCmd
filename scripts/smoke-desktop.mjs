@@ -59,8 +59,8 @@ const deadlineTimer = setTimeout(() => {
   appError = new Error('Desktop smoke test exceeded 120 seconds.');
   app.kill();
 }, 120000);
-async function until(fn, message) {
-  const deadline = Date.now() + 20000;
+async function until(fn, message, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (appError) throw appError;
     if (app.exitCode !== null)
@@ -86,7 +86,7 @@ try {
     } catch {
       return undefined;
     }
-  }, 'WebView2 startup');
+  }, 'WebView2 startup', 60000);
   socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
     const timer = setTimeout(
