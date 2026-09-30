@@ -6,16 +6,20 @@ mod config;
 mod error;
 mod filesystem;
 mod operations;
+mod search;
 mod shell;
 mod watcher;
 fn main() {
     tauri::Builder::default()
         .manage(operations::Manager::default())
         .manage(shell::ShellManager::default())
+        .manage(search::SearchManager::default())
         .manage(commands::DirectorySizing::default())
         .manage(watcher::DirectoryWatchers::default())
         .invoke_handler(tauri::generate_handler![
             commands::list_directory,
+            search::search_files,
+            search::cancel_search,
             commands::count_delete_entries,
             archives::list_archive,
             commands::read_text_preview,

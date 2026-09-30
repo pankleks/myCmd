@@ -10,6 +10,9 @@
   import ConflictDialog from './components/ConflictDialog.svelte';
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
+  import SearchDialog from './components/SearchDialog.svelte';
+  import ShortcutsDialog from './components/ShortcutsDialog.svelte';
+  import { cdTarget } from './utils/cdCommand';
   import FileViewerDialog from './components/FileViewerDialog.svelte';
   import FilePreviewPanel from './components/FilePreviewPanel.svelte';
   import {
@@ -27,6 +30,8 @@
     measureDirectory,
     dirSizing,
     cancelDirectorySizing,
+    startSearch,
+    leaveSearch,
     type Side,
     type SelectionMode,
   } from './state/commander.svelte';
@@ -42,6 +47,8 @@
     isLocalPath,
     parentFocus,
     parseLocation,
+    searchSession,
+    cancelSearch,
   } from './filesystem/providers';
   import type { FileEntry } from './filesystem/types';
   import type {
@@ -96,6 +103,16 @@
   let commandError = $state<{ command: string; output: string }>();
   let selectionDialog = $state<{ mode: SelectionMode }>();
   let settingsOpen = $state(false);
+  let shortcutsOpen = $state(false);
+  function showShortcuts() {
+    quickFindClose();
+    shortcutsOpen = true;
+  }
+  function closeShortcuts() {
+    shortcutsOpen = false;
+    void tick().then(focusPanel);
+  }
+  let searchDialog = $state<{ side: Side; folder: string }>();
   let viewer = $state<{
     path: string;
     name: string;
@@ -117,7 +134,11 @@
     commander.activePanel === 'left' ? 'right' : 'left',
   );
   let previewTarget = $derived.by(() => {
-    if (!previewMode || active.loading || !isLocalPath(active.path))
+    if (
+      !previewMode ||
+      active.loading ||
+      (!isLocalPath(active.path) && !searchSession(active.path))
+    )
       return undefined;
     const entry = rows(active)[active.cursor];
     if (
@@ -212,13 +233,44 @@
     settingsOpen = false;
     void tick().then(focusPanel);
   }
+  function requestSearch() {
+    if (
+      !ready ||
+      busy ||
+      commandRunning ||
+      dialog ||
+      selectionDialog ||
+      settingsOpen ||
+      viewer ||
+      error ||
+      searchDialog
+    )
+      return;
+    const location = parseLocation(active.path);
+    const folder =
+      searchSession(active.path)?.root ??
+      (location.kind === 'archive'
+        ? location.archivePath.replace(/[\\/][^\\/]+$/, '')
+        : active.path);
+    quickFindClose();
+    searchDialog = { side: commander.activePanel, folder };
+  }
+  function closeSearchDialog() {
+    searchDialog = undefined;
+    void tick().then(focusPanel);
+  }
+  function submitSearch(folder: string, pattern: string) {
+    const panel = commander[searchDialog!.side];
+    closeSearchDialog();
+    void startSearch(panel, folder, pattern);
+  }
   function closeViewer() {
     viewer = undefined;
     void tick().then(focusPanel);
   }
   function viewCurrentFile() {
     if (!ready || busy || commandRunning || active.loading) return;
-    if (!isLocalPath(active.path)) {
+    if (!isLocalPath(active.path) && !searchSession(active.path)) {
       showError('Archive previews are not supported yet.');
       return;
     }
@@ -262,6 +314,7 @@
       commandRunning ||
       dialog ||
       selectionDialog ||
+      searchDialog ||
       settingsOpen ||
       viewer ||
       conflict ||
@@ -275,8 +328,13 @@
     const opposite =
       commander[commander.activePanel === 'left' ? 'right' : 'left'];
     if (
-      (!isLocalPath(active.path) && action !== 'copy' && action !== 'delete') ||
-      ((action === 'copy' || action === 'move') && !isLocalPath(opposite.path))
+      (!isLocalPath(active.path) &&
+        !searchSession(active.path) &&
+        action !== 'copy' &&
+        action !== 'delete') ||
+      ((action === 'copy' || action === 'move') &&
+        !isLocalPath(opposite.path) &&
+        !searchSession(opposite.path))
     ) {
       showError(
         'Archives support F5 extraction to a local directory and F8 permanent deletion. Other changes are not supported yet.',
@@ -292,12 +350,13 @@
     dialog = {
       action,
       entries,
-      parent: active.path,
-      destination:
-        commander[commander.activePanel === 'left' ? 'right' : 'left'].path,
+      parent: searchSession(active.path)?.root ?? active.path,
+      destination: searchSession(opposite.path)?.root ?? opposite.path,
       side: commander.activePanel,
       permanent:
-        action === 'delete' && (permanent || !isLocalPath(active.path)),
+        action === 'delete' &&
+        (permanent ||
+          (!isLocalPath(active.path) && !searchSession(active.path))),
     };
   }
   async function submit(operation: FileOperation) {
@@ -350,6 +409,15 @@
       return;
     commandInput = '';
     error = '';
+    const target = cdTarget(command, active.path);
+    if (target !== undefined) {
+      const panel = active;
+      await load(panel, target);
+      if (panel.error) showError(panel.error);
+      await tick();
+      focusPanel();
+      return;
+    }
     await commands.run(command, active.path);
   }
   onMount(() => {
@@ -417,6 +485,7 @@
     };
   });
   function previewShortcut(event: KeyboardEvent) {
+    if (shortcutsOpen) return;
     if (
       dialog ||
       selectionDialog ||
@@ -457,10 +526,31 @@
     }
   }
   function keydown(event: KeyboardEvent) {
+    if (shortcutsOpen) return;
+    if (
+      event.key === 'F1' &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      !dialog &&
+      !searchDialog &&
+      !settingsOpen &&
+      !viewer &&
+      !conflict &&
+      !error &&
+      !commandError &&
+      !selectionDialog
+    ) {
+      event.preventDefault();
+      showShortcuts();
+      return;
+    }
     if (
       dialog ||
       selectionDialog ||
       settingsOpen ||
+      searchDialog ||
       viewer ||
       conflict ||
       commandError ||
@@ -470,6 +560,17 @@
     )
       return;
     const target = event.target as HTMLElement;
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      event.key === 'F7'
+    ) {
+      event.preventDefault();
+      requestSearch();
+      return;
+    }
     if (
       event.altKey &&
       !event.ctrlKey &&
@@ -488,6 +589,17 @@
         focusPanel();
         return;
       }
+      return;
+    }
+    if (
+      (event.key === 'Escape' || event.key === 'Backspace') &&
+      searchSession(active.path) &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      event.preventDefault();
+      void leaveSearch(active);
       return;
     }
     if (
@@ -610,6 +722,7 @@
     if (
       event.key === 'Enter' &&
       commandInput.trim() &&
+      isLocalPath(active.path) &&
       ready &&
       !busy &&
       !commandRunning
@@ -752,6 +865,28 @@
         void commands.cancel();
       }}>Cancel command</button
     >{/if}
+  {#if active.loading && searchSession(active.path)}<div
+      class="operation-status"
+      role="status"
+    >
+      <div class="operation-details">
+        <div class="operation-heading">
+          <span class="operation-indicator" aria-hidden="true"></span>Searching
+          files and folders…
+        </div>
+        <div class="operation-metrics">
+          {active.entries.length} matches found
+        </div>
+        <progress aria-label="Search progress"></progress>
+      </div>
+      <button
+        onclick={() => {
+          void cancelSearch(active.path).catch((cause) =>
+            showError(errorMessage(cause)),
+          );
+        }}>Cancel search</button
+      >
+    </div>{/if}
   {#if busy || !ready}
     <div class="operation-status" role="status" aria-live="polite">
       <div class="operation-details">
@@ -818,19 +953,23 @@
     />
   </form>
   {#if preferences.showFunctionBar}<footer>
+      <button onclick={showShortcuts}><kbd>F1</kbd>Help</button>
       {#each actions as [key, action, label]}<button
           disabled={!ready || busy || commandRunning}
           onclick={() => request(action)}><kbd>{key}</kbd>{label}</button
         >{#if key === 'F2'}<button
             disabled={!ready || busy || commandRunning}
             onclick={viewCurrentFile}><kbd>F3</kbd>View</button
+          ><button
+            class:pressed={previewMode}
+            aria-pressed={previewMode}
+            disabled={!ready || busy || commandRunning}
+            onclick={togglePreviewPane}
+            title="Toggle preview pane"><kbd>Shift+F3</kbd>Preview</button
+          >{/if}{#if key === 'F7'}<button
+            disabled={!ready || busy || commandRunning}
+            onclick={requestSearch}><kbd>Alt+F7</kbd>Search</button
           >{/if}{/each}<button
-        class:pressed={previewMode}
-        aria-pressed={previewMode}
-        disabled={!ready || busy || commandRunning}
-        onclick={togglePreviewPane}
-        title="Toggle preview pane"><kbd>Shift+F3</kbd>Preview pane</button
-      ><button
         disabled={!ready || busy || commandRunning}
         onclick={() => {
           quickFindClose();
@@ -840,6 +979,12 @@
     </footer>{/if}
 </main>
 {#if viewer}<FileViewerDialog {...viewer} onclose={closeViewer} />{/if}
+{#if shortcutsOpen}<ShortcutsDialog onclose={closeShortcuts} />{/if}
+{#if searchDialog}<SearchDialog
+    folder={searchDialog.folder}
+    onsubmit={submitSearch}
+    onclose={closeSearchDialog}
+  />{/if}
 {#if dialog}<OperationDialog
     {...dialog}
     onsubmit={submit}

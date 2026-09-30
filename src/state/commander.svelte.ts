@@ -7,6 +7,9 @@ import {
   parseLocation,
   providerFor,
   isLocalPath,
+  searchSessions,
+  searchSession,
+  cancelSearch,
 } from '../filesystem/providers';
 export type Side = 'left' | 'right';
 export function createPanel(): PanelState {
@@ -80,6 +83,7 @@ export async function load(
   path = panel.path || '~',
   focusPath?: string,
 ) {
+  void cancelSearch(panel.path).catch(() => {});
   const revision = ++panel.revision;
   const oldCursor = rows(panel)[panel.cursor]?.path;
   panel.loading = true;
@@ -92,7 +96,16 @@ export async function load(
       !location.directory.endsWith('/')
     )
       location.directory += '/';
-    const result = await providerFor(location).list(location);
+    if (location.kind === 'search') {
+      panel.path = path;
+      panel.parent = searchSession(path)?.returnPath;
+      panel.entries = [];
+      panel.selected = new Set();
+    }
+    const result = await providerFor(location).list(location, (entries) => {
+      if (revision === panel.revision)
+        panel.entries = [...panel.entries, ...entries];
+    });
     if (revision !== panel.revision) return;
     const same = panel.path === result.path;
     panel.path = result.path;
@@ -212,6 +225,17 @@ export function sources(panel: PanelState): Row[] {
 }
 export async function open(panel: PanelState, row?: Row) {
   if (!row || panel.loading) return;
+  const session = searchSession(panel.path);
+  if (session) {
+    if (row.parentEntry) {
+      await load(panel, session.returnPath, session.focusPath);
+      return;
+    }
+    let parent = row.path.replace(/[\\/][^\\/]+[\\/]?$/, '') || '/';
+    if (/^[a-z]:$/i.test(parent)) parent += '\\';
+    await load(panel, parent, row.path);
+    return;
+  }
   const archive = archiveLocation(row);
   if (archive) {
     await load(panel, locationKey(archive));
@@ -234,6 +258,25 @@ export async function open(panel: PanelState, row?: Row) {
     } catch (error) {
       panel.error = errorMessage(error);
     }
+}
+export async function startSearch(
+  panel: PanelState,
+  root: string,
+  pattern: string,
+) {
+  const id = crypto.randomUUID();
+  const previous = searchSession(panel.path);
+  searchSessions.set(id, {
+    root,
+    pattern,
+    returnPath: previous?.returnPath ?? panel.path,
+    focusPath: previous?.focusPath ?? rows(panel)[panel.cursor]?.path,
+  });
+  await load(panel, locationKey({ kind: 'search', sessionId: id }));
+}
+export async function leaveSearch(panel: PanelState) {
+  const session = searchSession(panel.path);
+  if (session) await load(panel, session.returnPath, session.focusPath);
 }
 export function sort(panel: PanelState, column: Column) {
   const current = rows(panel)[panel.cursor]?.path;

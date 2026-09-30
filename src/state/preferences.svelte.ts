@@ -1,4 +1,5 @@
 import { api } from '../filesystem/api';
+import { searchSession } from '../filesystem/providers';
 import {
   buildSavePayload,
   DEFAULT_FILE_FONT_SIZE,
@@ -54,8 +55,17 @@ export async function loadPreferences(): Promise<SavedPaths> {
 
 export async function persistPreferences(): Promise<void> {
   const payload = buildSavePayload({
-    leftPath: commander.left.path ? displayPath(commander.left.path) : null,
-    rightPath: commander.right.path ? displayPath(commander.right.path) : null,
+    leftPath: commander.left.path
+      ? displayPath(
+          searchSession(commander.left.path)?.returnPath ?? commander.left.path,
+        )
+      : null,
+    rightPath: commander.right.path
+      ? displayPath(
+          searchSession(commander.right.path)?.returnPath ??
+            commander.right.path,
+        )
+      : null,
     columns: preferences.columnWidths,
     fileFontSize: preferences.fileFontSize,
     showHidden: preferences.showHidden,

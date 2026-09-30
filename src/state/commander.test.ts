@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileEntry, Listing, PanelState } from '../filesystem/types';
 import { api } from '../filesystem/api';
+import { searchProvider, searchSession } from '../filesystem/providers';
 import { inReactiveRoot } from '../test/reactivity.svelte';
 import {
   commander,
@@ -20,6 +21,8 @@ import {
   sort,
   sources,
   toggle,
+  startSearch,
+  leaveSearch,
 } from './commander.svelte';
 
 vi.mock('../filesystem/api', () => ({
@@ -71,6 +74,64 @@ beforeEach(() => {
   vi.resetAllMocks();
   commander.left = panel();
   commander.right = panel();
+});
+
+describe('search result navigation', () => {
+  it.each(['file', 'directory'] as const)(
+    'Enter locates a %s result in its containing directory',
+    async (type) => {
+      const p = panel();
+      const result = entry('match', {
+        path: '/home/nested/match',
+        type,
+        directoryTarget: type === 'directory',
+      });
+      const listing = vi
+        .spyOn(searchProvider, 'list')
+        .mockImplementation(async (location) => ({
+          path: `search:${location.kind === 'search' ? location.sessionId : ''}`,
+          parent: '/home',
+          entries: [result],
+        }));
+      await startSearch(p, '/home', '*');
+      expect(searchSession(p.path)?.pattern).toBe('*');
+      toggle(p, rows(p)[1]);
+      expect(sources(p)[0].path).toBe(result.path);
+      vi.mocked(api.list).mockResolvedValue({
+        path: '/home/nested',
+        parent: '/home',
+        entries: [result],
+      });
+      await open(p, rows(p)[1]);
+      expect(api.list).toHaveBeenCalledWith('/home/nested');
+      expect(rows(p)[p.cursor].path).toBe(result.path);
+      expect(api.open).not.toHaveBeenCalled();
+      listing.mockRestore();
+    },
+  );
+  it('returns to the original directory and restores its cursor', async () => {
+    const p = panel();
+    const original = entry('original');
+    p.entries = [original];
+    p.cursor = 1;
+    const listing = vi
+      .spyOn(searchProvider, 'list')
+      .mockImplementation(async (location) => ({
+        path: `search:${location.kind === 'search' ? location.sessionId : ''}`,
+        parent: '/home',
+        entries: [],
+      }));
+    await startSearch(p, '/home', '*.exe');
+    vi.mocked(api.list).mockResolvedValue({
+      path: '/home',
+      parent: '/',
+      entries: [original],
+    });
+    await leaveSearch(p);
+    expect(p.path).toBe('/home');
+    expect(rows(p)[p.cursor].path).toBe(original.path);
+    listing.mockRestore();
+  });
 });
 
 describe('sorting and selection', () => {

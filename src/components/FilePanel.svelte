@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fileNameWithoutExtension } from '../utils/fileName';
   import { tick } from 'svelte';
   import Icon from '@iconify/svelte';
   import fileIconData from '../file-icons.generated.json';
@@ -15,7 +16,11 @@
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
   import { displayPath } from '../utils/paths';
-  import { locationLabel, parentFocus } from '../filesystem/providers';
+  import {
+    locationLabel,
+    parentFocus,
+    searchSession,
+  } from '../filesystem/providers';
   import { resizeColumn } from '../utils/resizeColumns';
   import { preferences } from '../state/preferences.svelte';
   import { errorMessage } from '../filesystem/api';
@@ -61,6 +66,7 @@
     Math.min(items.length, start + Math.ceil(height / rowHeight) + 16),
   );
   let active = $derived(commander.activePanel === side);
+  let searchResults = $derived(!!searchSession(panel.path));
   function iconFor(name: string, extension: string) {
     const key =
       filenameIcons[name.toLowerCase()] ??
@@ -179,6 +185,7 @@
   class:active
   class:resizing={resizing !== null}
   class:custom-columns={preferences.columnWidths !== null}
+  class:search-results={searchResults}
   class:panel-hidden={hidden}
   class="panel"
   style:--panel-column-template={columnTemplate}
@@ -220,7 +227,7 @@
         spellcheck="false"
         onkeydown={(e) => {
           if (e.key === 'Escape') {
-            draft = displayPath(panel.path);
+            draft = displayPath(locationLabel(panel.path));
             scroller.focus();
           }
         }}
@@ -259,7 +266,7 @@
               : ' ▾'
             : ''}</button
         >
-        {#if index < columns.length - 1}
+        {#if index < columns.length - 1 && !searchResults}
           <button
             type="button"
             class="column-resizer"
@@ -277,6 +284,9 @@
         {/if}
       </div>
     {/each}
+    {#if searchResults}<div class="column-heading search-location-heading">
+        Location
+      </div>{/if}
   </div>
   <div
     class="file-list"
@@ -341,7 +351,9 @@
                 height="16"
               />
             {/if}</span
-          >{entry.type === 'directory' ? `[${entry.name}]` : entry.name}</span
+          >{entry.type === 'directory'
+            ? `[${entry.name}]`
+            : fileNameWithoutExtension(entry.name, entry.extension)}</span
         >
         <span>{entry.type === 'directory' ? '' : entry.extension}</span>
         <span class="size"
@@ -356,6 +368,11 @@
               : bytes(entry.size)}</span
         >
         <span>{entry.parentEntry ? '' : date(entry.modified)}</span>
+        {#if searchResults}<span title={entry.path}
+            >{entry.parentEntry
+              ? ''
+              : displayPath(entry.path.replace(/[\\/][^\\/]+$/, ''))}</span
+          >{/if}
       </div>
     {/each}
     <div

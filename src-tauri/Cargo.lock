@@ -2086,6 +2086,7 @@ dependencies = [
  "dirs 6.0.0",
  "filetime",
  "gif",
+ "glob",
  "imagesize",
  "libc",
  "notify",

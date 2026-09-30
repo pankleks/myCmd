@@ -64,7 +64,7 @@ main {
 .panels {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 7px;
+  gap: 8px;
   flex: 1;
   min-height: 0;
 }
@@ -119,6 +119,18 @@ main {
       minmax(170px, 1.25fr)
   );
   align-items: center;
+}
+.panel.search-results .columns,
+.panel.search-results .file-row {
+  grid-template-columns: minmax(80px, 1fr) 46px 72px 170px minmax(100px, 1.2fr);
+}
+.search-location-heading {
+  padding: 5px 8px;
+  font-size: 14px;
+  color: #f0f0f0;
+}
+dialog label + label {
+  margin-top: 14px;
 }
 .columns {
   background: #1c222b;
@@ -409,13 +421,24 @@ main {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  margin-top: 5px;
-  margin-bottom: 6px;
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 .command-line input {
   flex: 1;
   height: 32px;
   font-family: Consolas, monospace;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+}
+.command-line:last-child {
+  margin-bottom: 0;
+}
+.command-line input:focus-visible {
+  outline: none;
+  background: #252d3b;
 }
 .error-command {
   font-family: Consolas, monospace;
@@ -436,15 +459,23 @@ main {
 }
 footer {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 6px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 footer button {
   height: 38px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 12px;
+  white-space: nowrap;
   display: flex;
   justify-content: center;
-  gap: 10px;
+  gap: 6px;
   align-items: center;
+}
+footer kbd {
+  flex-shrink: 0;
 }
 footer button.pressed {
   background: #365b97;
@@ -465,6 +496,33 @@ dialog {
 }
 dialog::backdrop {
   background: #090e188c;
+}
+.shortcuts-dialog {
+  width: 760px;
+  max-height: 90vh;
+}
+.shortcuts-list {
+  max-height: 65vh;
+  overflow: auto;
+}
+.shortcuts-list table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.shortcuts-list th,
+.shortcuts-list td {
+  padding: 7px 10px;
+  vertical-align: top;
+}
+.shortcuts-list tr:nth-child(even) {
+  background: #202731;
+}
+.shortcuts-list th {
+  width: 38%;
+}
+.shortcuts-list kbd {
+  white-space: normal;
 }
 dialog h2 {
   font-size: 19px;

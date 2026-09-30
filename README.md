@@ -43,6 +43,7 @@ Po takim buildzie aplikacja znajduje się w `src-tauri/target/debug/mycmd.exe`.
 | Tab                               | Drugi panel                                                                 |
 | Alt+litera                        | Szybkie wyszukiwanie w aktywnym panelu (Esc zamyka)                         |
 | Alt+F1 / Alt+F2                   | Wybór dysku w lewym / prawym panelu                                         |
+| Alt+F7                            | Szukaj plików i katalogów według nazwy (glob), rekursywnie                  |
 | Space / Insert                    | Zaznaczenie (Insert przesuwa kursor; spacja na katalogu liczy jego rozmiar) |
 | *                                 | Odwróć zaznaczenie bieżącej listy                                           |
 | + / -                             | Dodaj / usuń elementy pasujące do maski glob (domyślnie `*.*`)              |
@@ -79,6 +80,8 @@ Animacja jest obsługiwana tylko w GIF: maksymalnie 100 klatek oraz 64 miliony p
 Podgląd obrazów (F3 lub panel Shift+F3) i lokalnych obrazów w Markdown ma limity na pojedynczy plik: 4 MiB danych, 16 milionów pikseli oraz 16384 piksele na każdy wymiar. Wymiary są odczytywane z nagłówka bez dekodowania całego obrazu. Uszkodzone lub nieczytelne nagłówki są odrzucane. Są to ograniczenia rozmiaru obrazu, nie pełny limit pamięci WebView ani liczby klatek animacji; plik odrzucony można otworzyć w aplikacji systemowej.
 
 ## Archiwa i dostawcy zawartości
+
+Alt+F7 (również przycisk Search na dolnym pasku) otwiera wyszukiwanie według nazwy pliku lub katalogu. Domyślna maska to `*.*`, a katalog to bieżący katalog panelu. Wyszukiwanie lokalne jest rekursywne, bez rozróżniania wielkości liter, bez podążania za dowiązaniami katalogów i bez otwierania archiwów. Wyniki trafiają do panelu źródłowego z kolumną Location. Enter otwiera katalog zawierający wynik i ustawia na nim kursor; Esc/Backspace wraca do katalogu sprzed wyszukiwania. Selekcja, kopiowanie, przenoszenie, zmiana nazwy i usuwanie działają na rzeczywistych ścieżkach wyników. Operacje pytające o katalog docelowy domyślnie używają rzeczywistego katalogu wyszukiwania, nie wirtualnej listy. Ctrl+R ponawia wyszukiwanie. Wyniki pojawiają się partiami; wyszukiwanie można anulować. Limit to 50 000 wyników, a błędy odczytu i niepełne wyniki są sygnalizowane w panelu.
 
 Enter lub dwuklik na lokalnym pliku `.zip` / `.7z` otwiera jego zawartość w panelu. Katalogi wewnątrz archiwum działają jak zwykłe katalogi; `..` i Backspace wracają wyżej, a z korzenia archiwum do katalogu na dysku. F5 wyodrębnia plik pod kursorem lub wszystkie zaznaczone pliki/katalogi do lokalnego katalogu w drugim panelu (cel można zmienić w dialogu). Ekstrakcja zachowuje zawartość katalogów, obsługuje konflikty i anulowanie; wykorzystuje prywatny katalog tymczasowy i limit 8 GiB rozpakowanych danych na operację. Archiwum pozostaje niezmienione. Otwieranie plików, podgląd i modyfikacje archiwów nie są jeszcze obsługiwane. Nie trzeba instalować 7-Zip. Archiwa wymagające hasła nie są obsługiwane przy ekstrakcji.
 

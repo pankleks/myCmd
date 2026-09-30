@@ -1,4 +1,5 @@
-import { commander, load, rows } from './commander.svelte';
+import { commander, load, rows, startSearch } from './commander.svelte';
+import { searchSession } from '../filesystem/providers';
 import { preferences, setShowHidden } from './preferences.svelte';
 import {
   DEFAULT_FILE_FONT_SIZE,
@@ -41,7 +42,9 @@ export function handleControlShortcut(
       if (active.path) {
         const other =
           commander[commander.activePanel === 'left' ? 'right' : 'left'];
-        void load(other, active.path, rows(active)[active.cursor]?.path);
+        const session = searchSession(active.path);
+        if (session) void startSearch(other, session.root, session.pattern);
+        else void load(other, active.path, rows(active)[active.cursor]?.path);
       }
       break;
     case 'l':
