@@ -1,4 +1,5 @@
 export type ViewerLanguage =
+  | 'xml'
   | 'markdown'
   | 'json'
   | 'javascript'
@@ -28,6 +29,13 @@ export function viewerLanguage(extension: string): ViewerLanguage {
   const normalized = extension.toLowerCase().replace(/^\./, '');
   if (isMarkdownFile(normalized)) return 'markdown';
   switch (normalized) {
+    case 'xml':
+    case 'xsd':
+    case 'xsl':
+    case 'xslt':
+    case 'svg':
+    case 'xaml':
+      return 'xml';
     case 'svelte':
       return 'svelte';
     case 'json':

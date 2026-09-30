@@ -2,6 +2,7 @@
   import { onDestroy, onMount, tick, type Snippet } from 'svelte';
   import { api, errorMessage } from '../filesystem/api';
   import { isImageFile, isMarkdownFile } from '../utils/viewer';
+  import { formatJsonPreview } from '../utils/jsonPreview';
 
   let {
     path,
@@ -30,15 +31,20 @@
   let editorError = $state('');
   let openError = $state('');
   let opening = $state(false);
+  let formatError = $state('');
   let sourceContent = $state<string>();
   let previewHtml = $state('');
   let imagePreview = $state('');
   let isMarkdown = $derived(isMarkdownFile(extension));
   let isImage = $derived(isImageFile(extension));
+  let isJson = $derived(
+    ['json', 'jsonc'].includes(extension.toLowerCase().replace(/^\./, '')),
+  );
   let mode = $state<'preview' | 'source'>('preview');
   let disposed = false;
-  let editor:
-    ReturnType<(typeof import('../monaco'))['createViewerEditor']> | undefined;
+  let editor = $state.raw<
+    ReturnType<(typeof import('../monaco'))['createViewerEditor']> | undefined
+  >();
 
   onMount(() => {
     void initialize();
@@ -110,6 +116,22 @@
     }
   }
 
+  function autoFormat() {
+    if (!editor || loading || editorLoading || sourceContent === undefined)
+      return;
+    formatError = '';
+    try {
+      const formatted = formatJsonPreview(
+        sourceContent,
+        extension.toLowerCase().replace(/^\./, '') === 'jsonc',
+      );
+      editor.setValue(formatted);
+      sourceContent = formatted;
+    } catch (cause) {
+      formatError = errorMessage(cause);
+    }
+  }
+
   async function openInDefaultApp() {
     if (disposed || opening) return;
     opening = true;
@@ -135,6 +157,15 @@
       <span title={path}>{name}</span>
     </div>
     <div class="viewer-toolbar">
+      {#if isJson && !error && !editorError}
+        <button
+          type="button"
+          class="viewer-toggle"
+          title="Format preview only; the file is not changed"
+          disabled={loading || editorLoading || !editor}
+          onclick={autoFormat}>Auto-format</button
+        >
+      {/if}
       {#if isMarkdown && !error}<button
           type="button"
           class="viewer-toggle"
@@ -146,6 +177,7 @@
       {@render headerActions?.()}
     </div>
   </div>
+  {#if formatError}<div role="alert">{formatError}</div>{/if}
   <div class="viewer-editor-shell">
     {#if error || editorError}
       <div class="viewer-message" role="alert">

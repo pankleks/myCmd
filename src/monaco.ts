@@ -8,6 +8,7 @@ import 'monaco-editor/languages/definitions/rust/register.js';
 import 'monaco-editor/languages/definitions/cpp/register.js';
 import 'monaco-editor/languages/definitions/typescript/register.js';
 import 'monaco-editor/languages/definitions/css/register.js';
+import 'monaco-editor/languages/definitions/xml/register.js';
 import 'monaco-editor/languages/features/json/register.js';
 import '../node_modules/monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css';
 import '../node_modules/monaco-editor/min/vs/editor/editor.main.css';

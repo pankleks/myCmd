@@ -36,7 +36,7 @@
     scheduleSave,
     setShowHidden,
   } from './state/preferences.svelte';
-  import { handleControlShortcut } from './state/controlShortcuts';
+  import { handleControlShortcut, swapPanels } from './state/controlShortcuts';
   import { api, errorMessage } from './filesystem/api';
   import type { FileEntry } from './filesystem/types';
   import type {
@@ -375,6 +375,22 @@
       event.isComposing
     )
       return;
+    if (
+      event.key === 'Tab' &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat && ready && !busy && !commandRunning) {
+        quickFindClose();
+        swapPanels();
+        void tick().then(focusPanel);
+      }
+      return;
+    }
     if (
       event.key === 'F3' &&
       event.shiftKey &&

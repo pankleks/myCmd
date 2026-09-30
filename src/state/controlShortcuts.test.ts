@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { commander, createPanel, load, rows } from './commander.svelte';
 import { preferences } from './preferences.svelte';
-import { handleControlShortcut } from './controlShortcuts';
+import { handleControlShortcut, swapPanels } from './controlShortcuts';
 import {
   DEFAULT_FILE_FONT_SIZE,
   MAX_FILE_FONT_SIZE,
@@ -39,6 +39,28 @@ beforeEach(() => {
   preferences.fileFontSize = DEFAULT_FILE_FONT_SIZE;
 });
 describe('panel control shortcuts', () => {
+  it.each(['left', 'right'] as const)(
+    'swaps complete panel state while retaining the active directory from %s',
+    (side) => {
+      commander.activePanel = side;
+      commander.left.path = '/left';
+      commander.right.path = '/right';
+      commander.left.selected = new Set(['/left/file']);
+      commander.left.cursor = 3;
+      const left = commander.left;
+      const right = commander.right;
+      const active = commander[side];
+      swapPanels();
+      expect(commander.left).toBe(right);
+      expect(commander.right).toBe(left);
+      expect(commander[commander.activePanel]).toBe(active);
+      expect(commander.right.selected.has('/left/file')).toBe(true);
+      expect(commander.right.cursor).toBe(3);
+      swapPanels();
+      expect(commander.left).toBe(left);
+      expect(commander.activePanel).toBe(side);
+    },
+  );
   it('selects visible entries in the active panel without selecting the parent', () => {
     commander.left.path = '/files';
     commander.left.parent = '/';

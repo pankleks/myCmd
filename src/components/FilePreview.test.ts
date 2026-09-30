@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   editor: vi.fn(),
   dispose: vi.fn(),
   focus: vi.fn(),
+  setValue: vi.fn(),
 }));
 vi.mock('../filesystem/api', () => ({
   api: {
@@ -47,7 +48,11 @@ async function settle(check: () => void) {
 }
 beforeEach(() => {
   vi.resetAllMocks();
-  mocks.editor.mockReturnValue({ dispose: mocks.dispose, focus: mocks.focus });
+  mocks.editor.mockReturnValue({
+    dispose: mocks.dispose,
+    focus: mocks.focus,
+    setValue: mocks.setValue,
+  });
   target = document.createElement('div');
   document.body.append(target);
 });
@@ -58,6 +63,34 @@ afterEach(async () => {
 });
 
 describe('FilePreview', () => {
+  it('formats JSON only in the preview editor', async () => {
+    mocks.text.mockResolvedValue('{"a":1}');
+    preview('json');
+    await settle(() =>
+      expect(target.querySelector<HTMLButtonElement>('button')?.disabled).toBe(
+        false,
+      ),
+    );
+    target.querySelector<HTMLButtonElement>('button')!.click();
+    expect(mocks.setValue).toHaveBeenCalledWith('{\n  "a": 1\n}');
+    expect(mocks.text).toHaveBeenCalledOnce();
+  });
+  it('keeps invalid JSON visible and reports formatting errors', async () => {
+    mocks.text.mockResolvedValue('{bad}');
+    preview('json');
+    await settle(() =>
+      expect(target.querySelector<HTMLButtonElement>('button')?.disabled).toBe(
+        false,
+      ),
+    );
+    target.querySelector<HTMLButtonElement>('button')!.click();
+    flushSync();
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+      'Cannot format invalid JSON',
+    );
+    expect(mocks.setValue).not.toHaveBeenCalled();
+    expect(mocks.dispose).not.toHaveBeenCalled();
+  });
   it('shows the full path only as the filename tooltip', () => {
     mocks.image.mockReturnValue(new Promise(() => {}));
     preview();

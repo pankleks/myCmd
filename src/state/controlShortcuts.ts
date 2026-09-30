@@ -6,6 +6,13 @@ import {
   MIN_FILE_FONT_SIZE,
 } from '../utils/config';
 
+export function swapPanels() {
+  const left = commander.left;
+  commander.left = commander.right;
+  commander.right = left;
+  commander.activePanel = commander.activePanel === 'left' ? 'right' : 'left';
+}
+
 /** The caller owns modifier/typing guards; this module owns panel-state actions. */
 export function handleControlShortcut(
   event: Pick<KeyboardEvent, 'key' | 'preventDefault'>,

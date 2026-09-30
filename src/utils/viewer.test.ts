@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { isImageFile, isMarkdownFile, viewerLanguage } from './viewer';
 
 describe('viewerLanguage', () => {
+  it('uses XML highlighting for XML and related document formats', () => {
+    for (const extension of [
+      'xml',
+      '.XML',
+      'xsd',
+      'xsl',
+      'xslt',
+      'svg',
+      'xaml',
+    ])
+      expect(viewerLanguage(extension)).toBe('xml');
+  });
   it('uses Svelte highlighting for component files', () => {
     for (const extension of ['svelte', '.svelte', 'SVELTE'])
       expect(viewerLanguage(extension)).toBe('svelte');
