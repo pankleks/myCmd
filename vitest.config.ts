@@ -11,6 +11,7 @@ export default defineConfig({
       provider: 'v8',
       include: [
         'src/state/commander.svelte.ts',
+        'src/state/controlShortcuts.ts',
         'src/operations/controller.svelte.ts',
         'src/operations/commandController.svelte.ts',
         'src/utils/markdownPreview.ts',

@@ -36,11 +36,7 @@
     scheduleSave,
     setShowHidden,
   } from './state/preferences.svelte';
-  import {
-    DEFAULT_FILE_FONT_SIZE,
-    MAX_FILE_FONT_SIZE,
-    MIN_FILE_FONT_SIZE,
-  } from './utils/config';
+  import { handleControlShortcut } from './state/controlShortcuts';
   import { api, errorMessage } from './filesystem/api';
   import type { FileEntry } from './filesystem/types';
   import type {
@@ -492,60 +488,13 @@
       return;
     }
     if (ctrl) {
-      switch (event.key.toLowerCase()) {
-        case 'a':
-          event.preventDefault();
-          active.selected = new Set(
-            rows(active)
-              .filter((e) => !e.parentEntry)
-              .map((e) => e.path),
-          );
-          break;
-        case 'h':
-          event.preventDefault();
-          setShowHidden(!preferences.showHidden);
-          break;
-        case 'r':
-          event.preventDefault();
-          void load(active);
-          break;
-        case 'i':
-          event.preventDefault();
-          if (active.path) {
-            const other =
-              commander[commander.activePanel === 'left' ? 'right' : 'left'];
-            void load(other, active.path, rows(active)[active.cursor]?.path);
-          }
-          break;
-        case 'l':
-          event.preventDefault();
-          (
-            document.querySelector(
-              '.panel.active .pathbar input',
-            ) as HTMLInputElement
-          )?.select();
-          break;
-        case '+':
-        case '=':
-          event.preventDefault();
-          preferences.fileFontSize = Math.min(
-            MAX_FILE_FONT_SIZE,
-            preferences.fileFontSize + 1,
-          );
-          break;
-        case '-':
-        case '_':
-          event.preventDefault();
-          preferences.fileFontSize = Math.max(
-            MIN_FILE_FONT_SIZE,
-            preferences.fileFontSize - 1,
-          );
-          break;
-        case '0':
-          event.preventDefault();
-          preferences.fileFontSize = DEFAULT_FILE_FONT_SIZE;
-          break;
-      }
+      handleControlShortcut(event, () => {
+        (
+          document.querySelector(
+            '.panel.active .pathbar input',
+          ) as HTMLInputElement
+        )?.select();
+      });
       return;
     }
     const altGraph =
