@@ -98,7 +98,9 @@ fn search(
                     Err(_) => result.skipped += 1,
                 }
             }
-            if pending.len() >= 128 || (!pending.is_empty() && last_batch.elapsed().as_millis() >= 200) {
+            if pending.len() >= 128
+                || (!pending.is_empty() && last_batch.elapsed().as_millis() >= 200)
+            {
                 batch(std::mem::take(&mut pending));
                 last_batch = std::time::Instant::now();
             }

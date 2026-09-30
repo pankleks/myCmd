@@ -8,7 +8,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-pub const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
+pub const MAX_TEXT_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_PIXELS: usize = 16_000_000;
 pub const MAX_IMAGE_PREVIEW_DIMENSION: usize = 16_384;
@@ -93,7 +93,7 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
     if metadata.len() > MAX_TEXT_PREVIEW_BYTES {
         return Err(FsError::new(
             "file_too_large",
-            "Files larger than 2 MiB cannot be previewed",
+            "Files larger than 8 MiB cannot be previewed",
         ));
     }
 
@@ -105,8 +105,57 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
     if content.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
         return Err(FsError::new(
             "file_too_large",
-            "Files larger than 2 MiB cannot be previewed",
+            "Files larger than 8 MiB cannot be previewed",
         ));
+    }
+    let utf16 = if content.starts_with(&[0xff, 0xfe]) {
+        Some((&content[2..], true))
+    } else if content.starts_with(&[0xfe, 0xff]) {
+        Some((&content[2..], false))
+    } else if content.len() >= 4 && content.len() % 2 == 0 {
+        // Recognize BOM-less UTF-16 conservatively: ASCII text has a zero
+        // high byte in almost every code unit, but no zero low bytes.
+        let pairs = content.len() / 2;
+        let little = content.chunks_exact(2).filter(|p| p[1] == 0).count();
+        let big = content.chunks_exact(2).filter(|p| p[0] == 0).count();
+        if little * 10 >= pairs * 9 && content.chunks_exact(2).all(|p| p[0] != 0) {
+            Some((&content[..], true))
+        } else if big * 10 >= pairs * 9 && content.chunks_exact(2).all(|p| p[1] != 0) {
+            Some((&content[..], false))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if let Some((bytes, little_endian)) = utf16 {
+        if bytes.len() % 2 != 0 {
+            return Err(FsError::new(
+                "invalid_encoding",
+                "File is not valid UTF-16 text",
+            ));
+        }
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|p| {
+                if little_endian {
+                    u16::from_le_bytes([p[0], p[1]])
+                } else {
+                    u16::from_be_bytes([p[0], p[1]])
+                }
+            })
+            .collect();
+        let text = String::from_utf16(&units)
+            .map_err(|_| FsError::new("invalid_encoding", "File is not valid UTF-16 text"))?;
+        if text.chars().any(|c| {
+            c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{1b}' | '\u{8}' | '\u{c}')
+        }) {
+            return Err(FsError::new(
+                "binary_file",
+                "Binary files cannot be previewed as text",
+            ));
+        }
+        return Ok(text);
     }
     if content.contains(&0) {
         return Err(FsError::new(
@@ -967,7 +1016,7 @@ mod tests {
     fn read_text_preview_rejects_invalid_utf8() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("sample.txt");
-        fs::write(&path, [0xff, 0xfe]).unwrap();
+        fs::write(&path, [0xff, 0x80]).unwrap();
         let error = read_text_preview(&path).unwrap_err();
         assert_eq!(error.code, "invalid_encoding");
     }
@@ -980,6 +1029,86 @@ mod tests {
         file.set_len(MAX_TEXT_PREVIEW_BYTES + 1).unwrap();
         let error = read_text_preview(&path).unwrap_err();
         assert_eq!(error.code, "file_too_large");
+    }
+
+    #[test]
+    fn read_text_preview_decodes_utf16_logs() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("application.log");
+        for little in [true, false] {
+            for bom in [true, false] {
+                let text = "2026-09-30 \u{1b}[32mINFO\u{1b}[0m Started\r\nNext line\tOK\n";
+                let mut bytes = Vec::new();
+                if bom {
+                    bytes.extend(if little { [0xff, 0xfe] } else { [0xfe, 0xff] });
+                }
+                for unit in text.encode_utf16() {
+                    bytes.extend(if little {
+                        unit.to_le_bytes()
+                    } else {
+                        unit.to_be_bytes()
+                    });
+                }
+                fs::write(&path, bytes).unwrap();
+                assert_eq!(read_text_preview(&path).unwrap(), text);
+            }
+        }
+        let text = "Log: café 日本語 😀\n";
+        let mut bytes = vec![0xff, 0xfe];
+        for unit in text.encode_utf16() {
+            bytes.extend(unit.to_le_bytes());
+        }
+        fs::write(&path, bytes).unwrap();
+        assert_eq!(read_text_preview(&path).unwrap(), text);
+    }
+
+    #[test]
+    fn read_text_preview_rejects_invalid_utf16_and_binary_controls() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.log");
+        for bytes in [vec![0xff, 0xfe, 65], vec![0xff, 0xfe, 0, 0xd8]] {
+            fs::write(&path, bytes).unwrap();
+            assert_eq!(
+                read_text_preview(&path).unwrap_err().code,
+                "invalid_encoding"
+            );
+        }
+        fs::write(&path, [0xff, 0xfe, 0, 0]).unwrap();
+        assert_eq!(read_text_preview(&path).unwrap_err().code, "binary_file");
+    }
+
+    #[test]
+    fn read_text_preview_accepts_large_utf16_terminal_logs() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("large.log");
+        let text = "\u{1b}[32mINFO\u{1b}[0m Log output\r\n".repeat(60_000);
+        let mut bytes = vec![0xff, 0xfe];
+        for unit in text.encode_utf16() {
+            bytes.extend(unit.to_le_bytes());
+        }
+        assert!(bytes.len() > 2 * 1024 * 1024);
+        fs::write(&path, bytes).unwrap();
+        assert_eq!(read_text_preview(&path).unwrap(), text);
+    }
+
+    #[test]
+    #[ignore = "Set MYCMD_LOG_TEST_DIR to validate external log fixtures"]
+    fn read_text_preview_external_logs() {
+        let directory = std::env::var("MYCMD_LOG_TEST_DIR").expect("Set MYCMD_LOG_TEST_DIR");
+        let mut count = 0;
+        for item in fs::read_dir(directory).unwrap() {
+            let path = item.unwrap().path();
+            if path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
+            {
+                let text = read_text_preview(&path)
+                    .unwrap_or_else(|e| panic!("{}: {:?}", path.display(), e));
+                assert!(!text.is_empty(), "{}", path.display());
+                count += 1;
+            }
+        }
+        assert!(count > 0, "No log fixtures found");
     }
 
     #[test]
