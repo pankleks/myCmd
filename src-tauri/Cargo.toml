@@ -21,6 +21,8 @@ imagesize = "0.15"
 gif = { version = "0.14", default-features = false, features = ["std"] }
 tempfile = "3"
 notify = "8"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+sevenz-rust2 = "0.23"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

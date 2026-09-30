@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod archives;
 mod cancellation;
 mod commands;
 mod config;
@@ -15,6 +16,8 @@ fn main() {
         .manage(watcher::DirectoryWatchers::default())
         .invoke_handler(tauri::generate_handler![
             commands::list_directory,
+            commands::count_delete_entries,
+            archives::list_archive,
             commands::read_text_preview,
             commands::read_image_preview,
             commands::read_markdown_image,

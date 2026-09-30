@@ -2,6 +2,11 @@
   import { onMount, tick } from 'svelte';
   import type { FileEntry } from '../filesystem/types';
   import type { FileOperation } from '../operations/types';
+  import { isLocalPath } from '../filesystem/providers';
+  import {
+    countDeleteEntries,
+    type DeleteCounts,
+  } from '../filesystem/deleteCounts';
   export type Action =
     'copy' | 'move' | 'rename' | 'createDirectory' | 'delete';
   let {
@@ -36,6 +41,8 @@
   );
   let value = $state('');
   let dialog: HTMLDialogElement;
+  let counts = $state<DeleteCounts>();
+  let countFailed = $state(false);
   onMount(() => {
     value =
       action === 'copy' || action === 'move'
@@ -45,6 +52,19 @@
           : '';
     dialog.showModal();
     void tick().then(() => dialog.querySelector('input')?.select());
+    let disposed = false;
+    if (action === 'delete') {
+      void countDeleteEntries(entries, () => disposed)
+        .then((result) => {
+          if (!disposed) counts = result;
+        })
+        .catch(() => {
+          if (!disposed) countFailed = true;
+        });
+    }
+    return () => {
+      disposed = true;
+    };
   });
   function submit() {
     const paths = entries.map((e) => e.path);
@@ -78,22 +98,31 @@
       {#if permanent}
         <p>Delete {entries.length} items permanently?</p>
         <p>
-          {entries.filter((e) => e.type === 'directory').length} folders, {entries.filter(
-            (e) => e.type !== 'directory',
-          ).length} files / links.
+          {#if counts}{counts.folders} folders, {counts.files} files / links (including
+            all children).
+          {:else if countFailed}Unable to count all contents.
+          {:else}Counting contents…{/if}
         </p>
         <p class="danger-text">
           Folders and all their contents will be deleted. This cannot be undone.
         </p>
+        {#if !isLocalPath(parent)}<p>
+            The archive will be rewritten. Deleted entries do not go to the
+            Recycle Bin.
+          </p>{/if}
       {:else}
         <p>Move {entries.length} items to the Recycle Bin?</p>
         <p>
-          {entries.filter((e) => e.type === 'directory').length} folders, {entries.filter(
-            (e) => e.type !== 'directory',
-          ).length} files / links.
+          {#if counts}{counts.folders} folders, {counts.files} files / links (including
+            all children).
+          {:else if countFailed}Unable to count all contents.
+          {:else}Counting contents…{/if}
         </p>
         <p>You can restore them from the Recycle Bin.</p>
       {/if}
+      {#if counts?.skipped}<p class="danger-text">
+          Count is incomplete: {counts.skipped} entries could not be read.
+        </p>{/if}
     {:else}
       {#if action !== 'createDirectory'}<p>
           {entries.length === 1

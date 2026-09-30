@@ -1,4 +1,5 @@
 export interface FileEntry {
+  resource?: import('./providers').PanelLocation;
   name: string;
   path: string;
   type: 'file' | 'directory' | 'symlink';

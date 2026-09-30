@@ -15,6 +15,7 @@
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
   import { displayPath } from '../utils/paths';
+  import { locationLabel, parentFocus } from '../filesystem/providers';
   import { resizeColumn } from '../utils/resizeColumns';
   import { preferences } from '../state/preferences.svelte';
   import { errorMessage } from '../filesystem/api';
@@ -68,7 +69,7 @@
     return fileIcons[key] ?? fileIcons['default-file'];
   }
   $effect(() => {
-    draft = displayPath(panel.path);
+    draft = displayPath(locationLabel(panel.path));
   });
   $effect(() => {
     items.length;
@@ -206,7 +207,10 @@
       onsubmit={async (e) => {
         e.preventDefault();
         commander.activePanel = side;
-        await load(panel, draft);
+        await load(
+          panel,
+          draft === displayPath(locationLabel(panel.path)) ? panel.path : draft,
+        );
         if (!panel.error) scroller.focus();
       }}
     >
@@ -227,7 +231,7 @@
       disabled={!panel.parent || panel.loading}
       onclick={() => {
         commander.activePanel = side;
-        void load(panel, panel.parent!, panel.path);
+        void load(panel, panel.parent!, parentFocus(panel.path));
       }}>↑</button
     >
   </div>

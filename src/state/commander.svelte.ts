@@ -1,6 +1,13 @@
 import { api, errorMessage } from '../filesystem/api';
 import type { Column, FileEntry, PanelState, Root } from '../filesystem/types';
 import { globToRegExp } from '../utils/glob';
+import {
+  archiveLocation,
+  locationKey,
+  parseLocation,
+  providerFor,
+  isLocalPath,
+} from '../filesystem/providers';
 export type Side = 'left' | 'right';
 export function createPanel(): PanelState {
   const state: PanelState = $state({
@@ -78,7 +85,14 @@ export async function load(
   panel.loading = true;
   panel.error = undefined;
   try {
-    const result = await api.list(path);
+    const location = parseLocation(path);
+    if (
+      location.kind === 'archive' &&
+      location.directory &&
+      !location.directory.endsWith('/')
+    )
+      location.directory += '/';
+    const result = await providerFor(location).list(location);
     if (revision !== panel.revision) return;
     const same = panel.path === result.path;
     panel.path = result.path;
@@ -158,6 +172,7 @@ export async function cancelDirectorySizing() {
 export async function measureDirectory(panel: PanelState, row?: Row) {
   if (dirSizing.cancelling) return;
   if (!row || row.parentEntry || row.type !== 'directory') return;
+  if (!isLocalPath(row.path)) return;
   if (measuredDirectories.has(row)) return;
   const revision = panel.revision;
   let pending = sizingInFlight.get(row.path);
@@ -197,10 +212,24 @@ export function sources(panel: PanelState): Row[] {
 }
 export async function open(panel: PanelState, row?: Row) {
   if (!row || panel.loading) return;
-  if (row.directoryTarget)
-    await load(panel, row.path, row.parentEntry ? panel.path : undefined);
-  else
+  const archive = archiveLocation(row);
+  if (archive) {
+    await load(panel, locationKey(archive));
+    return;
+  }
+  if (row.directoryTarget) {
+    const current = parseLocation(panel.path);
+    const focus =
+      row.parentEntry && current.kind === 'archive' && !current.directory
+        ? current.archivePath
+        : row.parentEntry
+          ? panel.path
+          : undefined;
+    await load(panel, row.path, focus);
+  } else
     try {
+      if (!isLocalPath(row.path))
+        throw new Error('Opening archived files is not supported yet.');
       await api.open(row.path);
     } catch (error) {
       panel.error = errorMessage(error);

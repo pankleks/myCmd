@@ -1,5 +1,18 @@
 import type { FileEntry } from '../filesystem/types';
 export type FileOperation =
+  | {
+      type: 'deleteArchive';
+      archivePath: string;
+      directory: string;
+      members: string[];
+    }
+  | {
+      type: 'extract';
+      archivePath: string;
+      directory: string;
+      members: string[];
+      destination: string;
+    }
   | { type: 'copy' | 'move'; sources: string[]; destination: string }
   | { type: 'delete'; sources: string[]; permanent: boolean }
   | { type: 'rename'; path: string; name: string }

@@ -19,6 +19,19 @@ use tauri::{AppHandle, Emitter};
 #[derive(Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Operation {
+    #[serde(rename_all = "camelCase")]
+    DeleteArchive {
+        archive_path: PathBuf,
+        directory: String,
+        members: Vec<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Extract {
+        archive_path: PathBuf,
+        directory: String,
+        members: Vec<String>,
+        destination: PathBuf,
+    },
     Copy {
         sources: Vec<PathBuf>,
         destination: PathBuf,
@@ -528,6 +541,32 @@ impl Worker {
     }
     fn run(&mut self, op: Operation) -> Result<()> {
         match op {
+            Operation::DeleteArchive {
+                archive_path,
+                directory,
+                members,
+            } => {
+                crate::archives::delete_selected(&archive_path, &directory, &members, || {
+                    self.check()
+                })?;
+            }
+            Operation::Extract {
+                archive_path,
+                directory,
+                members,
+                destination,
+            } => {
+                let staging =
+                    tempfile::tempdir().map_err(|e| FsError::new("io_error", e.to_string()))?;
+                let sources = crate::archives::extract_selected(
+                    &archive_path,
+                    &directory,
+                    &members,
+                    staging.path(),
+                    || self.check(),
+                )?;
+                self.batch(sources, destination, false)?;
+            }
             Operation::CreateDirectory { parent, name } => {
                 filesystem::validate_name(&name)?;
                 let p = filesystem::absolute(&parent)?.join(name);

@@ -38,6 +38,11 @@
   } from './state/preferences.svelte';
   import { handleControlShortcut, swapPanels } from './state/controlShortcuts';
   import { api, errorMessage } from './filesystem/api';
+  import {
+    isLocalPath,
+    parentFocus,
+    parseLocation,
+  } from './filesystem/providers';
   import type { FileEntry } from './filesystem/types';
   import type {
     Conflict,
@@ -112,7 +117,8 @@
     commander.activePanel === 'left' ? 'right' : 'left',
   );
   let previewTarget = $derived.by(() => {
-    if (!previewMode || active.loading) return undefined;
+    if (!previewMode || active.loading || !isLocalPath(active.path))
+      return undefined;
     const entry = rows(active)[active.cursor];
     if (
       !entry ||
@@ -142,9 +148,14 @@
         )
       : 0,
   );
+  let measurableProgress = $derived(
+    !!progress && (progress.totalBytes > 0 || progress.totalItems > 0),
+  );
   $effect(() => {
     if (!ready) return;
-    const paths = [commander.left.path, commander.right.path].filter(Boolean);
+    const paths = [commander.left.path, commander.right.path].filter(
+      (path) => path && isLocalPath(path),
+    );
     void api.watch(paths).catch((e) => {
       showError(errorMessage(e));
     });
@@ -207,6 +218,10 @@
   }
   function viewCurrentFile() {
     if (!ready || busy || commandRunning || active.loading) return;
+    if (!isLocalPath(active.path)) {
+      showError('Archive previews are not supported yet.');
+      return;
+    }
     const entry = rows(active)[active.cursor];
     if (!entry || entry.parentEntry) return;
     if (entry.type === 'directory' || entry.directoryTarget) {
@@ -257,6 +272,17 @@
     )
       return;
     const entries = sources(active);
+    const opposite =
+      commander[commander.activePanel === 'left' ? 'right' : 'left'];
+    if (
+      (!isLocalPath(active.path) && action !== 'copy' && action !== 'delete') ||
+      ((action === 'copy' || action === 'move') && !isLocalPath(opposite.path))
+    ) {
+      showError(
+        'Archives support F5 extraction to a local directory and F8 permanent deletion. Other changes are not supported yet.',
+      );
+      return;
+    }
     if (action !== 'createDirectory' && !entries.length) return;
     if (action === 'rename' && entries.length !== 1) {
       showError('Select exactly one item to rename.');
@@ -270,11 +296,30 @@
       destination:
         commander[commander.activePanel === 'left' ? 'right' : 'left'].path,
       side: commander.activePanel,
-      permanent: action === 'delete' && permanent,
+      permanent:
+        action === 'delete' && (permanent || !isLocalPath(active.path)),
     };
   }
   async function submit(operation: FileOperation) {
     const side = dialog!.side;
+    const location = parseLocation(dialog!.parent);
+    if (operation.type === 'delete' && location.kind === 'archive') {
+      operation = {
+        type: 'deleteArchive',
+        archivePath: location.archivePath,
+        directory: location.directory,
+        members: dialog!.entries.map((entry) => entry.name),
+      };
+    }
+    if (operation.type === 'copy' && location.kind === 'archive') {
+      operation = {
+        type: 'extract',
+        archivePath: location.archivePath,
+        directory: location.directory,
+        members: dialog!.entries.map((entry) => entry.name),
+        destination: operation.destination,
+      };
+    }
     closeDialog();
     await operations.start(operation, side);
   }
@@ -294,7 +339,15 @@
   async function runCommand(event?: SubmitEvent) {
     event?.preventDefault();
     const command = commandInput.trim();
-    if (!command || !ready || busy || commandRunning || !active.path) return;
+    if (
+      !command ||
+      !ready ||
+      busy ||
+      commandRunning ||
+      !active.path ||
+      !isLocalPath(active.path)
+    )
+      return;
     commandInput = '';
     error = '';
     await commands.run(command, active.path);
@@ -616,7 +669,8 @@
       void open(active, list[active.cursor]);
     } else if (event.key === 'Backspace') {
       event.preventDefault();
-      if (active.parent) void load(active, active.parent, active.path);
+      if (active.parent)
+        void load(active, active.parent, parentFocus(active.path));
     } else if (event.key === ' ' || event.key === 'Insert') {
       event.preventDefault();
       const row = list[active.cursor];
@@ -700,27 +754,50 @@
     >{/if}
   {#if busy || !ready}
     <div class="operation-status" role="status" aria-live="polite">
-      {#if progress}<span
-          >{{
-            queued: 'Queued',
-            running: 'Operation in progress',
-            completed: 'Completed',
-            failed: 'Operation failed',
-            cancelled: 'Cancelled',
-          }[progress.state]} · {progress.processedItems}/{progress.totalItems} · {bytes(
-            progress.processedBytes,
-          )}</span
-        >{#if busy}<progress max="100" value={percent}></progress><span
-            >{percent}%</span
-          ><button onclick={cancel}>Cancel</button>{/if}<span
-          class="current-item"
-          title={progress.currentItem}>{progress.currentItem ?? ''}</span
-        >
-      {:else if busy}
-        <span>Preparing operation…</span>
-      {:else}
-        <span>Waiting for Tauri backend</span>
-      {/if}
+      <div class="operation-details">
+        <div class="operation-heading">
+          <span class="operation-indicator" aria-hidden="true"></span>
+          <span
+            >{!ready
+              ? 'Waiting for Tauri backend'
+              : progress
+                ? {
+                    queued: 'Queued',
+                    running: 'Operation in progress',
+                    completed: 'Completed',
+                    failed: 'Operation failed',
+                    cancelled: 'Cancelled',
+                  }[progress.state]
+                : 'Preparing operation…'}</span
+          >
+          {#if measurableProgress}<span class="operation-percent"
+              >{percent}%</span
+            >{/if}
+        </div>
+        {#if busy}
+          <div class="operation-metrics">
+            {#if progress && measurableProgress}
+              {progress.processedItems} / {progress.totalItems} items · {bytes(
+                progress.processedBytes,
+              )} / {bytes(progress.totalBytes)}
+            {:else}
+              Preparing files… Progress will appear when available.
+            {/if}
+          </div>
+          <progress
+            max="100"
+            value={measurableProgress ? percent : undefined}
+            aria-label="Operation progress"
+          ></progress>
+          {#if progress?.currentItem}<div
+              class="current-item"
+              title={progress.currentItem}
+            >
+              {progress.currentItem}
+            </div>{/if}
+        {/if}
+      </div>
+      {#if busy}<button onclick={cancel}>Cancel</button>{/if}
     </div>
   {/if}
   <form class="command-line" onsubmit={runCommand}>
@@ -733,7 +810,11 @@
       spellcheck="false"
       placeholder="Enter a command to run in the active folder"
       title={`Working directory: ${displayPath(active.path)}`}
-      disabled={!ready || busy || commandRunning || !active.path}
+      disabled={!ready ||
+        busy ||
+        commandRunning ||
+        !active.path ||
+        !isLocalPath(active.path)}
     />
   </form>
   {#if preferences.showFunctionBar}<footer>
