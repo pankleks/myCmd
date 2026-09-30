@@ -2,12 +2,45 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderMarkdownPreview } from './markdownPreview';
 
-const image = { dataUrl: 'data:image/png;base64,cG5n', width: 1, height: 1 };
+const image = {
+  dataUrl: 'data:image/png;base64,cG5n',
+  width: 1,
+  height: 1,
+  frames: 1,
+};
 function documentFor(html: string) {
   return new DOMParser().parseFromString(html, 'text/html');
 }
 
 describe('Markdown preview', () => {
+  it('counts all GIF frames toward the aggregate pixel budget', async () => {
+    const loader = vi.fn().mockResolvedValue({
+      ...image,
+      dataUrl: 'data:image/gif;base64,R0lG',
+      width: 4000,
+      height: 2000,
+      frames: 2,
+    });
+    const html = await renderMarkdownPreview(
+      '![](a.gif) ![](b.gif) ![](c.gif)',
+      loader,
+    );
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(documentFor(html).querySelectorAll('img[src]')).toHaveLength(2);
+  });
+
+  it.each([0, -1, 1.5, NaN, 101])(
+    'rejects invalid frame counts (%s)',
+    async (frames) => {
+      const html = await renderMarkdownPreview(
+        '![](a.gif)',
+        vi.fn().mockResolvedValue({ ...image, frames }),
+      );
+      expect(documentFor(html).querySelector('img')?.hasAttribute('src')).toBe(
+        false,
+      );
+    },
+  );
   it('stops loading at the aggregate pixel budget even for tiny compressed images', async () => {
     const loader = vi
       .fn()

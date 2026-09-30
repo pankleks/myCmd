@@ -42,6 +42,16 @@ await writeFile(
     'base64',
   ),
 );
+for (const [name, fixtureName] of [
+  ['preview.gif', 'animated-gif.base64'],
+  ['rejected-animation.png', 'animated-png.base64'],
+]) {
+  const encoded = await readFile(
+    resolve('src/test/fixtures', fixtureName),
+    'utf8',
+  );
+  await writeFile(join(source, name), Buffer.from(encoded.trim(), 'base64'));
+}
 const server = createServer();
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
@@ -359,6 +369,50 @@ try {
         `!document.querySelector('dialog[open]') && document.activeElement.id === 'list-left'`,
       ),
     'image preview closed',
+  );
+  await selectPreviewFile('preview.gif');
+  await previewKey();
+  await until(
+    () =>
+      evaluate(
+        `(() => { const image = document.querySelector('dialog.file-viewer[open] .image-preview img'); return !!image?.complete && image.naturalWidth === 1; })()`,
+      ),
+    'native animated GIF decode',
+  );
+  await evaluate(
+    `document.querySelector('dialog.file-viewer .viewer-close').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `!document.querySelector('dialog[open]') && document.activeElement.id === 'list-left'`,
+      ),
+    'GIF preview closed',
+  );
+  await selectPreviewFile('rejected-animation.png');
+  await previewKey();
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('dialog.file-viewer[open] .viewer-message')?.textContent.includes('Only GIF animation is supported')`,
+      ),
+    'animated PNG rejected',
+  );
+  assert.equal(
+    await evaluate(
+      `Array.from(document.querySelectorAll('dialog.file-viewer button')).some(button => button.textContent.trim() === 'Open in default app')`,
+    ),
+    true,
+  );
+  await evaluate(
+    `document.querySelector('dialog.file-viewer .viewer-close').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `!document.querySelector('dialog[open]') && document.activeElement.id === 'list-left'`,
+      ),
+    'unsupported animation preview closed',
   );
   await selectPreviewFile('preview.md');
   await previewKey(true);

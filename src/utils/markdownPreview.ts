@@ -49,12 +49,15 @@ export async function renderMarkdownPreview(
     )
       continue;
     try {
-      const { dataUrl, width, height } = await loadImage(source);
+      const { dataUrl, width, height, frames } = await loadImage(source);
       if (isCancelled()) return '';
-      const pixels = width * height;
+      const pixels = width * height * frames;
       if (
         !Number.isSafeInteger(width) ||
         !Number.isSafeInteger(height) ||
+        !Number.isSafeInteger(frames) ||
+        frames <= 0 ||
+        frames > 100 ||
         width <= 0 ||
         height <= 0 ||
         !Number.isSafeInteger(pixels)

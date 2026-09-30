@@ -16,6 +16,7 @@ export interface PreviewImage {
   dataUrl: string;
   width: number;
   height: number;
+  frames: number;
 }
 export const api = {
   list: (path: string) => invoke<Listing>('list_directory', { path }),

@@ -72,7 +72,9 @@ Test faktycznego przenoszenia między systemami plików (Unix) jest domyślnie p
 
 ## Podgląd obrazów
 
-Markdown dopuszcza maksymalnie 24 obrazy, 12 MiB danych obrazów i 32 miliony pikseli łącznie. Budżet pikseli korzysta z wymiarów odczytanych przez Rust przed dekodowaniem obrazu w WebView.
+Markdown dopuszcza maksymalnie 24 obrazy, 12 MiB danych obrazów i 32 miliony pikseli łącznie. Budżet pikseli korzysta z wymiarów odczytanych przez Rust przed dekodowaniem obrazu w WebView; dla GIF uwzględnia rozmiar płótna × liczbę klatek.
+
+Animacja jest obsługiwana tylko w GIF: maksymalnie 100 klatek oraz 64 miliony pikseli łącznie na plik (rozmiar płótna × liczba klatek). Klatki są liczone bez dekodowania pikseli; odrzucane są też opisy klatek wychodzących poza płótno. Animowane PNG, WebP i sekwencje AVIF oznaczone marką `avis` są odrzucane; można je otworzyć w aplikacji systemowej. Statyczne obrazy w tych formatach nadal są obsługiwane. Limity nie stanowią pełnego ograniczenia pamięci WebView.
 
 Podgląd obrazów (F3 lub panel Shift+F3) i lokalnych obrazów w Markdown ma limity na pojedynczy plik: 4 MiB danych, 16 milionów pikseli oraz 16384 piksele na każdy wymiar. Wymiary są odczytywane z nagłówka bez dekodowania całego obrazu. Uszkodzone lub nieczytelne nagłówki są odrzucane. Są to ograniczenia rozmiaru obrazu, nie pełny limit pamięci WebView ani liczby klatek animacji; plik odrzucony można otworzyć w aplikacji systemowej.
 

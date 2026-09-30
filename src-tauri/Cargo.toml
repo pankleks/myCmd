@@ -18,6 +18,7 @@ open = "5"
 same-file = "1"
 filetime = "0.2"
 imagesize = "0.15"
+gif = { version = "0.14", default-features = false, features = ["std"] }
 tempfile = "3"
 notify = "8"
 

@@ -12,6 +12,8 @@ pub const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_PIXELS: usize = 16_000_000;
 pub const MAX_IMAGE_PREVIEW_DIMENSION: usize = 16_384;
+const MAX_ANIMATION_PREVIEW_FRAMES: usize = 100;
+const MAX_ANIMATION_PREVIEW_FRAME_PIXELS: usize = 64_000_000;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,6 +124,7 @@ pub struct PreviewImage {
     pub data_url: String,
     pub width: usize,
     pub height: usize,
+    pub frames: usize,
 }
 
 pub fn read_markdown_image(markdown_path: &Path, source: &str) -> Result<PreviewImage> {
@@ -195,15 +198,17 @@ fn image_data_url(path: &Path) -> Result<PreviewImage> {
         ));
     }
 
-    let size = validate_image_dimensions(&content)?;
+    let (size, frames) = validate_image_dimensions(&content)?;
     Ok(PreviewImage {
         data_url: format!("data:{mime};base64,{}", STANDARD.encode(content)),
         width: size.width,
         height: size.height,
+        frames,
     })
 }
 
-fn validate_image_dimensions(content: &[u8]) -> Result<imagesize::ImageSize> {
+fn validate_image_dimensions(content: &[u8]) -> Result<(imagesize::ImageSize, usize)> {
+    validate_avif_brands(content)?;
     let size = imagesize::blob_size(content)
         .map_err(|_| FsError::new("invalid_image", "Image dimensions could not be read"))?;
     if size.width == 0 || size.height == 0 {
@@ -224,7 +229,119 @@ fn validate_image_dimensions(content: &[u8]) -> Result<imagesize::ImageSize> {
             "Image exceeds preview limits (16 million pixels or 16384 pixels per side)",
         ));
     }
-    Ok(size)
+    let frames = if content.starts_with(b"GIF87a") || content.starts_with(b"GIF89a") {
+        validate_gif_frames(content, size.width * size.height)?
+    } else {
+        1
+    };
+    if content.starts_with(b"\x89PNG\r\n\x1a\n") {
+        reject_chunked_animation(content, true)?;
+    } else if content.starts_with(b"RIFF") && content.get(8..12) == Some(b"WEBP") {
+        reject_chunked_animation(content, false)?;
+    }
+    Ok((size, frames))
+}
+
+fn validate_avif_brands(content: &[u8]) -> Result<()> {
+    if content.get(4..8) == Some(b"ftyp") {
+        let end = u32::from_be_bytes(content[..4].try_into().unwrap()) as usize;
+        let brands = content
+            .get(16..end)
+            .ok_or_else(|| FsError::new("invalid_image", "Invalid AVIF brand box"))?;
+        if content.get(8..12) == Some(b"avis")
+            || brands
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|brand| brand == b"avis")
+        {
+            return Err(FsError::new(
+                "unsupported_image",
+                "Animated AVIF sequences cannot be previewed; open in the default app",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn reject_chunked_animation(content: &[u8], png: bool) -> Result<()> {
+    let invalid = || FsError::new("invalid_image", "Invalid animation container metadata");
+    let mut offset = if png { 8 } else { 12 };
+    let end = if png {
+        content.len()
+    } else {
+        let declared = u32::from_le_bytes(content[4..8].try_into().unwrap()) as usize;
+        declared
+            .checked_add(8)
+            .filter(|end| *end <= content.len())
+            .ok_or_else(invalid)?
+    };
+    while offset < end {
+        let header = content.get(offset..offset + 8).ok_or_else(invalid)?;
+        let (kind, length) = if png {
+            (
+                &header[4..8],
+                u32::from_be_bytes(header[..4].try_into().unwrap()) as usize,
+            )
+        } else {
+            (
+                &header[..4],
+                u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize,
+            )
+        };
+        let data_end = offset
+            .checked_add(8)
+            .and_then(|start| start.checked_add(length))
+            .ok_or_else(invalid)?;
+        let next = data_end
+            .checked_add(if png { 4 } else { length % 2 })
+            .filter(|next| *next <= end)
+            .ok_or_else(invalid)?;
+        if (png && matches!(kind, b"acTL" | b"fcTL" | b"fdAT"))
+            || (!png && matches!(kind, b"ANIM" | b"ANMF"))
+            || (!png
+                && kind == b"VP8X"
+                && content
+                    .get(offset + 8)
+                    .is_some_and(|flags| flags & 0x02 != 0))
+        {
+            return Err(FsError::new(
+                "unsupported_image",
+                "Only GIF animation is supported; open this image in the default app",
+            ));
+        }
+        offset = next;
+        if png && kind == b"IEND" {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn validate_gif_frames(content: &[u8], canvas_pixels: usize) -> Result<usize> {
+    let invalid = |_| FsError::new("invalid_image", "GIF frame metadata could not be read");
+    let mut options = gif::DecodeOptions::new();
+    options.skip_frame_decoding(true);
+    options.check_frame_consistency(true);
+    let mut decoder = options.read_info(content).map_err(invalid)?;
+    let mut frames = 0usize;
+    while decoder.read_next_frame().map_err(invalid)?.is_some() {
+        frames += 1;
+        if frames > MAX_ANIMATION_PREVIEW_FRAMES
+            || canvas_pixels
+                .checked_mul(frames)
+                .is_none_or(|pixels| pixels > MAX_ANIMATION_PREVIEW_FRAME_PIXELS)
+        {
+            return Err(FsError::new(
+                "image_too_large",
+                "GIF exceeds preview limits (100 frames or 64 million cumulative canvas pixels)",
+            ));
+        }
+    }
+    if frames == 0 {
+        return Err(FsError::new("invalid_image", "GIF has no image frames"));
+    }
+    Ok(frames)
 }
 
 fn decode_uri_path(source: &str) -> Option<String> {
@@ -452,6 +569,209 @@ mod tests {
 
     fn png() -> Vec<u8> {
         STANDARD.decode(PNG_BASE64).unwrap()
+    }
+
+    fn animated_gif(width: u16, height: u16, frames: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder =
+                gif::Encoder::new(&mut bytes, width, height, &[0, 0, 0, 255, 0, 0]).unwrap();
+            let frame = gif::Frame {
+                width: 1,
+                height: 1,
+                buffer: std::borrow::Cow::Borrowed(&[0]),
+                ..Default::default()
+            };
+            for _ in 0..frames {
+                encoder.write_frame(&frame).unwrap();
+            }
+        }
+        bytes
+    }
+
+    #[test]
+    fn gif_preview_bounds_frame_counts_without_decoding_pixels() {
+        validate_image_dimensions(&animated_gif(1, 1, 100)).unwrap();
+        assert_eq!(
+            validate_image_dimensions(&animated_gif(1, 1, 101))
+                .unwrap_err()
+                .code,
+            "image_too_large"
+        );
+    }
+
+    #[test]
+    fn gif_preview_bounds_cumulative_canvas_pixels() {
+        validate_image_dimensions(&animated_gif(4000, 4000, 4)).unwrap();
+        assert_eq!(
+            validate_image_dimensions(&animated_gif(4000, 4000, 5))
+                .unwrap_err()
+                .code,
+            "image_too_large"
+        );
+    }
+
+    #[test]
+    fn gif_preview_rejects_missing_frames() {
+        assert_eq!(
+            validate_image_dimensions(&animated_gif(1, 1, 0))
+                .unwrap_err()
+                .code,
+            "invalid_image"
+        );
+    }
+
+    #[test]
+    fn gif_previews_remain_supported_and_return_frame_cost_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let image = temp.path().join("animated.gif");
+        let markdown = temp.path().join("README.md");
+        fs::write(&image, animated_gif(1, 1, 2)).unwrap();
+        fs::write(&markdown, "![animation](animated.gif)").unwrap();
+        assert!(read_image_preview(&image)
+            .unwrap()
+            .starts_with("data:image/gif;base64,"));
+        let preview = read_markdown_image(&markdown, "animated.gif").unwrap();
+        assert_eq!((preview.width, preview.height, preview.frames), (1, 1, 2));
+        let json = serde_json::to_value(preview).unwrap();
+        assert_eq!(json["frames"], 2);
+    }
+
+    #[test]
+    fn real_animation_fixtures_accept_gif_and_reject_apng() {
+        let gif = STANDARD
+            .decode(include_str!("../../src/test/fixtures/animated-gif.base64").trim())
+            .unwrap();
+        let (size, frames) = validate_image_dimensions(&gif).unwrap();
+        assert_eq!((size.width, size.height, frames), (1, 1, 2));
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::RGBA);
+        let mut decoder = options.read_info(gif.as_slice()).unwrap();
+        assert_eq!(
+            decoder.read_next_frame().unwrap().unwrap().buffer.as_ref(),
+            &[0, 0, 0, 255]
+        );
+        assert_eq!(
+            decoder.read_next_frame().unwrap().unwrap().buffer.as_ref(),
+            &[255, 0, 0, 255]
+        );
+        assert!(decoder.read_next_frame().unwrap().is_none());
+        let png = STANDARD
+            .decode(include_str!("../../src/test/fixtures/animated-png.base64").trim())
+            .unwrap();
+        assert_eq!(
+            validate_image_dimensions(&png).unwrap_err().code,
+            "unsupported_image"
+        );
+    }
+
+    fn animation_container(png: bool, frames: usize) -> Vec<u8> {
+        fn chunk(bytes: &mut Vec<u8>, png: bool, kind: &[u8; 4], data: &[u8]) {
+            let length = data.len() as u32;
+            if png {
+                bytes.extend(length.to_be_bytes());
+                bytes.extend(kind);
+            } else {
+                bytes.extend(kind);
+                bytes.extend(length.to_le_bytes());
+            }
+            bytes.extend(data);
+            if png {
+                bytes.extend([0; 4]);
+            } else if data.len() % 2 == 1 {
+                bytes.push(0);
+            }
+        }
+        let mut bytes = if png {
+            b"\x89PNG\r\n\x1a\n".to_vec()
+        } else {
+            b"RIFF\0\0\0\0WEBP".to_vec()
+        };
+        if png {
+            let mut control = (frames as u32).to_be_bytes().to_vec();
+            control.extend([0; 4]);
+            chunk(&mut bytes, true, b"acTL", &control);
+        } else {
+            chunk(&mut bytes, false, b"ANIM", &[0; 6]);
+        }
+        for _ in 0..frames {
+            let mut frame = vec![0; if png { 26 } else { 16 }];
+            if png {
+                frame[4..8].copy_from_slice(&1u32.to_be_bytes());
+                frame[8..12].copy_from_slice(&1u32.to_be_bytes());
+            }
+            chunk(&mut bytes, png, if png { b"fcTL" } else { b"ANMF" }, &frame);
+        }
+        if png {
+            chunk(&mut bytes, true, b"IEND", &[]);
+        } else {
+            let length = (bytes.len() - 8) as u32;
+            bytes[4..8].copy_from_slice(&length.to_le_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn png_and_webp_animations_are_rejected_regardless_of_frame_count() {
+        for png in [true, false] {
+            for frames in [0, 1, 100, 101] {
+                assert_eq!(
+                    reject_chunked_animation(&animation_container(png, frames), png)
+                        .unwrap_err()
+                        .code,
+                    "unsupported_image"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn static_containers_accept_valid_chunks_and_reject_truncation() {
+        reject_chunked_animation(&png(), true).unwrap();
+        // A bounded RIFF chunk containing ordinary still-image bytes.
+        let webp = b"RIFF\x0c\0\0\0WEBPVP8 \0\0\0\0";
+        reject_chunked_animation(webp, false).unwrap();
+        for png in [true, false] {
+            let bytes = if png {
+                b"\x89PNG\r\n\x1a\nIHDR".to_vec()
+            } else {
+                webp[..webp.len() - 1].to_vec()
+            };
+            assert_eq!(
+                reject_chunked_animation(&bytes, png).unwrap_err().code,
+                "invalid_image"
+            );
+        }
+    }
+
+    #[test]
+    fn webp_animation_flag_is_rejected_without_frame_chunks() {
+        let mut webp = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0".to_vec();
+        webp.extend([0; 10]);
+        reject_chunked_animation(&webp, false).unwrap();
+        webp[20] = 0x02;
+        assert_eq!(
+            reject_chunked_animation(&webp, false).unwrap_err().code,
+            "unsupported_image"
+        );
+    }
+
+    #[test]
+    fn avif_sequences_are_rejected_for_major_and_compatible_brands() {
+        for major in [b"avif", b"avis"] {
+            let mut bytes = 20u32.to_be_bytes().to_vec();
+            bytes.extend(b"ftyp");
+            bytes.extend(major);
+            bytes.extend([0; 4]);
+            bytes.extend(b"avis");
+            assert_eq!(
+                validate_avif_brands(&bytes).unwrap_err().code,
+                "unsupported_image"
+            );
+        }
+        let mut still = 20u32.to_be_bytes().to_vec();
+        still.extend(b"ftypavif\0\0\0\0avif");
+        validate_avif_brands(&still).unwrap();
     }
 
     fn jpeg_header() -> Vec<u8> {
@@ -683,6 +1003,7 @@ mod tests {
             .starts_with("data:image/png"));
         assert_eq!(json["width"], 1);
         assert_eq!(json["height"], 1);
+        assert_eq!(json["frames"], 1);
     }
 
     #[test]
