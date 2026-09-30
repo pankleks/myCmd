@@ -328,6 +328,14 @@ try {
       ),
     'native F3 Markdown preview',
   );
+  assert.equal(
+    await evaluate(`(() => {
+    const rect = document.querySelector('dialog.file-viewer[open]').getBoundingClientRect();
+    return Math.abs(rect.left) < 1 && Math.abs(rect.top) < 1 && Math.abs(rect.width - innerWidth) < 1 && Math.abs(rect.height - innerHeight) < 1;
+  })()`),
+    true,
+    'F3 viewer fills the application viewport',
+  );
   await until(
     () =>
       evaluate(

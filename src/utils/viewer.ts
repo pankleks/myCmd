@@ -7,6 +7,7 @@ export type ViewerLanguage =
   | 'rust'
   | 'c'
   | 'cpp'
+  | 'svelte'
   | 'plaintext';
 
 export function isMarkdownFile(extension: string): boolean {
@@ -27,6 +28,8 @@ export function viewerLanguage(extension: string): ViewerLanguage {
   const normalized = extension.toLowerCase().replace(/^\./, '');
   if (isMarkdownFile(normalized)) return 'markdown';
   switch (normalized) {
+    case 'svelte':
+      return 'svelte';
     case 'json':
     case 'jsonc':
       return 'json';

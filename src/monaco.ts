@@ -7,10 +7,15 @@ import 'monaco-editor/languages/definitions/csharp/register.js';
 import 'monaco-editor/languages/definitions/rust/register.js';
 import 'monaco-editor/languages/definitions/cpp/register.js';
 import 'monaco-editor/languages/definitions/typescript/register.js';
+import 'monaco-editor/languages/definitions/css/register.js';
 import 'monaco-editor/languages/features/json/register.js';
 import '../node_modules/monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css';
 import '../node_modules/monaco-editor/min/vs/editor/editor.main.css';
 import { viewerLanguage } from './utils/viewer';
+import { svelteLanguage } from './utils/svelteLanguage';
+
+monaco.languages.register({ id: 'svelte', extensions: ['.svelte'] });
+monaco.languages.setMonarchTokensProvider('svelte', svelteLanguage);
 
 self.MonacoEnvironment = {
   getWorker(_workerId, label) {

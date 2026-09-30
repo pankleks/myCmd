@@ -443,10 +443,13 @@ dialog input:not([type='checkbox']) {
   color: #ffb7bd !important;
 }
 .file-viewer {
-  width: min(1100px, 96vw);
-  max-width: 96vw;
-  height: min(820px, 90vh);
-  max-height: 90vh;
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  max-height: none;
   padding: 0;
   overflow: hidden;
 }
@@ -469,9 +472,6 @@ dialog.file-viewer[open] {
 }
 .preview-inline-content .viewer-header {
   padding: 10px 12px 6px;
-}
-.preview-inline-content .viewer-path {
-  padding: 0 12px 8px;
 }
 .preview-inline-content .viewer-editor-shell {
   margin: 0 8px;
@@ -527,16 +527,6 @@ dialog.file-viewer[open] {
   min-width: 0;
   padding: 5px 10px;
   font-size: 13px;
-}
-.viewer-path {
-  overflow: hidden;
-  padding: 0 16px 10px;
-  color: #8997ac;
-  font:
-    12px/1.4 Consolas,
-    monospace;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .viewer-editor-shell {
   position: relative;

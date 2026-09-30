@@ -132,7 +132,7 @@
         {title ??
           ((isMarkdown && mode === 'preview') || isImage ? 'Preview' : 'View')}
       </h2>
-      <span>{name}</span>
+      <span title={path}>{name}</span>
     </div>
     <div class="viewer-toolbar">
       {#if isMarkdown && !error}<button
@@ -146,7 +146,6 @@
       {@render headerActions?.()}
     </div>
   </div>
-  <div class="viewer-path" title={path}>{path}</div>
   <div class="viewer-editor-shell">
     {#if error || editorError}
       <div class="viewer-message" role="alert">

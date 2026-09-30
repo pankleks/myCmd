@@ -58,6 +58,15 @@ afterEach(async () => {
 });
 
 describe('FilePreview', () => {
+  it('shows the full path only as the filename tooltip', () => {
+    mocks.image.mockReturnValue(new Promise(() => {}));
+    preview();
+    const name = target.querySelector('.viewer-heading span');
+    expect(name?.textContent).toBe('file.png');
+    expect(name?.getAttribute('title')).toBe('/file.png');
+    expect(target.querySelector('.viewer-path')).toBeNull();
+    expect(target.textContent).not.toContain('/file.png');
+  });
   it('suppresses duplicate external-open requests and ignores completion after unmount', async () => {
     mocks.image.mockRejectedValue(new Error('Cannot preview'));
     let resolve!: () => void;
