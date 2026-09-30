@@ -25,9 +25,6 @@
     aria-label="Close viewer">×</button
   >
 {/snippet}
-{#snippet footerActions()}
-  <button type="button" class="primary" onclick={onclose}>Close (Esc)</button>
-{/snippet}
 
 <dialog
   class="file-viewer"
@@ -51,6 +48,5 @@
     autofocus
     onopened={onclose}
     {headerActions}
-    {footerActions}
   />
 </dialog>

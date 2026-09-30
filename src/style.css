@@ -567,7 +567,7 @@ dialog input:not([type='checkbox']) {
   max-width: none;
   height: 100vh;
   max-height: none;
-  padding: 0;
+  padding: 0 0 8px;
   overflow: hidden;
 }
 dialog.file-viewer[open] {
