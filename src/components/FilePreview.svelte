@@ -25,6 +25,7 @@
   } = $props();
 
   let editorContainer = $state<HTMLDivElement | undefined>();
+  let markdownContainer = $state<HTMLElement | undefined>();
   let loading = $state(true);
   let editorLoading = $state(false);
   let error = $state('');
@@ -82,6 +83,10 @@
       if (!disposed) error = errorMessage(cause);
     } finally {
       if (!disposed) loading = false;
+      if (autofocus && isMarkdown && mode === 'preview') {
+        await tick();
+        if (!disposed) markdownContainer?.focus({ preventScroll: true });
+      }
     }
   }
 
@@ -113,6 +118,8 @@
       editor = undefined;
       editorError = '';
       mode = 'preview';
+      await tick();
+      if (!disposed) markdownContainer?.focus({ preventScroll: true });
     }
   }
 
@@ -185,7 +192,14 @@
         {#if openError}<p>{openError}</p>{/if}
       </div>
     {:else if isMarkdown && mode === 'preview'}
-      <article class="markdown-preview">
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable preview needs keyboard focus) -->
+      <article
+        class="markdown-preview"
+        bind:this={markdownContainer}
+        tabindex="0"
+        role="region"
+        aria-label={`Markdown preview of ${name}`}
+      >
         {@html previewHtml}
       </article>
     {:else if isImage}
