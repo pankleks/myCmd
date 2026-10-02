@@ -20,7 +20,7 @@ export function handleControlShortcut(
   focusPath: () => void,
 ): boolean {
   const key = event.key.toLowerCase();
-  if (!['a', 'h', 'r', 'i', 'l', '+', '=', '-', '_', '0'].includes(key))
+  if (!['a', 'h', 'r', 'i', 'p', '+', '=', '-', '_', '0'].includes(key))
     return false;
   event.preventDefault();
   const active = commander[commander.activePanel];
@@ -47,7 +47,7 @@ export function handleControlShortcut(
         else void load(other, active.path, rows(active)[active.cursor]?.path);
       }
       break;
-    case 'l':
+    case 'p':
       focusPath();
       break;
     case '+':

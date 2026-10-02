@@ -39,7 +39,7 @@
     ['Ctrl+H', 'Show / hide hidden files'],
     ['Ctrl+R', 'Refresh panel / repeat search'],
     ['Ctrl+I', 'Open same location in opposite panel'],
-    ['Ctrl+L', 'Edit directory path'],
+    ['Ctrl+P', 'Edit directory path'],
     [
       'Ctrl++ / Ctrl+- / Ctrl+0',
       'Increase / decrease / reset file-list font size',

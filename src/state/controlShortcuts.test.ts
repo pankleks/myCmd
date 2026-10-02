@@ -99,9 +99,16 @@ describe('panel control shortcuts', () => {
     press('i');
     expect(load).not.toHaveBeenCalled();
   });
-  it('delegates path-bar focus to the component', () => {
-    const { focusPath } = press('l');
+  it.each(['p', 'P'])('delegates path-bar focus for Ctrl+%s', (key) => {
+    const { focusPath, event } = press(key);
     expect(focusPath).toHaveBeenCalledOnce();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+  it('does not handle the removed Ctrl+L shortcut', () => {
+    const { handled, event, focusPath } = press('l');
+    expect(handled).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(focusPath).not.toHaveBeenCalled();
   });
   it.each(['+', '='])(
     'increases font size with %s without exceeding its limit',
