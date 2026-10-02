@@ -4,12 +4,12 @@
 
 Workflow **CI** (`.github/workflows/check.yml`) uruchamia się dla pushów na gałęzie, pull requestów i ręcznie. Jest też wywoływany przez proces wydania dla dokładnie tego samego commita co tag.
 
-| Etap | Kontrole |
-| --- | --- |
-| Frontend and release tooling | actionlint, Prettier, zgodność wersji i changelog, Vitest z progami pokrycia, TypeScript/Svelte, build Vite |
-| Rust and desktop | Windows / Ubuntu 22.04 / macOS: rustfmt, Clippy bez ostrzeżeń, testy Rust |
-| Windows desktop | Build debug z osadzonym frontendem; test prawdziwego procesu Tauri i WebView2 |
-| CI passed | Zbiorczy wymagany status; sukces tylko po sukcesie wszystkich poprzednich etapów |
+| Etap                         | Kontrole                                                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Frontend and release tooling | actionlint, Prettier, zgodność wersji (opcjonalny changelog), Vitest z progami pokrycia, TypeScript/Svelte, build Vite |
+| Rust and desktop             | Windows / Ubuntu 22.04 / macOS: rustfmt, Clippy bez ostrzeżeń, testy Rust                                              |
+| Windows desktop              | Build debug z osadzonym frontendem; test prawdziwego procesu Tauri i WebView2                                          |
+| CI passed                    | Zbiorczy wymagany status; sukces tylko po sukcesie wszystkich poprzednich etapów                                       |
 
 Instalacja używa `npm ci`, a Cargo `--locked`. Oba lockfile muszą być commitowane. Cache zależności Rust i npm skraca kolejne przebiegi. Nowszy push anuluje starsze CI tej samej gałęzi. Wydania nie są anulowane w trakcie pracy.
 
@@ -59,9 +59,9 @@ Skrypt aktualizuje je razem, nie zmieniając wersji zależności:
 npm run release:version -- 0.2.0
 ```
 
-Następnie przenieś odpowiednie wpisy z `Unreleased` w `CHANGELOG.md` pod `## [0.2.0] - YYYY-MM-DD`. Wykonaj `npm run release:check` i pozostałe testy. Zacommituj zmiany i wprowadź je do `main` przez CI.
+Jeśli używasz `CHANGELOG.md`, przenieś odpowiednie wpisy z `Unreleased` pod `## [0.2.0] - YYYY-MM-DD`. Changelog nie jest wymagany. Wykonaj `npm run release:check` i pozostałe testy. Zacommituj zmiany i wprowadź je do `main` przez CI.
 
-Dla pierwszego wydania obecna wersja `0.1.0` i jej changelog są już przygotowane; nie trzeba jej ponownie podbijać.
+Dla pierwszego wydania obecna wersja `0.1.0` jest już przygotowana; nie trzeba jej ponownie podbijać.
 
 ## Uruchomienie wydania
 
@@ -76,23 +76,24 @@ git push origin v0.1.0
 
 Workflow **Release**:
 
-1. Sprawdza zgodność tagu `vX.Y.Z` z manifestami i obecność changelogu.
+1. Sprawdza zgodność tagu `vX.Y.Z` z manifestami; changelog jest opcjonalny.
 2. Uruchamia pełne CI na tagowanym commicie.
 3. Równolegle buduje pakiety:
 
-   | Platforma | Architektura | Pakiety |
-   | --- | --- | --- |
-   | Windows | x64 | MSI, NSIS EXE |
-   | Linux (Ubuntu 22.04) | x64 | DEB, AppImage |
-   | macOS | Intel x64 | DMG |
-   | macOS | Apple Silicon arm64 | DMG |
+   | Platforma                                    | Architektura        | Pakiety       |
+   | -------------------------------------------- | ------------------- | ------------- |
+   | Windows                                      | x64                 | MSI, NSIS EXE |
+   | Linux (Debian/Ubuntu; build na Ubuntu 22.04) | x64                 | DEB, AppImage |
+   | macOS                                        | Intel x64           | DMG           |
+   | macOS                                        | Apple Silicon arm64 | DMG           |
 
 4. Sprawdza obecność wszystkich sześciu instalatorów i generuje `SHA256SUMS.txt`.
-5. Tworzy **draft GitHub Release** z pakietami i opisem z changelogu.
+5. Tworzy draft GitHub Release i przesyła wszystkie pakiety oraz sumy kontrolne. Opis pochodzi z changelogu, jeśli jest dostępny, lub z domyślnych informacji o wydaniu.
+6. Automatycznie **publikuje GitHub Release** dopiero po zakończeniu przesyłania wszystkich plików.
 
 Pakiety pośrednie są dostępne w artefaktach workflow przez 14 dni; pliki dołączone do GitHub Release nie mają tego terminu usunięcia. Prefiks nazwy pliku wskazuje platformę i architekturę.
 
-Po sprawdzeniu draftu opublikuj go przyciskiem **Publish release**. Wersje z przyrostkiem, np. `0.2.0-rc.1`, automatycznie otrzymują flagę prerelease. Wszystkie platformy muszą się zbudować; błąd którejkolwiek blokuje przygotowanie release.
+Wersje z przyrostkiem, np. `0.2.0-rc.1`, automatycznie otrzymują flagę prerelease. Pełne CI i wszystkie platformy muszą zakończyć się sukcesem; błąd którejkolwiek blokuje publikację. Pakiety DEB wymagają zależności Tauri, w tym WebKitGTK 4.1; nie wszystkie starsze wydania Debiana/Ubuntu je udostępniają.
 
 Workflow korzysta z wbudowanego `GITHUB_TOKEN`. Tylko końcowy job ma `contents: write`. Dodatkowe sekrety nie są potrzebne do obecnych, niepodpisanych pakietów. Certyfikaty Windows oraz podpisywanie/notaryzacja Apple nie są skonfigurowane.
 
@@ -101,7 +102,7 @@ Workflow korzysta z wbudowanego `GITHUB_TOKEN`. Tylko końcowy job ma `contents:
 - Dla błędu testów lub kompilacji otwórz log joba i odpowiednie artefakty. Poprawki źródeł wydawaj pod nową wersją/tagiem.
 - Przy przejściowym błędzie pobierania narzędzi użyj **Re-run failed jobs**.
 - Można ręcznie uruchomić workflow na istniejącym tagu, np. `gh workflow run release.yml --ref v0.1.0`. Dispatch z gałęzi zostanie odrzucony.
-- Ponowny przebieg aktualizuje istniejący draft i zastępuje jego pliki. Opublikowany release nie zostanie nadpisany; wymaga nowej wersji.
+- Jeśli publikacja nie została zakończona, ponowny przebieg aktualizuje istniejący draft i zastępuje jego pliki, a następnie go publikuje. Opublikowany release nie zostanie nadpisany; wymaga nowej wersji.
 
 Sprawdzenie pobranych plików na Linux/macOS:
 

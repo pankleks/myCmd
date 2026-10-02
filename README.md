@@ -141,7 +141,7 @@ Lokalnie zweryfikowano Windows: build frontendu bez błędów/ostrzeżeń, 5 tes
 - Push/PR: testy Vitest z pokryciem, kontrola TypeScript/Svelte i formatowania, testy Rust oraz Clippy na trzech systemach; test desktopowy na Windows.
 - `npm test` — testy logiki paneli i narzędzi wydania; `npm run test:coverage` — pokrycie i JUnit.
 - `npm run release:version -- 0.2.0` — aktualizacja wersji we wszystkich manifestach i lockfile.
-- `npm run release:check` — kontrola zgodności wersji i changelogu.
-- Tag `vX.Y.Z`: pełne CI, instalatory dla Windows/Linux/macOS Intel i ARM, sumy SHA-256 oraz szkic GitHub Release.
+- `npm run release:check` — kontrola zgodności wersji; changelog jest opcjonalny.
+- Tag `vX.Y.Z`: pełne CI, instalatory Windows x64 (MSI/EXE), Linux x64 dla dystrybucji opartych na Debianie (DEB/AppImage), macOS Intel i Apple Silicon (DMG), sumy SHA-256 oraz automatyczna publikacja GitHub Release po sukcesie wszystkich etapów.
 
-Pełna instrukcja: [docs/RELEASING.md](docs/RELEASING.md). Historia zmian: [CHANGELOG.md](CHANGELOG.md).
+Pełna instrukcja: [docs/RELEASING.md](docs/RELEASING.md).
