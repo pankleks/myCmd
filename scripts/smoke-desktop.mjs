@@ -346,8 +346,11 @@ try {
     'source navigation',
   );
   async function selectPreviewFile(name) {
+    // Runner TEMP uses an 8.3 path (RUNNER~1), while Rust canonicalizes it to
+    // the long path. Match the real basename, not either path spelling or the
+    // displayed name (which intentionally omits the extension).
     await evaluate(`(() => {
-      const row = Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.title === ${JSON.stringify(join(source, name))});
+      const row = Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.title.split(String.fromCharCode(92)).pop().toLowerCase() === ${JSON.stringify(name.toLowerCase())});
       if (!row) throw new Error('Preview fixture not visible');
       row.click();
     })()`);
