@@ -64,6 +64,7 @@
   import { createCommandController } from './operations/commandController.svelte';
   import { createDirectoryRefresh } from './utils/directoryRefresh';
   let ready = $state(false);
+  let rightAltDown = false;
   let previewMode = $state(false);
   let error = $state('');
   let errorTitle = $state('Error');
@@ -697,8 +698,9 @@
       return;
     }
     const altGraph =
-      typeof event.getModifierState === 'function' &&
-      event.getModifierState('AltGraph');
+      rightAltDown ||
+      (typeof event.getModifierState === 'function' &&
+        event.getModifierState('AltGraph'));
     if (
       isQuickFindTrigger({
         key: event.key,
@@ -830,7 +832,21 @@
   }
 </script>
 
-<svelte:window onkeydowncapture={previewShortcut} onkeydown={keydown} />
+<svelte:window
+  onkeydowncapture={(event) => {
+    if (event.code === 'AltRight' || event.key === 'AltGraph')
+      rightAltDown = true;
+    previewShortcut(event);
+  }}
+  onkeydown={keydown}
+  onkeyup={(event) => {
+    if (event.code === 'AltRight' || event.key === 'AltGraph')
+      rightAltDown = false;
+  }}
+  onblur={() => {
+    rightAltDown = false;
+  }}
+/>
 {#snippet previewPane()}
   <FilePreviewPanel target={previewTarget} loading={active.loading} />
 {/snippet}
