@@ -74,7 +74,10 @@ describe('DirectorySummary', () => {
   it('shows file, subdirectory and size totals', async () => {
     mocks.list.mockImplementation(async (path: string) => {
       if (path === '/root')
-        return listing(path, [file('a.txt', '/root/a.txt', 1536), dir('sub', '/root/sub')]);
+        return listing(path, [
+          file('a.txt', '/root/a.txt', 1536),
+          dir('sub', '/root/sub'),
+        ]);
       return listing(path, [file('b.txt', '/root/sub/b.txt', 512)]);
     });
     summary();

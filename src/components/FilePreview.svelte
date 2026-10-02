@@ -160,79 +160,81 @@
 {#if isDirectory}
   <DirectorySummary {path} {name} />
 {:else}
-<div class="file-preview-content">
-  <div class="viewer-header">
-    <div class="viewer-heading">
-      <h2>
-        {title ??
-          ((isMarkdown && mode === 'preview') || isImage ? 'Preview' : 'View')}
-      </h2>
-      <span title={path}>{name}</span>
+  <div class="file-preview-content">
+    <div class="viewer-header">
+      <div class="viewer-heading">
+        <h2>
+          {title ??
+            ((isMarkdown && mode === 'preview') || isImage
+              ? 'Preview'
+              : 'View')}
+        </h2>
+        <span title={path}>{name}</span>
+      </div>
+      <div class="viewer-toolbar">
+        {#if isJson && !error && !editorError}
+          <button
+            type="button"
+            class="viewer-toggle"
+            title="Format preview only; the file is not changed"
+            disabled={loading || editorLoading || !editor}
+            onclick={autoFormat}>Auto-format</button
+          >
+        {/if}
+        {#if isMarkdown && !error}<button
+            type="button"
+            class="viewer-toggle"
+            aria-pressed={mode === 'source'}
+            disabled={loading || editorLoading}
+            onclick={toggleMarkdownMode}
+            >{mode === 'preview' ? 'Source' : 'Preview'}</button
+          >{/if}
+        {@render headerActions?.()}
+      </div>
     </div>
-    <div class="viewer-toolbar">
-      {#if isJson && !error && !editorError}
-        <button
-          type="button"
-          class="viewer-toggle"
-          title="Format preview only; the file is not changed"
-          disabled={loading || editorLoading || !editor}
-          onclick={autoFormat}>Auto-format</button
+    {#if formatError}<div role="alert">{formatError}</div>{/if}
+    <div class="viewer-editor-shell">
+      {#if error || editorError}
+        <div class="viewer-message" role="alert">
+          <p>{error || editorError}</p>
+          {#if openError}<p>{openError}</p>{/if}
+        </div>
+      {:else if isMarkdown && mode === 'preview'}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable preview needs keyboard focus) -->
+        <article
+          class="markdown-preview"
+          bind:this={markdownContainer}
+          tabindex="0"
+          role="region"
+          aria-label={`Markdown preview of ${name}`}
         >
+          {@html previewHtml}
+        </article>
+      {:else if isImage}
+        <div class="image-preview">
+          {#if imagePreview}<img
+              src={imagePreview}
+              alt={name}
+              draggable="false"
+              onerror={() => (error = 'This image could not be displayed.')}
+            />{/if}
+        </div>
+      {:else}
+        <div class="viewer-editor" bind:this={editorContainer}></div>
       {/if}
-      {#if isMarkdown && !error}<button
-          type="button"
-          class="viewer-toggle"
-          aria-pressed={mode === 'source'}
-          disabled={loading || editorLoading}
-          onclick={toggleMarkdownMode}
-          >{mode === 'preview' ? 'Source' : 'Preview'}</button
-        >{/if}
-      {@render headerActions?.()}
+      {#if loading || editorLoading}<div class="viewer-loading" role="status">
+          {loading ? 'Loading preview…' : 'Loading Monaco…'}
+        </div>{/if}
     </div>
-  </div>
-  {#if formatError}<div role="alert">{formatError}</div>{/if}
-  <div class="viewer-editor-shell">
-    {#if error || editorError}
-      <div class="viewer-message" role="alert">
-        <p>{error || editorError}</p>
-        {#if openError}<p>{openError}</p>{/if}
-      </div>
-    {:else if isMarkdown && mode === 'preview'}
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable preview needs keyboard focus) -->
-      <article
-        class="markdown-preview"
-        bind:this={markdownContainer}
-        tabindex="0"
-        role="region"
-        aria-label={`Markdown preview of ${name}`}
+    {#if footerActions || error || editorError}<div
+        class="dialog-actions viewer-actions"
       >
-        {@html previewHtml}
-      </article>
-    {:else if isImage}
-      <div class="image-preview">
-        {#if imagePreview}<img
-            src={imagePreview}
-            alt={name}
-            draggable="false"
-            onerror={() => (error = 'This image could not be displayed.')}
-          />{/if}
-      </div>
-    {:else}
-      <div class="viewer-editor" bind:this={editorContainer}></div>
-    {/if}
-    {#if loading || editorLoading}<div class="viewer-loading" role="status">
-        {loading ? 'Loading preview…' : 'Loading Monaco…'}
+        {#if error || editorError}<button
+            type="button"
+            disabled={opening}
+            onclick={openInDefaultApp}>Open in default app</button
+          >{/if}
+        {@render footerActions?.()}
       </div>{/if}
   </div>
-  {#if footerActions || error || editorError}<div
-      class="dialog-actions viewer-actions"
-    >
-      {#if error || editorError}<button
-          type="button"
-          disabled={opening}
-          onclick={openInDefaultApp}>Open in default app</button
-        >{/if}
-      {@render footerActions?.()}
-    </div>{/if}
-</div>
 {/if}

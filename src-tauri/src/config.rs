@@ -99,7 +99,9 @@ impl AppConfig {
                 let mut pins = Vec::new();
                 for path in &self.pinned_directories {
                     if let Some(path) = sanitize_path(Some(path.clone())) {
-                        if !pins.contains(&path) { pins.push(path); }
+                        if !pins.contains(&path) {
+                            pins.push(path);
+                        }
                     }
                 }
                 pins

@@ -56,9 +56,18 @@
       <div class="viewer-loading" role="status">Counting files…</div>
     {:else}
       <dl class="directory-summary">
-        <div><dt>Files</dt><dd>{files.toLocaleString()}</dd></div>
-        <div><dt>Subdirectories</dt><dd>{directories.toLocaleString()}</dd></div>
-        <div><dt>Total size</dt><dd>{bytes(size)}</dd></div>
+        <div>
+          <dt>Files</dt>
+          <dd>{files.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Subdirectories</dt>
+          <dd>{directories.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Total size</dt>
+          <dd>{bytes(size)}</dd>
+        </div>
       </dl>
       {#if incomplete}
         <p class="directory-summary-note">
