@@ -23,7 +23,7 @@ try {
           process.env.GITHUB_OUTPUT,
           `version=${version}\nprerelease=${prerelease}\n`,
         );
-      console.log(`Versions and changelog OK: ${version}`);
+      console.log(`Release metadata OK: ${version}`);
       break;
     }
     case 'version':
@@ -31,7 +31,7 @@ try {
         throw new Error('Usage: npm run release:version -- X.Y.Z');
       await setVersion(process.cwd(), args[0]);
       console.log(
-        `Version updated to ${args[0]}. Add its release notes to CHANGELOG.md.`,
+        `Version updated to ${args[0]}. Release notes in CHANGELOG.md are optional.`,
       );
       break;
     case 'notes': {

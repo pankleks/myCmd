@@ -117,7 +117,15 @@ export async function setVersion(root, version) {
 
 export async function releaseNotes(root, version) {
   validateVersion(version);
-  const changelog = await readFile(join(root, 'CHANGELOG.md'), 'utf8');
+  let changelog;
+  try {
+    changelog = await readFile(join(root, 'CHANGELOG.md'), 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    // Repositories without a changelog can still validate and publish a
+    // release; retain the package/install information in generated notes.
+    changelog = `## [${version}]\nRelease ${version}.`;
+  }
   const sections = changelog.split(/^## /m);
   const section = sections.find(
     (text) =>

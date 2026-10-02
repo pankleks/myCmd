@@ -106,7 +106,15 @@ it('updates all manifests and lockfiles without changing dependencies', async ()
   ).toBe('9.0.0');
   await expect(setVersion(root, 'invalid')).rejects.toThrow('Invalid version');
 });
-it('extracts only the selected release notes and requires a changelog entry', async () => {
+it('generates package notes when the changelog is absent', async () => {
+  const root = await fixture();
+  await rm(join(root, 'CHANGELOG.md'));
+  const notes = await releaseNotes(root, '0.1.0');
+  expect(notes).toContain('# myCmd 0.1.0');
+  expect(notes).toContain('## Packages');
+  expect(notes).toContain('SHA256SUMS.txt');
+});
+it('extracts only the selected release notes and requires an entry when a changelog exists', async () => {
   const root = await fixture();
   const notes = await releaseNotes(root, '0.1.0');
   expect(notes).toContain('Initial release.');
