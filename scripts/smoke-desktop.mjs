@@ -56,11 +56,21 @@ const server = createServer();
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 await new Promise((r) => server.close(r));
+// Hosted Windows runners execute elevated and may have no usable GPU.
+// Limit these flags to the isolated CI smoke-test process, not normal builds.
+const browserArguments = [
+  process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS ?? '',
+  `--remote-debugging-port=${port}`,
+  '--remote-allow-origins=*',
+  ...(process.env.CI ? ['--no-sandbox', '--disable-gpu'] : []),
+]
+  .filter(Boolean)
+  .join(' ');
 const app = spawn(executable, [], {
   env: {
     ...process.env,
     MYCMD_CONFIG_DIR: join(fixture, 'config'),
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: browserArguments,
     WEBVIEW2_USER_DATA_FOLDER: join(fixture, 'webview-profile'),
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -198,22 +208,28 @@ try {
   await until(
     () =>
       evaluate(
-        `!document.querySelector('.operation-status') && !document.querySelector('dialog[open]') && !document.querySelector('#system-command')?.disabled`,
+        `document.querySelectorAll('.panel').length === 2 && !!document.querySelector('#system-command') && !document.querySelector('.operation-status') && !document.querySelector('dialog[open]') && !document.querySelector('#system-command').disabled`,
       ),
     'real filesystem loaded',
   );
   assert.equal(await evaluate(`document.querySelectorAll('.panel').length`), 2);
   async function submitCommand(command) {
-    await evaluate(`(() => {
-      const input = document.querySelector('#system-command');
-      input.value = ${JSON.stringify(command)};
-      input.dispatchEvent(new Event('input', {bubbles: true}));
-      input.form.requestSubmit();
-    })()`);
+    await evaluate(`document.querySelector('#system-command').focus()`);
+    await send('Input.insertText', { text: command });
+    await evaluate(
+      `document.querySelector('#system-command').form.requestSubmit()`,
+    );
+    appLog +=
+      '\nCommand submission: ' +
+      JSON.stringify(
+        await evaluate(
+          `({value:document.querySelector('#system-command').value,disabled:document.querySelector('#system-command').disabled,text:document.body.innerText.slice(-1200)})`,
+        ),
+      );
   }
   const shellStarted = join(fixture, 'shell-started.txt');
   await submitCommand(
-    `echo started > "${shellStarted}" & powershell.exe -NoProfile -Command "Start-Sleep -Seconds 30"`,
+    `powershell.exe -NoProfile -Command Set-Content -LiteralPath '${shellStarted.replaceAll("'", "''")}' -Value started; Start-Sleep -Seconds 30`,
   );
   await until(async () => {
     try {
@@ -241,7 +257,9 @@ try {
     'shell error dialog closed',
   );
   const shellRecovered = join(fixture, 'shell-recovered.txt');
-  await submitCommand(`echo recovered > "${shellRecovered}"`);
+  await submitCommand(
+    `powershell.exe -NoProfile -Command Set-Content -LiteralPath '${shellRecovered.replaceAll("'", "''")}' -Value recovered`,
+  );
   await until(async () => {
     try {
       await access(shellRecovered);
@@ -309,7 +327,7 @@ try {
   );
   async function selectPreviewFile(name) {
     await evaluate(`(() => {
-      const row = Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.querySelector('.filename')?.textContent.includes(${JSON.stringify(name)}));
+      const row = Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.title === ${JSON.stringify(join(source, name))});
       if (!row) throw new Error('Preview fixture not visible');
       row.click();
     })()`);
@@ -538,6 +556,32 @@ try {
   );
 } catch (error) {
   await writeFile(join(diagnostics, 'error.txt'), error.stack ?? String(error));
+  const processes = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-Command',
+      "Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('mycmd.exe', 'msedgewebview2.exe') } | Select-Object ProcessId,ParentProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Depth 3",
+    ],
+    { encoding: 'utf8', timeout: 10000 },
+  );
+  await writeFile(
+    join(diagnostics, 'startup.json'),
+    JSON.stringify(
+      {
+        executable,
+        pid: app.pid,
+        exitCode: app.exitCode,
+        port,
+        browserArguments,
+        lastDebuggerState,
+        processes: processes.stdout,
+        processError: processes.stderr,
+      },
+      null,
+      2,
+    ),
+  );
   try {
     await capture?.();
   } catch (captureError) {
