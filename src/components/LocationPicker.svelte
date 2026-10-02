@@ -35,6 +35,11 @@
   let filteredPins = $derived(
     preferences.pinnedDirectories.filter((p) => matches(p, p)),
   );
+  let firstMatch = $derived(
+    expanded && query.trim()
+      ? (filteredRoots[0]?.path ?? filteredPins[0])
+      : undefined,
+  );
   let pinned = $derived(preferences.pinnedDirectories.includes(path));
   function matches(name: string, value: string) {
     return `${name} ${value}`
@@ -90,7 +95,9 @@
   <form
     onsubmit={(event) => {
       event.preventDefault();
-      void navigate(draft === displayPath(label) ? path : draft);
+      void navigate(
+        firstMatch ?? (draft === displayPath(label) ? path : draft),
+      );
     }}
   >
     <input
@@ -100,9 +107,15 @@
       aria-expanded={expanded}
       aria-controls={menuId}
       aria-autocomplete="list"
+      aria-activedescendant={firstMatch ? `${menuId}-match` : undefined}
       role="combobox"
       spellcheck="false"
       autocomplete="off"
+      onfocus={() => {
+        input.select();
+        query = '';
+        expanded = true;
+      }}
       oninput={() => {
         query = draft;
         expanded = true;
@@ -117,9 +130,10 @@
       aria-controls={menuId}
       title={side === 'left' ? 'Locations (Alt+F1)' : 'Locations (Alt+F2)'}
       onclick={() => {
-        expanded = !expanded;
+        const open = !expanded;
         query = '';
         input.focus();
+        expanded = open;
       }}>▾</button
     >
   </form>
@@ -162,20 +176,30 @@
       }}
     >
       <div class="location-heading">Drives</div>
-      {#each filteredRoots as root}
+      {#each filteredRoots as root, index}
         <button
           type="button"
           class="location-option"
+          class:location-match={firstMatch === root.path && index === 0}
+          id={firstMatch === root.path && index === 0
+            ? `${menuId}-match`
+            : undefined}
           onclick={() => void navigate(root.path)}
         >
           <span>▣ {root.name}</span><small>{root.path}</small>
         </button>
       {/each}
       <div class="location-heading">Pinned directories</div>
-      {#each filteredPins as pin}
+      {#each filteredPins as pin, index}
         <button
           type="button"
           class="location-option"
+          class:location-match={!filteredRoots.length &&
+            index === 0 &&
+            firstMatch === pin}
+          id={!filteredRoots.length && index === 0 && firstMatch === pin
+            ? `${menuId}-match`
+            : undefined}
           onclick={() => void navigate(pin)}
         >
           <span

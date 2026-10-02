@@ -45,6 +45,16 @@ it('filters shared pins while typing and navigates when a result is clicked', as
   await Promise.resolve();
   expect(navigate).toHaveBeenCalledWith('/home/user/Projects');
 });
+it('opens the full dropdown when the path input receives focus', () => {
+  const input = target.querySelector<HTMLInputElement>('input')!;
+  input.focus();
+  flushSync();
+  expect(input.selectionStart).toBe(0);
+  expect(input.selectionEnd).toBe(input.value.length);
+  expect(target.querySelector('.location-menu')).not.toBeNull();
+  expect(target.querySelectorAll('.location-option')).toHaveLength(4);
+});
+
 it('submits a typed path directly', () => {
   const input = target.querySelector('input')!;
   input.value = '/new/path';
@@ -54,6 +64,22 @@ it('submits a typed path directly', () => {
     .querySelector('form')!
     .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   expect(navigate).toHaveBeenCalledWith('/new/path');
+});
+
+it('highlights the first filtered result and opens it with Enter', () => {
+  const input = target.querySelector<HTMLInputElement>('input')!;
+  input.focus();
+  input.value = 'projects';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  expect(document.activeElement).toBe(input);
+  expect(target.querySelector('.location-match')?.textContent).toContain(
+    'Projects',
+  );
+  target
+    .querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  expect(navigate).toHaveBeenCalledWith('/home/user/Projects');
 });
 it('pins the actual directory rather than the unfinished input', () => {
   const input = target.querySelector('input')!;

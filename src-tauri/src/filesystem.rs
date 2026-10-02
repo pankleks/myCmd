@@ -116,11 +116,12 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
         // Recognize BOM-less UTF-16 conservatively: ASCII text has a zero
         // high byte in almost every code unit, but no zero low bytes.
         let pairs = content.len() / 2;
-        let little = content.chunks_exact(2).filter(|p| p[1] == 0).count();
-        let big = content.chunks_exact(2).filter(|p| p[0] == 0).count();
-        if little * 10 >= pairs * 9 && content.chunks_exact(2).all(|p| p[0] != 0) {
+        let chunks = content.as_chunks::<2>().0;
+        let little = chunks.iter().filter(|p| p[1] == 0).count();
+        let big = chunks.iter().filter(|p| p[0] == 0).count();
+        if little * 10 >= pairs * 9 && chunks.iter().all(|p| p[0] != 0) {
             Some((&content[..], true))
-        } else if big * 10 >= pairs * 9 && content.chunks_exact(2).all(|p| p[1] != 0) {
+        } else if big * 10 >= pairs * 9 && chunks.iter().all(|p| p[1] != 0) {
             Some((&content[..], false))
         } else {
             None
@@ -136,7 +137,9 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
             ));
         }
         let units: Vec<u16> = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|p| {
                 if little_endian {
                     u16::from_le_bytes([p[0], p[1]])
