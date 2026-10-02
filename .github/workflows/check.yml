@@ -89,9 +89,11 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
       - name: Build Windows desktop for integration test
         if: runner.os == 'Windows'
-        run: npm run tauri build -- --debug --no-bundle --ci -- --locked
+        run: npm run tauri build -- --debug --no-bundle --ci --config .github/tauri.smoke.conf.json -- --locked
       - name: Test real Tauri and WebView2 process
         if: runner.os == 'Windows'
+        env:
+          MYCMD_SMOKE_DEBUG_PORT: '9222'
         run: npm run test:desktop
       - name: Upload desktop diagnostics
         if: always() && runner.os == 'Windows'

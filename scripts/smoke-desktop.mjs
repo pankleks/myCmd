@@ -54,23 +54,43 @@ for (const [name, fixtureName] of [
 }
 const server = createServer();
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const port = server.address().port;
+const port = process.env.MYCMD_SMOKE_DEBUG_PORT
+  ? Number(process.env.MYCMD_SMOKE_DEBUG_PORT)
+  : server.address().port;
+assert.ok(
+  Number.isInteger(port) && port > 0 && port <= 65535,
+  'Invalid debugger port',
+);
 await new Promise((r) => server.close(r));
-// Hosted Windows runners execute elevated and may have no usable GPU.
-// Limit these flags to the isolated CI smoke-test process, not normal builds.
+// CI also embeds these flags through tauri.smoke.conf.json because its
+// WebView2 runtime does not forward the environment-provided arguments.
 const browserArguments = [
   process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS ?? '',
   `--remote-debugging-port=${port}`,
   '--remote-allow-origins=*',
-  ...(process.env.CI ? ['--no-sandbox', '--disable-gpu'] : []),
 ]
   .filter(Boolean)
   .join(' ');
+const appEnvironment = { ...process.env };
+// Windows environment keys are case-insensitive; Node otherwise forwards
+// only the first differently-cased duplicate, potentially dropping overrides.
+for (const key of Object.keys(appEnvironment)) {
+  if (
+    [
+      'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
+      'WEBVIEW2_USER_DATA_FOLDER',
+    ].includes(key.toUpperCase())
+  ) {
+    delete appEnvironment[key];
+  }
+}
+if (!process.env.MYCMD_SMOKE_DEBUG_PORT) {
+  appEnvironment.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = browserArguments;
+}
 const app = spawn(executable, [], {
   env: {
-    ...process.env,
+    ...appEnvironment,
     MYCMD_CONFIG_DIR: join(fixture, 'config'),
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: browserArguments,
     WEBVIEW2_USER_DATA_FOLDER: join(fixture, 'webview-profile'),
   },
   stdio: ['ignore', 'pipe', 'pipe'],

@@ -37,7 +37,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
 Test integracyjny na Windows:
 
 ```sh
-npm run tauri build -- --debug --no-bundle --ci -- --locked
+npm run tauri build -- --debug --no-bundle --ci --config .github/tauri.smoke.conf.json -- --locked
+# PowerShell: $env:MYCMD_SMOKE_DEBUG_PORT = '9222'
+# POSIX shell: export MYCMD_SMOKE_DEBUG_PORT=9222
 npm run test:desktop
 ```
 
