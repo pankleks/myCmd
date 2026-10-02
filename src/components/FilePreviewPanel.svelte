@@ -5,7 +5,13 @@
     target,
     loading = false,
   }: {
-    target?: { path: string; name: string; extension: string; key: string };
+    target?: {
+      path: string;
+      name: string;
+      extension: string;
+      isDirectory?: boolean;
+      key: string;
+    };
     loading?: boolean;
   } = $props();
 
@@ -34,6 +40,7 @@
         path={settledTarget.path}
         name={settledTarget.name}
         extension={settledTarget.extension}
+        isDirectory={settledTarget.isDirectory}
         title="Preview"
       />
     {/key}

@@ -18,6 +18,7 @@ export const preferences = $state({
   columnWidths: null as number[] | null,
   showHidden: false,
   showFunctionBar: true,
+  pinnedDirectories: [] as string[],
 });
 
 export function setShowHidden(value: boolean) {
@@ -49,6 +50,7 @@ export async function loadPreferences(): Promise<SavedPaths> {
   preferences.fileFontSize = normalized.fileFontSize;
   preferences.columnWidths = normalized.columns;
   preferences.showFunctionBar = normalized.showFunctionBar;
+  preferences.pinnedDirectories = normalized.pinnedDirectories ?? [];
   setShowHidden(normalized.showHidden);
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
 }
@@ -70,6 +72,7 @@ export async function persistPreferences(): Promise<void> {
     fileFontSize: preferences.fileFontSize,
     showHidden: preferences.showHidden,
     showFunctionBar: preferences.showFunctionBar,
+    pinnedDirectories: preferences.pinnedDirectories,
   });
   try {
     await api.saveConfig(payload);

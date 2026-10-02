@@ -4,9 +4,9 @@ import { flushSync, mount, unmount } from 'svelte';
 import FilePreviewPanel from './FilePreviewPanel.svelte';
 import { commander, createPanel } from '../state/commander.svelte';
 
-const mocks = vi.hoisted(() => ({ read: vi.fn() }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), list: vi.fn() }));
 vi.mock('../filesystem/api', () => ({
-  api: { readTextPreview: mocks.read },
+  api: { readTextPreview: mocks.read, list: mocks.list },
   errorMessage: String,
 }));
 vi.mock('../monaco', () => ({
@@ -75,6 +75,29 @@ describe('panel preview debounce', () => {
     await unmount(component!);
     component = undefined;
     await advance(200);
+    expect(mocks.read).not.toHaveBeenCalled();
+  });
+  it('renders a directory summary without reading file previews', async () => {
+    mocks.list.mockResolvedValue({ path: '/dir', entries: [] });
+    component = mount(FilePreviewPanel, {
+      target,
+      props: {
+        target: {
+          path: '/dir',
+          name: 'dir',
+          extension: '',
+          isDirectory: true,
+          key: '/dir',
+        },
+      },
+    });
+    flushSync();
+    await advance(200);
+    await vi.waitFor(() => {
+      flushSync();
+      expect(target.textContent).toContain('Subdirectories');
+    });
+    expect(mocks.list).toHaveBeenCalledWith('/dir');
     expect(mocks.read).not.toHaveBeenCalled();
   });
 });

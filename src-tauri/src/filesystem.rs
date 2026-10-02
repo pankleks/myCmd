@@ -543,6 +543,30 @@ pub fn validate_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
+#[cfg(target_os = "linux")]
+fn visible_mount(line: &str) -> Option<PathBuf> {
+    let (mount, filesystem) = line.split_once(" - ")?;
+    let fields: Vec<_> = mount.split_whitespace().collect();
+    // Bind mounts, including individual files and container mounts, are not
+    // separate drives. A normal filesystem mount has '/' as its root.
+    if *fields.get(3)? != "/" { return None; }
+    let path = fields.get(4)?.replace("\\040", " ").replace("\\011", "\t")
+        .replace("\\012", "\n").replace("\\134", "\\");
+    let fs: Vec<_> = filesystem.split_whitespace().collect();
+    let kind = *fs.first()?;
+    let source = *fs.get(1)?;
+    if ["/proc", "/sys", "/dev", "/snap", "/var/lib/snapd", "/run"]
+        .iter().any(|base| path == *base || path.starts_with(&format!("{base}/")))
+        && !(path.starts_with("/run/media/") || path.starts_with("/run/user/") && kind == "fuse.gvfsd-fuse") {
+        return None;
+    }
+    let disk = source.starts_with("/dev/") && !source.starts_with("/dev/loop")
+        && !source.starts_with("/dev/ram") && kind != "squashfs";
+    let network = matches!(kind, "nfs" | "nfs4" | "cifs" | "smb3" | "fuse.sshfs");
+    let user_mount = matches!(kind, "fuseblk" | "fuse.exfat" | "fuse.ntfs-3g" | "fuse.gvfsd-fuse");
+    if disk || network || user_mount { Some(path.into()) } else { None }
+}
+
 pub fn roots() -> Vec<Root> {
     let mut roots = Vec::new();
     if let Some(p) = dirs::home_dir() {
@@ -574,17 +598,12 @@ pub fn roots() -> Vec<Root> {
         #[cfg(target_os = "linux")]
         if let Ok(contents) = fs::read_to_string("/proc/self/mountinfo") {
             for line in contents.lines() {
-                if let Some(p) = line.split_whitespace().nth(4) {
-                    let p = p
-                        .replace("\\040", " ")
-                        .replace("\\011", "\t")
-                        .replace("\\134", "\\");
-                    if !p.starts_with("/proc") && !p.starts_with("/sys") && !p.starts_with("/dev") {
-                        mounts.push(p.into());
-                    }
-                }
+                if let Some(p) = visible_mount(line) { mounts.push(p); }
             }
         }
+        // Linux mountinfo already supplies actual mount targets, without
+        // mistaking /media/<username> or ordinary /mnt folders for drives.
+        #[cfg(not(target_os = "linux"))]
         for base in ["/Volumes", "/mnt", "/media", "/run/media"] {
             if let Ok(items) = fs::read_dir(base) {
                 for item in items.flatten() {
@@ -614,6 +633,22 @@ pub fn roots() -> Vec<Root> {
 mod tests {
     use super::*;
     use std::io::Write;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mount_picker_hides_system_snap_and_bind_mounts() {
+        for line in [
+            "1 0 0:1 / /run rw - tmpfs tmpfs rw",
+            "1 0 0:1 / /snap/firefox/1 ro - squashfs /dev/loop0 ro",
+            "1 0 0:1 / /sys rw - sysfs sysfs rw",
+            "1 0 0:1 /subdir /mnt/bind rw - ext4 /dev/sda1 rw",
+            "1 0 0:1 / /var/lib/docker rw - overlay overlay rw",
+        ] { assert!(visible_mount(line).is_none(), "{line}"); }
+        for (line, expected) in [
+            ("1 0 0:1 / /media/user/Data\\040Drive rw - ext4 /dev/sdb1 rw", "/media/user/Data Drive"),
+            ("1 0 0:1 / /mnt/share rw - cifs //server/share rw", "/mnt/share"),
+            ("1 0 0:1 / /run/media/user/USB rw - vfat /dev/sdc1 rw", "/run/media/user/USB"),
+        ] { assert_eq!(visible_mount(line), Some(PathBuf::from(expected))); }
+    }
     const PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 
     fn png() -> Vec<u8> {

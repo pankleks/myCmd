@@ -46,6 +46,7 @@ pub struct AppConfig {
     pub show_hidden: bool,
     #[serde(default = "default_true")]
     pub show_function_bar: bool,
+    pub pinned_directories: Vec<String>,
 }
 
 impl Default for AppConfig {
@@ -58,6 +59,7 @@ impl Default for AppConfig {
             file_font_size: None,
             show_hidden: false,
             show_function_bar: true,
+            pinned_directories: Vec::new(),
         }
     }
 }
@@ -93,6 +95,15 @@ impl AppConfig {
                 .map(|size| size.clamp(MIN_FILE_FONT_SIZE, MAX_FILE_FONT_SIZE)),
             show_hidden: self.show_hidden,
             show_function_bar: self.show_function_bar,
+            pinned_directories: {
+                let mut pins = Vec::new();
+                for path in &self.pinned_directories {
+                    if let Some(path) = sanitize_path(Some(path.clone())) {
+                        if !pins.contains(&path) { pins.push(path); }
+                    }
+                }
+                pins
+            },
         }
     }
 }
@@ -176,6 +187,7 @@ mod tests {
             file_font_size: Some(20),
             show_hidden: true,
             show_function_bar: false,
+            pinned_directories: vec!["/home/user/projects".into()],
         };
         save_to(&path, &config).expect("save");
         assert_eq!(load_from(&path), config.sanitized());
@@ -207,6 +219,7 @@ mod tests {
             file_font_size: Some(99),
             show_hidden: true,
             show_function_bar: true,
+            pinned_directories: Vec::new(),
         };
         let sanitized = config.sanitized();
         assert_eq!(sanitized.version, CONFIG_VERSION);

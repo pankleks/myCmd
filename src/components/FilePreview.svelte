@@ -3,11 +3,13 @@
   import { api, errorMessage } from '../filesystem/api';
   import { isImageFile, isMarkdownFile } from '../utils/viewer';
   import { formatJsonPreview } from '../utils/jsonPreview';
+  import DirectorySummary from './DirectorySummary.svelte';
 
   let {
     path,
     name,
     extension,
+    isDirectory = false,
     autofocus = false,
     title,
     onopened,
@@ -17,6 +19,7 @@
     path: string;
     name: string;
     extension: string;
+    isDirectory?: boolean;
     autofocus?: boolean;
     title?: string;
     onopened?: () => void;
@@ -48,7 +51,7 @@
   >();
 
   onMount(() => {
-    void initialize();
+    if (!isDirectory) void initialize();
   });
 
   onDestroy(() => {
@@ -154,6 +157,9 @@
   }
 </script>
 
+{#if isDirectory}
+  <DirectorySummary {path} {name} />
+{:else}
 <div class="file-preview-content">
   <div class="viewer-header">
     <div class="viewer-heading">
@@ -229,3 +235,4 @@
       {@render footerActions?.()}
     </div>{/if}
 </div>
+{/if}

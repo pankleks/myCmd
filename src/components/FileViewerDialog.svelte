@@ -6,11 +6,13 @@
     path,
     name,
     extension,
+    isDirectory = false,
     onclose,
   }: {
     path: string;
     name: string;
     extension: string;
+    isDirectory?: boolean;
     onclose: () => void;
   } = $props();
   let dialog: HTMLDialogElement;
@@ -45,6 +47,7 @@
     {path}
     {name}
     {extension}
+    {isDirectory}
     autofocus
     onopened={onclose}
     {headerActions}

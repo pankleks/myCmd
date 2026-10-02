@@ -110,6 +110,74 @@ main {
 .pathbar select {
   max-width: 115px;
 }
+.panel {
+  position: relative;
+}
+.location-bar form {
+  display: flex;
+  background: #181d26;
+}
+.location-bar input {
+  flex: 1;
+}
+.location-pin {
+  font-size: 21px;
+  width: 38px;
+  padding: 0;
+}
+.location-pin.pinned {
+  color: #ffd478;
+}
+.pin-star {
+  color: #ffd478;
+}
+.location-menu {
+  position: absolute;
+  z-index: 20;
+  top: 46px;
+  left: 7px;
+  right: 50px;
+  max-height: min(360px, 60vh);
+  overflow: auto;
+  background: #232b36;
+  border: 1px solid #47566e;
+  box-shadow: 0 10px 24px #0008;
+  padding: 6px 0;
+}
+.location-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #9ba9bd;
+  padding: 10px 12px 5px;
+}
+.location-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: transparent;
+}
+.location-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.location-option small {
+  margin-left: auto;
+  color: #9ba9bd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.location-empty {
+  padding: 8px 12px;
+  color: #9ba9bd;
+  font-size: 12px;
+}
 .columns,
 .file-row {
   display: grid;
@@ -657,6 +725,30 @@ dialog.file-viewer[open] {
   position: absolute;
   inset: 0;
 }
+.directory-summary {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 20px 24px 8px;
+}
+.directory-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+.directory-summary dt {
+  flex: none;
+  width: 130px;
+  color: #9ba9bd;
+}
+.directory-summary dd {
+  margin: 0;
+  font-size: 16px;
+}
+.directory-summary-note {
+  padding: 0 24px 20px;
+  color: #e0a44a;
+}
 .markdown-preview {
   width: 100%;
   height: 100%;
@@ -666,6 +758,11 @@ dialog.file-viewer[open] {
   font-size: 14px;
   line-height: 1.65;
   overflow-wrap: anywhere;
+}
+/* Focus lands here programmatically so the region scrolls with the keyboard;
+   unlike form controls it needs no ring (same as the Monaco viewer). */
+.markdown-preview:focus {
+  outline: none;
 }
 .markdown-preview h1,
 .markdown-preview h2,

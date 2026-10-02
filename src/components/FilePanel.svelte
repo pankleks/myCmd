@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fileNameWithoutExtension } from '../utils/fileName';
+  import LocationPicker from './LocationPicker.svelte';
   import { tick } from 'svelte';
   import Icon from '@iconify/svelte';
   import fileIconData from '../file-icons.generated.json';
@@ -16,11 +17,7 @@
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
   import { displayPath } from '../utils/paths';
-  import {
-    locationLabel,
-    parentFocus,
-    searchSession,
-  } from '../filesystem/providers';
+  import { locationLabel, searchSession } from '../filesystem/providers';
   import { resizeColumn } from '../utils/resizeColumns';
   import { preferences } from '../state/preferences.svelte';
   import { errorMessage } from '../filesystem/api';
@@ -35,7 +32,6 @@
     roots: Root[];
     hidden?: boolean;
   } = $props();
-  let draft = $state('');
   let scroller: HTMLDivElement;
   let header: HTMLDivElement;
   let scrollTop = $state(0);
@@ -74,9 +70,6 @@
       'default-file';
     return fileIcons[key] ?? fileIcons['default-file'];
   }
-  $effect(() => {
-    draft = displayPath(locationLabel(panel.path));
-  });
   $effect(() => {
     items.length;
     height;
@@ -192,56 +185,18 @@
   aria-label={side === 'left' ? 'Left panel' : 'Right panel'}
   onfocusin={() => (commander.activePanel = side)}
 >
-  <div class="pathbar">
-    <select
-      id={`drive-${side}`}
-      aria-label="Drives and mount points"
-      title={side === 'left' ? 'Drives (Alt+F1)' : 'Drives (Alt+F2)'}
-      value=""
-      onchange={async (e) => {
-        const path = e.currentTarget.value;
-        commander.activePanel = side;
-        e.currentTarget.value = '';
-        if (!path) return;
-        await load(panel, path);
-        scroller.focus();
-      }}
-    >
-      <option value="" disabled>Drives ▾</option>
-      {#each roots as root}<option value={root.path}>{root.name}</option>{/each}
-    </select>
-    <form
-      onsubmit={async (e) => {
-        e.preventDefault();
-        commander.activePanel = side;
-        await load(
-          panel,
-          draft === displayPath(locationLabel(panel.path)) ? panel.path : draft,
-        );
-        if (!panel.error) scroller.focus();
-      }}
-    >
-      <input
-        aria-label="Directory path"
-        bind:value={draft}
-        spellcheck="false"
-        onkeydown={(e) => {
-          if (e.key === 'Escape') {
-            draft = displayPath(locationLabel(panel.path));
-            scroller.focus();
-          }
-        }}
-      />
-    </form>
-    <button
-      title="Parent directory (Backspace)"
-      disabled={!panel.parent || panel.loading}
-      onclick={() => {
-        commander.activePanel = side;
-        void load(panel, panel.parent!, parentFocus(panel.path));
-      }}>↑</button
-    >
-  </div>
+  <LocationPicker
+    path={panel.path}
+    label={locationLabel(panel.path)}
+    {roots}
+    {side}
+    onnavigate={async (path) => {
+      commander.activePanel = side;
+      await load(panel, path);
+      if (!panel.error) scroller.focus();
+    }}
+    onescape={() => scroller.focus()}
+  />
   <div
     class="columns"
     role="row"

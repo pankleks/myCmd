@@ -100,6 +100,7 @@ describe('persistPreferences', () => {
     preferences.columnWidths = [200, 80, 100, 220];
     await persistPreferences();
     expect(saveConfig).toHaveBeenCalledWith({
+      pinnedDirectories: [],
       version: 1,
       leftPath: 'C:\\Users\\root',
       rightPath: 'D:\\Backup',

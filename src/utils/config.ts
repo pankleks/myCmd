@@ -22,6 +22,7 @@ export interface AppConfig {
   showHidden?:
     boolean | { left?: boolean | null; right?: boolean | null } | null;
   showFunctionBar?: boolean | null;
+  pinnedDirectories?: string[];
 }
 
 export interface NormalizedConfig {
@@ -31,6 +32,7 @@ export interface NormalizedConfig {
   fileFontSize: number;
   showHidden: boolean;
   showFunctionBar: boolean;
+  pinnedDirectories?: string[];
 }
 
 export function normalizeFontSize(value: unknown): number {
@@ -76,7 +78,15 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     // boolean true enables hidden files now.
     showHidden: config.showHidden === true,
     showFunctionBar: config.showFunctionBar !== false,
+    pinnedDirectories: normalizePins(config.pinnedDirectories),
   };
+}
+
+export function normalizePins(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(value.map(normalizePath).filter((p): p is string => p !== null)),
+  ];
 }
 
 function normalizeSharedColumns(value: unknown): number[] | null {
@@ -103,5 +113,6 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     fileFontSize: normalized.fileFontSize,
     showHidden: normalized.showHidden,
     showFunctionBar: normalized.showFunctionBar,
+    pinnedDirectories: normalizePins(normalized.pinnedDirectories),
   };
 }

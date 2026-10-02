@@ -117,6 +117,7 @@
     path: string;
     name: string;
     extension: string;
+    isDirectory?: boolean;
   }>();
   let commandInputElement: HTMLInputElement;
   let progress = $derived(operations.state.progress);
@@ -141,17 +142,12 @@
     )
       return undefined;
     const entry = rows(active)[active.cursor];
-    if (
-      !entry ||
-      entry.parentEntry ||
-      entry.type === 'directory' ||
-      entry.directoryTarget
-    )
-      return undefined;
+    if (!entry || entry.parentEntry) return undefined;
     return {
       path: entry.path,
       name: entry.name,
       extension: entry.extension,
+      isDirectory: entry.type === 'directory',
       key: `${commander.activePanel}:${active.revision}:${entry.path}:${entry.size}:${entry.modified ?? ''}`,
     };
   });
@@ -189,6 +185,7 @@
     preferences.columnWidths;
     preferences.showHidden;
     preferences.showFunctionBar;
+    preferences.pinnedDirectories;
     scheduleSave();
   });
   const actions: [string, Action, string][] = [
@@ -207,14 +204,10 @@
     await tick();
     const picker = document.getElementById(
       `drive-${side}`,
-    ) as HTMLSelectElement | null;
+    ) as HTMLButtonElement | null;
     if (!picker) return;
     picker.focus();
-    try {
-      picker.showPicker();
-    } catch {
-      picker.click();
-    }
+    picker.click();
   }
   function closeDialog() {
     dialog = undefined;
@@ -276,11 +269,18 @@
     }
     const entry = rows(active)[active.cursor];
     if (!entry || entry.parentEntry) return;
-    if (entry.type === 'directory' || entry.directoryTarget) {
-      showError('Select a file to view.');
+    quickFindClose();
+    // Note: every real directory arrives with directoryTarget === true
+    // (backend marks navigable targets), so check the type first.
+    if (entry.type === 'directory') {
+      viewer = {
+        path: entry.path,
+        name: entry.name,
+        extension: entry.extension,
+        isDirectory: true,
+      };
       return;
     }
-    quickFindClose();
     viewer = {
       path: entry.path,
       name: entry.name,
@@ -429,6 +429,23 @@
       failed: (cause) => showError(errorMessage(cause)),
     });
     const unlisten: UnlistenFn[] = [];
+    let rootsRefreshing = false;
+    const rootsTimer = setInterval(async () => {
+      if (!ready || disposed || rootsRefreshing) return;
+      rootsRefreshing = true;
+      try {
+        const roots = await api.roots();
+        if (
+          !disposed &&
+          JSON.stringify(roots) !== JSON.stringify(commander.roots)
+        )
+          commander.roots = roots;
+      } catch {
+        // Keep the last known drives on transient errors; retry next time.
+      } finally {
+        rootsRefreshing = false;
+      }
+    }, 2000);
     async function init() {
       if (!isTauri()) {
         showError(
@@ -479,6 +496,7 @@
     void init();
     return () => {
       disposed = true;
+      clearInterval(rootsTimer);
       operations.dispose();
       directoryRefresh.dispose();
       unlisten.forEach((fn) => fn());
@@ -839,7 +857,7 @@
       onclose={() => {
         error = '';
         errorTitle = 'Error';
-        void tick().then(() => commandInputElement?.focus());
+        void tick().then(focusPanel);
       }}
     />
   {:else if commandError}<ErrorDialog

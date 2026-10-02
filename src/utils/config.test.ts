@@ -39,6 +39,15 @@ describe('normalizeColumnWeights', () => {
 });
 
 describe('normalizeConfig', () => {
+  it('normalizes and persists shared pins', () => {
+    const config = normalizeConfig({
+      pinnedDirectories: [' /tmp ', '/tmp', '', 5, '/home/user'],
+    });
+    expect(config.pinnedDirectories).toEqual(['/tmp', '/home/user']);
+    expect(normalizeConfig(buildSavePayload(config)).pinnedDirectories).toEqual(
+      config.pinnedDirectories,
+    );
+  });
   it('merges stored values over defaults', () => {
     expect(
       normalizeConfig({
@@ -51,6 +60,7 @@ describe('normalizeConfig', () => {
       leftPath: 'C:\\Users\\root',
       rightPath: null,
       columns: [175, 78, 113, 218],
+      pinnedDirectories: [],
       fileFontSize: 20,
       showHidden: false,
       showFunctionBar: true,
@@ -92,6 +102,7 @@ describe('normalizeConfig', () => {
       leftPath: null,
       rightPath: null,
       columns: null,
+      pinnedDirectories: [],
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
       showHidden: false,
       showFunctionBar: true,
@@ -110,6 +121,7 @@ describe('normalizeConfig', () => {
       showFunctionBar: false,
     });
     expect(buildSavePayload(normalized)).toEqual({
+      pinnedDirectories: [],
       version: 1,
       leftPath: '/home/user',
       rightPath: '/tmp',
