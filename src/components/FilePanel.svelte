@@ -214,7 +214,7 @@
             : 'none'}
           onclick={() => sort(panel, item.column)}
           ondblclick={() => (preferences.columnWidths = null)}
-          title="Double-click to reset column widths"
+          title={`Sort by ${item.label}; click again to reverse. Double-click to reset column widths.`}
           >{item.label}{panel.sort.column === item.column
             ? panel.sort.direction === 'asc'
               ? ' ▴'

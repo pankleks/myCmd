@@ -232,7 +232,7 @@ dialog label + label {
   padding: 5px 8px;
   white-space: nowrap;
 }
-.column-resizer {
+.columns .column-resizer {
   position: absolute;
   z-index: 1;
   top: 0;
