@@ -7,8 +7,8 @@
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
-    "dev": "npm run generate:file-icons && vite",
-    "build": "npm run generate:file-icons && npm run check && vite build",
+    "dev": "vite",
+    "build": "npm run check && vite build",
     "generate:file-icons": "node scripts/generate-file-icons.mjs",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test:desktop": "node scripts/smoke-desktop.mjs",
@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.137",
-    "@iconify-json/vscode-icons": "^1.2.82",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2.0.0",
     "@vitest/coverage-v8": "^5.0.2",

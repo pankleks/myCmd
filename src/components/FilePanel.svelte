@@ -3,7 +3,7 @@
   import LocationPicker from './LocationPicker.svelte';
   import { tick } from 'svelte';
   import Icon from '@iconify/svelte';
-  import fileIconData from '../file-icons.generated.json';
+  import { fileIcon } from '../utils/fileIcon';
   import type { PanelState, Root, Column } from '../filesystem/types';
   import {
     commander,
@@ -37,6 +37,7 @@
   let scrollTop = $state(0);
   let scrollbarWidth = $state(0);
   let height = $state(400);
+  let extensionWidth = $state(46);
   let resizing = $state<{
     index: number;
     pointerId: number;
@@ -50,12 +51,6 @@
       .join(' '),
   );
   const rowHeight = 26;
-  const fileIcons = fileIconData.icons as Record<
-    string,
-    { body: string; width: number; height: number }
-  >;
-  const extensionIcons = fileIconData.extensions as Record<string, string>;
-  const filenameIcons = fileIconData.filenames as Record<string, string>;
   let items = $derived(rows(panel));
   let start = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - 8));
   let end = $derived(
@@ -63,13 +58,27 @@
   );
   let active = $derived(commander.activePanel === side);
   let searchResults = $derived(!!searchSession(panel.path));
-  function iconFor(name: string, extension: string) {
-    const key =
-      filenameIcons[name.toLowerCase()] ??
-      extensionIcons[extension.toLowerCase()] ??
-      'default-file';
-    return fileIcons[key] ?? fileIcons['default-file'];
-  }
+  $effect(() => {
+    const extensions = new Set(
+      items
+        .filter((entry) => entry.type !== 'directory')
+        .map((entry) => entry.extension),
+    );
+    preferences.fileFontSize;
+    void tick().then(() => {
+      if (!scroller) return;
+      const context = document.createElement('canvas').getContext('2d');
+      if (!context) return;
+      context.font = getComputedStyle(scroller).font;
+      let width = 46;
+      for (const extension of extensions)
+        width = Math.max(
+          width,
+          Math.ceil(context.measureText(extension).width) + 14,
+        );
+      extensionWidth = width;
+    });
+  });
   $effect(() => {
     items.length;
     height;
@@ -182,6 +191,7 @@
   class:panel-hidden={hidden}
   class="panel"
   style:--panel-column-template={columnTemplate}
+  style:--panel-extension-width={`${extensionWidth}px`}
   aria-label={side === 'left' ? 'Left panel' : 'Right panel'}
   onfocusin={() => (commander.activePanel = side)}
 >
@@ -291,26 +301,24 @@
           ><span class="file-icon" aria-hidden="true"
             >{#if entry.parentEntry}
               <Icon
-                icon={fileIcons['default-folder-opened']}
+                icon={fileIcon(entry.name, true, true)}
                 width="16"
                 height="16"
               />
             {:else if entry.type === 'directory'}
-              <Icon icon={fileIcons['default-folder']} width="16" height="16" />
+              <Icon icon={fileIcon(entry.name, true)} width="16" height="16" />
             {:else if entry.type === 'symlink'}
               ↗
             {:else}
-              <Icon
-                icon={iconFor(entry.name, entry.extension)}
-                width="16"
-                height="16"
-              />
+              <Icon icon={fileIcon(entry.name)} width="16" height="16" />
             {/if}</span
           >{entry.type === 'directory'
             ? `[${entry.name}]`
             : fileNameWithoutExtension(entry.name, entry.extension)}</span
         >
-        <span>{entry.type === 'directory' ? '' : entry.extension}</span>
+        <span title={entry.extension}
+          >{entry.type === 'directory' ? '' : entry.extension}</span
+        >
         <span class="size"
           >{entry.parentEntry
             ? ''

@@ -188,14 +188,16 @@ main {
   display: grid;
   grid-template-columns: var(
     --panel-column-template,
-    minmax(80px, 1fr) minmax(46px, 0.45fr) minmax(72px, 0.65fr)
-      minmax(170px, 1.25fr)
+    minmax(80px, 1fr) minmax(var(--panel-extension-width, 46px), 0.45fr)
+      minmax(72px, 0.65fr) minmax(170px, 1.25fr)
   );
   align-items: center;
 }
 .panel.search-results .columns,
 .panel.search-results .file-row {
-  grid-template-columns: minmax(80px, 1fr) 46px 72px 170px minmax(100px, 1.2fr);
+  grid-template-columns:
+    minmax(80px, 1fr) var(--panel-extension-width, 46px)
+    72px 170px minmax(100px, 1.2fr);
 }
 .search-location-heading {
   padding: 5px 8px;

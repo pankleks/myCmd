@@ -31,6 +31,7 @@ const destination = join(fixture, 'destination');
 await mkdir(join(source, 'nested'), { recursive: true });
 await mkdir(destination);
 await writeFile(join(source, 'nested', 'sample.txt'), 'smoke payload');
+await writeFile(join(source, 'project.code-workspace'), '{}');
 await writeFile(
   join(source, 'preview.md'),
   '# Native preview\n\n**Markdown works**\n\n![Local image](preview.png)',
@@ -361,6 +362,20 @@ try {
     );
   }
   await selectPreviewFile('preview.md');
+  await until(
+    () =>
+      evaluate(`(() => {
+      const row = Array.from(document.querySelectorAll('#list-left .file-row')).find(row => row.title.endsWith('project.code-workspace'));
+      const extension = row?.children[1];
+      if (!extension) return false;
+      const style = getComputedStyle(extension);
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      context.font = style.font;
+      return extension.clientWidth >= context.measureText(extension.textContent).width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    })()`),
+    'long extension fits its column',
+  );
   await evaluate(
     `document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',ctrlKey:true,bubbles:true,cancelable:true}))`,
   );
