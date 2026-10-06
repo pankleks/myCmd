@@ -86,10 +86,9 @@ The **Release** workflow:
    | -------------------------------------------- | ------------------- | ------------- |
    | Windows                                      | x64                 | MSI, NSIS EXE |
    | Linux (Debian/Ubuntu; built on Ubuntu 22.04) | x64                 | DEB, AppImage |
-   | macOS                                        | Intel x64           | DMG           |
    | macOS                                        | Apple Silicon arm64 | DMG           |
 
-4. Checks that all six installers are present and generates `SHA256SUMS.txt`.
+4. Checks that all five installers are present and generates `SHA256SUMS.txt`.
 5. Creates a draft GitHub Release and uploads all packages and checksums. The description comes from the changelog, if available, or from default release information.
 6. Automatically **publishes the GitHub Release** only after all files have been uploaded.
 

@@ -112,6 +112,8 @@ it('generates package notes when the changelog is absent', async () => {
   const notes = await releaseNotes(root, '0.1.0');
   expect(notes).toContain('# myCmd 0.1.0');
   expect(notes).toContain('## Packages');
+  expect(notes).toContain('macOS Apple Silicon arm64: DMG');
+  expect(notes).not.toContain('Intel');
   expect(notes).toContain('SHA256SUMS.txt');
 });
 it('extracts only the selected release notes and requires an entry when a changelog exists', async () => {
@@ -140,7 +142,8 @@ it('collects all bundle types, prefixes architecture and produces independently 
     expect(names).toHaveLength(extensions.length);
   }
   const output = await checksums(destination);
-  expect(output.trim().split('\n')).toHaveLength(6);
+  expect(output.trim().split('\n')).toHaveLength(5);
+  expect(output).not.toContain('macos-x64');
   for (const line of output.trim().split('\n')) {
     const [hash, name] = line.split('  ');
     expect(hash).toBe(
@@ -161,13 +164,13 @@ it('refuses missing, duplicate, empty or unknown bundles and incomplete releases
     'Missing',
   );
   await writeFile(join(root, 'installer.dmg'), '');
-  await expect(collectAssets(root, output, 'macos-x64')).rejects.toThrow(
+  await expect(collectAssets(root, output, 'macos-arm64')).rejects.toThrow(
     'Empty',
   );
   await writeFile(join(root, 'installer.dmg'), 'binary');
   await mkdir(join(root, 'duplicate'));
   await writeFile(join(root, 'duplicate/installer.dmg'), 'binary');
-  await expect(collectAssets(root, output, 'macos-x64')).rejects.toThrow(
+  await expect(collectAssets(root, output, 'macos-arm64')).rejects.toThrow(
     'Duplicate',
   );
   await expect(checksums(root)).rejects.toThrow('Missing release asset');

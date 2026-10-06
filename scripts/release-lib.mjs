@@ -13,7 +13,6 @@ import { join, basename } from 'node:path';
 export const bundles = {
   'windows-x64': ['.msi', '.exe'],
   'linux-x64': ['.deb', '.AppImage'],
-  'macos-x64': ['.dmg'],
   'macos-arm64': ['.dmg'],
 };
 
@@ -135,7 +134,7 @@ export async function releaseNotes(root, version) {
   const notes = newline < 0 ? '' : section.slice(newline + 1).trim();
   if (!notes)
     throw new Error(`Add release notes under ## [${version}] in CHANGELOG.md.`);
-  return `# myCmd ${version}\n\n${notes}\n\n## Packages\n\n- Windows x64: MSI / NSIS installer\n- Linux x64: DEB / AppImage\n- macOS Intel and Apple Silicon: DMG\n\nSHA-256 checksums: \`SHA256SUMS.txt\`. Packages are currently unsigned; macOS packages are not notarized.\n`;
+  return `# myCmd ${version}\n\n${notes}\n\n## Packages\n\n- Windows x64: MSI / NSIS installer\n- Linux x64: DEB / AppImage\n- macOS Apple Silicon arm64: DMG\n\nSHA-256 checksums: \`SHA256SUMS.txt\`. Packages are currently unsigned; macOS packages are not notarized.\n`;
 }
 
 async function files(directory) {
