@@ -2,7 +2,7 @@ import type { CommandResult } from '../filesystem/api';
 import { errorMessage } from '../filesystem/api';
 
 export function commandOutput(result: CommandResult): string | undefined {
-  if (result.success && !result.outputTruncated && !result.outputIncomplete)
+  if (result.success && !result.outputTruncated && !result.outputReadFailed)
     return undefined;
   return (
     [

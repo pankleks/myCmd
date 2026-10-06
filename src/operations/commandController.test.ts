@@ -14,6 +14,7 @@ const success: CommandResult = {
   timedOut: false,
   outputTruncated: false,
   outputIncomplete: false,
+  outputReadFailed: false,
 };
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -166,9 +167,16 @@ describe('command output', () => {
         stdout: 'partial',
       }),
     ).toContain('error\npartial');
-    expect(commandOutput({ ...success, outputIncomplete: true })).toContain(
-      'Output capture incomplete',
-    );
+    expect(
+      commandOutput({ ...success, outputIncomplete: true }),
+    ).toBeUndefined();
+    expect(
+      commandOutput({
+        ...success,
+        outputIncomplete: true,
+        outputReadFailed: true,
+      }),
+    ).toContain('Output capture incomplete');
     expect(commandOutput({ ...success, outputTruncated: true })).toContain(
       'Output truncated',
     );

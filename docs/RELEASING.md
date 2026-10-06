@@ -1,27 +1,27 @@
-# CI, testy i wydania
+# CI, testing and releases
 
 ## CI
 
-Workflow **CI** (`.github/workflows/check.yml`) uruchamia się dla pushów na gałęzie, pull requestów i ręcznie. Jest też wywoływany przez proces wydania dla dokładnie tego samego commita co tag.
+The **CI** workflow (`.github/workflows/check.yml`) runs on branch pushes, pull requests and manual dispatch. The release workflow also calls it for the exact commit referenced by the release tag.
 
-| Etap                         | Kontrole                                                                                                               |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Frontend and release tooling | actionlint, Prettier, zgodność wersji (opcjonalny changelog), Vitest z progami pokrycia, TypeScript/Svelte, build Vite |
-| Rust and desktop             | Windows / Ubuntu 22.04 / macOS: rustfmt, Clippy bez ostrzeżeń, testy Rust                                              |
-| Windows desktop              | Build debug z osadzonym frontendem; test prawdziwego procesu Tauri i WebView2                                          |
-| CI passed                    | Zbiorczy wymagany status; sukces tylko po sukcesie wszystkich poprzednich etapów                                       |
+| Stage                        | Checks                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Frontend and release tooling | actionlint, Prettier, version consistency (optional changelog), Vitest with coverage thresholds, TypeScript/Svelte, Vite build |
+| Rust and desktop             | Windows / Ubuntu 22.04 / macOS: rustfmt, Clippy without warnings, Rust tests                                                   |
+| Windows desktop              | Debug build with the frontend embedded; a real Tauri and WebView2 process test                                                 |
+| CI passed                    | Combined required status; succeeds only when all previous stages succeed                                                       |
 
-Instalacja używa `npm ci`, a Cargo `--locked`. Oba lockfile muszą być commitowane. Cache zależności Rust i npm skraca kolejne przebiegi. Nowszy push anuluje starsze CI tej samej gałęzi. Wydania nie są anulowane w trakcie pracy.
+Installation uses `npm ci`, and Cargo uses `--locked`. Both lockfiles must be committed. Rust and npm dependency caches speed up subsequent runs. A newer push cancels older CI runs on the same branch. Release runs are not cancelled while in progress.
 
-Raport JUnit i pokrycie kodu są dostępne jako artefakt `frontend-test-results` przez 14 dni. Pokrycie obejmuje logikę paneli, formatowanie i narzędzia release; nie jest metryką pokrycia całego interfejsu. Progi: 85% instrukcji/linii, 80% gałęzi, 90% funkcji.
+JUnit reports and code coverage are available in the `frontend-test-results` artifact for 14 days. Coverage includes panel logic, formatting and release tooling; it does not measure the entire UI. Thresholds: 85% statements/lines, 80% branches and 90% functions.
 
-Test desktopowy ma timeouty i osobny profil WebView2. W razie błędu zapisuje log, tekst strony i — jeśli debugger jest osiągalny — screenshot do `test-results/desktop/`. CI udostępnia te pliki jako `windows-desktop-diagnostics`.
+The desktop test uses timeouts and a separate WebView2 profile. On failure, it saves logs, page text and—if the debugger is reachable—a screenshot to `test-results/desktop/`. CI uploads these files as `windows-desktop-diagnostics`.
 
-W ustawieniach repozytorium dla `main` można ustawić **CI passed** jako wymagany status przed merge. Nazwa będzie dostępna po pierwszym przebiegu workflow.
+In the repository settings for `main`, you can require **CI passed** before merging. This status becomes available after the workflow's first run.
 
-## Lokalne sprawdzenie
+## Local verification
 
-Wymagane: Node.js 22.12+ z linii 22 lub Node.js 24 LTS, Rust stable z `rustfmt` i `clippy`, zależności Tauri dla systemu.
+Requirements: Node.js 22.12+ from the 22 release line or Node.js 24 LTS, stable Rust with `rustfmt` and `clippy`, and the Tauri dependencies for your operating system.
 
 ```sh
 npm ci
@@ -34,7 +34,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D w
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
 ```
 
-Test integracyjny na Windows:
+Windows integration test:
 
 ```sh
 npm run tauri build -- --debug --no-bundle --ci --config .github/tauri.smoke.conf.json -- --locked
@@ -43,31 +43,31 @@ npm run tauri build -- --debug --no-bundle --ci --config .github/tauri.smoke.con
 npm run test:desktop
 ```
 
-`npm test` uruchamia testy bez pomiaru pokrycia; `npm run test:watch` działa w trybie obserwacji. `npm run format` i `cargo fmt --manifest-path src-tauri/Cargo.toml` poprawiają formatowanie.
+`npm test` runs tests without measuring coverage; `npm run test:watch` runs in watch mode. `npm run format` and `cargo fmt --manifest-path src-tauri/Cargo.toml` fix formatting.
 
-## Przygotowanie wersji
+## Preparing a version
 
-Wersja musi być taka sama w:
+The version must match in:
 
 - `package.json`,
-- `package-lock.json` (nagłówek i pakiet główny),
+- `package-lock.json` (the top-level version and root package),
 - `src-tauri/tauri.conf.json`,
 - `src-tauri/Cargo.toml`,
-- `src-tauri/Cargo.lock` (tylko pakiet `mycmd`).
+- `src-tauri/Cargo.lock` (the `mycmd` package only).
 
-Skrypt aktualizuje je razem, nie zmieniając wersji zależności:
+The script updates them together without changing dependency versions:
 
 ```sh
 npm run release:version -- 0.2.0
 ```
 
-Jeśli używasz `CHANGELOG.md`, przenieś odpowiednie wpisy z `Unreleased` pod `## [0.2.0] - YYYY-MM-DD`. Changelog nie jest wymagany. Wykonaj `npm run release:check` i pozostałe testy. Zacommituj zmiany i wprowadź je do `main` przez CI.
+If you use `CHANGELOG.md`, move the relevant entries from `Unreleased` under `## [0.2.0] - YYYY-MM-DD`. A changelog is not required. Run `npm run release:check` and the remaining tests. Commit the changes and merge them into `main` through CI.
 
-Dla pierwszego wydania obecna wersja `0.1.0` jest już przygotowana; nie trzeba jej ponownie podbijać.
+For the first release, version `0.1.0` was already prepared and did not need another version bump.
 
-## Uruchomienie wydania
+## Starting a release
 
-Tag wskazuje commit zawierający workflow i wszystkie źródła wydania. Dla pierwszej wersji:
+The tag points to the commit containing the workflow and all release sources. For example, for the first version:
 
 ```sh
 git switch main
@@ -76,42 +76,42 @@ git tag -a v0.1.0 -m "myCmd 0.1.0"
 git push origin v0.1.0
 ```
 
-Workflow **Release**:
+The **Release** workflow:
 
-1. Sprawdza zgodność tagu `vX.Y.Z` z manifestami; changelog jest opcjonalny.
-2. Uruchamia pełne CI na tagowanym commicie.
-3. Równolegle buduje pakiety:
+1. Checks that the `vX.Y.Z` tag matches the manifests; the changelog is optional.
+2. Runs full CI on the tagged commit.
+3. Builds packages in parallel:
 
-   | Platforma                                    | Architektura        | Pakiety       |
+   | Platform                                     | Architecture        | Packages      |
    | -------------------------------------------- | ------------------- | ------------- |
    | Windows                                      | x64                 | MSI, NSIS EXE |
-   | Linux (Debian/Ubuntu; build na Ubuntu 22.04) | x64                 | DEB, AppImage |
+   | Linux (Debian/Ubuntu; built on Ubuntu 22.04) | x64                 | DEB, AppImage |
    | macOS                                        | Intel x64           | DMG           |
    | macOS                                        | Apple Silicon arm64 | DMG           |
 
-4. Sprawdza obecność wszystkich sześciu instalatorów i generuje `SHA256SUMS.txt`.
-5. Tworzy draft GitHub Release i przesyła wszystkie pakiety oraz sumy kontrolne. Opis pochodzi z changelogu, jeśli jest dostępny, lub z domyślnych informacji o wydaniu.
-6. Automatycznie **publikuje GitHub Release** dopiero po zakończeniu przesyłania wszystkich plików.
+4. Checks that all six installers are present and generates `SHA256SUMS.txt`.
+5. Creates a draft GitHub Release and uploads all packages and checksums. The description comes from the changelog, if available, or from default release information.
+6. Automatically **publishes the GitHub Release** only after all files have been uploaded.
 
-Pakiety pośrednie są dostępne w artefaktach workflow przez 14 dni; pliki dołączone do GitHub Release nie mają tego terminu usunięcia. Prefiks nazwy pliku wskazuje platformę i architekturę.
+Intermediate packages are available as workflow artifacts for 14 days; files attached to a GitHub Release do not have this expiration period. The filename prefix identifies the platform and architecture.
 
-Wersje z przyrostkiem, np. `0.2.0-rc.1`, automatycznie otrzymują flagę prerelease. Pełne CI i wszystkie platformy muszą zakończyć się sukcesem; błąd którejkolwiek blokuje publikację. Pakiety DEB wymagają zależności Tauri, w tym WebKitGTK 4.1; nie wszystkie starsze wydania Debiana/Ubuntu je udostępniają.
+Versions with a suffix, such as `0.2.0-rc.1`, are automatically marked as prereleases. Full CI and all platform builds must succeed; failure on any platform blocks publication. DEB packages require Tauri dependencies, including WebKitGTK 4.1; not all older Debian/Ubuntu releases provide them.
 
-Workflow korzysta z wbudowanego `GITHUB_TOKEN`. Tylko końcowy job ma `contents: write`. Dodatkowe sekrety nie są potrzebne do obecnych, niepodpisanych pakietów. Certyfikaty Windows oraz podpisywanie/notaryzacja Apple nie są skonfigurowane.
+The workflow uses the built-in `GITHUB_TOKEN`. Only the final job has `contents: write`. No additional secrets are needed for the current unsigned packages. Windows certificates and Apple signing/notarization are not configured.
 
-## Powtórzenie i diagnoza
+## Retrying and troubleshooting
 
-- Dla błędu testów lub kompilacji otwórz log joba i odpowiednie artefakty. Poprawki źródeł wydawaj pod nową wersją/tagiem.
-- Przy przejściowym błędzie pobierania narzędzi użyj **Re-run failed jobs**.
-- Można ręcznie uruchomić workflow na istniejącym tagu, np. `gh workflow run release.yml --ref v0.1.0`. Dispatch z gałęzi zostanie odrzucony.
-- Jeśli publikacja nie została zakończona, ponowny przebieg aktualizuje istniejący draft i zastępuje jego pliki, a następnie go publikuje. Opublikowany release nie zostanie nadpisany; wymaga nowej wersji.
+- For test or build failures, open the job logs and corresponding artifacts. Release source fixes under a new version/tag.
+- For temporary tool download failures, use **Re-run failed jobs**.
+- You can manually run the workflow on an existing tag, for example `gh workflow run release.yml --ref v0.1.0`. Dispatching from a branch is rejected.
+- If publication has not completed, a rerun updates the existing draft, replaces its files and then publishes it. A published release will not be overwritten; create a new version instead.
 
-Sprawdzenie pobranych plików na Linux/macOS:
+Verify downloaded files on Linux/macOS:
 
 ```sh
 sha256sum --check SHA256SUMS.txt
-# macOS bez sha256sum:
+# macOS without sha256sum:
 shasum -a 256 --check SHA256SUMS.txt
 ```
 
-Na Windows: `Get-FileHash .\nazwa-instalatora.exe -Algorithm SHA256` i porównanie z wpisem w `SHA256SUMS.txt`.
+On Windows, run `Get-FileHash .\installer-name.exe -Algorithm SHA256` and compare the result with its entry in `SHA256SUMS.txt`.

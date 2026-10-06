@@ -103,7 +103,7 @@ struct Capture {
     stop: Arc<AtomicBool>,
 }
 impl Capture {
-    fn finish(self, timeout: Duration) -> (String, bool, bool) {
+    fn finish(self, timeout: Duration) -> (String, bool, bool, bool) {
         let incomplete = self.done.recv_timeout(timeout).is_err();
         if incomplete {
             self.stop.store(true, Ordering::Relaxed);
@@ -113,6 +113,7 @@ impl Capture {
             String::from_utf8_lossy(&output.bytes).into_owned(),
             output.truncated,
             incomplete || output.read_failed,
+            output.read_failed,
         )
     }
 }
@@ -259,6 +260,7 @@ pub struct CommandResult {
     pub timed_out: bool,
     pub output_truncated: bool,
     pub output_incomplete: bool,
+    pub output_read_failed: bool,
 }
 
 #[cfg(test)]
@@ -296,6 +298,7 @@ fn run_shell_controlled(
             timed_out: false,
             output_truncated: false,
             output_incomplete: false,
+            output_read_failed: false,
         });
     }
     #[cfg(windows)]
@@ -371,8 +374,10 @@ fn run_shell_controlled(
         }
     };
     // Descendants may inherit pipes after the shell exits. Never wait forever.
-    let (stdout, stdout_truncated, stdout_incomplete) = stdout.finish(Duration::from_secs(1));
-    let (stderr, stderr_truncated, stderr_incomplete) = stderr.finish(Duration::from_secs(1));
+    let (stdout, stdout_truncated, stdout_incomplete, stdout_read_failed) =
+        stdout.finish(Duration::from_secs(1));
+    let (stderr, stderr_truncated, stderr_incomplete, stderr_read_failed) =
+        stderr.finish(Duration::from_secs(1));
     Ok(CommandResult {
         exit_code: status.code(),
         success: status.success() && !cancelled && !timed_out,
@@ -382,6 +387,7 @@ fn run_shell_controlled(
         timed_out,
         output_truncated: stdout_truncated || stderr_truncated,
         output_incomplete: stdout_incomplete || stderr_incomplete,
+        output_read_failed: stdout_read_failed || stderr_read_failed,
     })
 }
 
@@ -589,7 +595,7 @@ mod tests {
     #[test]
     fn capture_bounds_output_but_drains_the_stream() {
         let captured = capture(std::io::Cursor::new(vec![b'x'; OUTPUT_LIMIT + 100]));
-        let (text, truncated, incomplete) = captured.finish(Duration::from_secs(2));
+        let (text, truncated, incomplete, _) = captured.finish(Duration::from_secs(2));
         assert_eq!(text.len(), OUTPUT_LIMIT);
         assert!(truncated);
         assert!(!incomplete);
@@ -622,7 +628,8 @@ mod tests {
             release: held,
         });
         ready.recv_timeout(Duration::from_secs(2)).unwrap();
-        let (text, truncated, incomplete) = capture.finish(Duration::from_millis(10));
+        let (text, truncated, incomplete, read_failed) = capture.finish(Duration::from_millis(10));
+        assert!(!read_failed);
         release.send(()).unwrap();
         assert_eq!(text, "partial");
         assert!(!truncated);
@@ -637,7 +644,9 @@ mod tests {
                 Err(std::io::Error::other("read failed"))
             }
         }
-        let (text, truncated, incomplete) = capture(BrokenPipe).finish(Duration::from_secs(2));
+        let (text, truncated, incomplete, read_failed) =
+            capture(BrokenPipe).finish(Duration::from_secs(2));
+        assert!(read_failed);
         assert!(text.is_empty());
         assert!(!truncated);
         assert!(incomplete);
@@ -657,7 +666,7 @@ mod tests {
             assert!(Instant::now() < deadline, "reader did not capture data");
             std::thread::sleep(Duration::from_millis(5));
         }
-        let (text, truncated, incomplete) = capture.finish(Duration::from_millis(10));
+        let (text, truncated, incomplete, _) = capture.finish(Duration::from_millis(10));
         assert_eq!(text, "retained output");
         assert!(!truncated);
         assert!(incomplete);
@@ -700,7 +709,7 @@ mod tests {
             assert!(Instant::now() < deadline, "reader did not capture data");
             std::thread::sleep(Duration::from_millis(5));
         }
-        let (text, truncated, incomplete) = capture.finish(Duration::from_millis(10));
+        let (text, truncated, incomplete, _) = capture.finish(Duration::from_millis(10));
         assert_eq!(text, "retained output");
         assert!(!truncated);
         assert!(incomplete);

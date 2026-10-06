@@ -11,6 +11,7 @@ export interface CommandResult {
   timedOut: boolean;
   outputTruncated: boolean;
   outputIncomplete: boolean;
+  outputReadFailed: boolean;
 }
 export interface PreviewImage {
   dataUrl: string;

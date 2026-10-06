@@ -137,7 +137,7 @@ main {
   top: 46px;
   left: 7px;
   right: 50px;
-  max-height: min(360px, 60vh);
+  max-height: min(600px, calc(100vh - 120px));
   overflow: auto;
   background: #232b36;
   border: 1px solid #47566e;
