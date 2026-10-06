@@ -131,7 +131,11 @@
         </p>{/if}
       <label
         >{action === 'copy' || action === 'move'
-          ? 'Destination folder'
+          ? entries.length === 1 &&
+            isLocalPath(parent) &&
+            entries[0].type !== 'directory'
+            ? 'Destination folder or filename'
+            : 'Destination folder'
           : 'Name'}<input bind:value required spellcheck="false" /></label
       >
     {/if}

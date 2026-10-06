@@ -28,6 +28,7 @@ export const api = {
     invoke<PreviewImage>('read_markdown_image', { markdownPath, source }),
   roots: () => invoke<Root[]>('list_roots'),
   open: (path: string) => invoke<void>('open_file', { path }),
+  openTerminal: (path: string) => invoke<void>('open_terminal', { path }),
   measureDirectory: (path: string, requestId: string) =>
     invoke<number>('measure_directory', { path, requestId }),
   cancelDirectorySizing: (requestIds: string[]) =>

@@ -8,6 +8,7 @@ import {
   MIN_FILE_FONT_SIZE,
 } from '../utils/config';
 import type { FileEntry } from '../filesystem/types';
+import { searchSessions } from '../filesystem/providers';
 
 vi.mock('./commander.svelte', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./commander.svelte')>()),
@@ -28,10 +29,17 @@ function file(name: string, hidden = false): FileEntry {
 function press(key: string) {
   const event = { key, preventDefault: vi.fn() };
   const focusPath = vi.fn();
-  return { handled: handleControlShortcut(event, focusPath), event, focusPath };
+  const openTerminal = vi.fn();
+  return {
+    handled: handleControlShortcut(event, focusPath, openTerminal),
+    event,
+    focusPath,
+    openTerminal,
+  };
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  searchSessions.clear();
   commander.left = createPanel();
   commander.right = createPanel();
   commander.activePanel = 'left';
@@ -109,6 +117,35 @@ describe('panel control shortcuts', () => {
     expect(handled).toBe(false);
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(focusPath).not.toHaveBeenCalled();
+  });
+  it.each(['left', 'right'] as const)(
+    'opens a terminal in the active %s directory',
+    (side) => {
+      commander.left.path = '/left';
+      commander.right.path = '/directory with spaces & symbols';
+      commander.activePanel = side;
+      const { event, handled, openTerminal } = press('T');
+      expect(handled).toBe(true);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(openTerminal).toHaveBeenCalledExactlyOnceWith(
+        commander[side].path,
+      );
+    },
+  );
+  it('does not launch a terminal before a directory is available', () => {
+    const { handled, openTerminal } = press('t');
+    expect(handled).toBe(true);
+    expect(openTerminal).not.toHaveBeenCalled();
+  });
+  it('opens a terminal in the real search root rather than a virtual path', () => {
+    searchSessions.set('terminal-test', {
+      root: '/search/root',
+      pattern: '*.txt',
+      returnPath: '/previous',
+    });
+    commander.left.path = 'search:terminal-test';
+    const { openTerminal } = press('t');
+    expect(openTerminal).toHaveBeenCalledExactlyOnceWith('/search/root');
   });
   it.each(['+', '='])(
     'increases font size with %s without exceeding its limit',

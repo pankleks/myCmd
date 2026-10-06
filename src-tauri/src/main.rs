@@ -8,6 +8,7 @@ mod filesystem;
 mod operations;
 mod search;
 mod shell;
+mod terminal;
 mod watcher;
 fn main() {
     tauri::Builder::default()
@@ -27,6 +28,7 @@ fn main() {
             commands::read_markdown_image,
             commands::list_roots,
             commands::open_file,
+            terminal::open_terminal,
             commands::measure_directory,
             commands::cancel_directory_sizing,
             commands::start_operation,

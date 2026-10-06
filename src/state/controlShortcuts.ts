@@ -18,9 +18,10 @@ export function swapPanels() {
 export function handleControlShortcut(
   event: Pick<KeyboardEvent, 'key' | 'preventDefault'>,
   focusPath: () => void,
+  openTerminal: (path: string) => void,
 ): boolean {
   const key = event.key.toLowerCase();
-  if (!['a', 'h', 'r', 'i', 'p', '+', '=', '-', '_', '0'].includes(key))
+  if (!['a', 'h', 'r', 'i', 'p', 't', '+', '=', '-', '_', '0'].includes(key))
     return false;
   event.preventDefault();
   const active = commander[commander.activePanel];
@@ -49,6 +50,10 @@ export function handleControlShortcut(
       break;
     case 'p':
       focusPath();
+      break;
+    case 't':
+      if (active.path)
+        openTerminal(searchSession(active.path)?.root ?? active.path);
       break;
     case '+':
     case '=':

@@ -615,12 +615,53 @@ impl Worker {
             Operation::Copy {
                 sources,
                 destination,
-            } => self.batch(sources, destination, false)?,
+            } => self.transfer_sources(sources, destination, false)?,
             Operation::Move {
                 sources,
                 destination,
-            } => self.batch(sources, destination, true)?,
+            } => self.transfer_sources(sources, destination, true)?,
         }
+        Ok(())
+    }
+    fn transfer_sources(
+        &mut self,
+        sources: Vec<PathBuf>,
+        destination: PathBuf,
+        moving: bool,
+    ) -> Result<()> {
+        if destination.is_dir() || destination == Path::new("~") {
+            return self.batch(sources, destination, moving);
+        }
+        if sources.len() != 1 {
+            return Err(FsError::new(
+                "invalid_path",
+                "Destination must be a directory when copying or moving multiple items",
+            ));
+        }
+        let sources = normalize_sources(sources)?;
+        let source = &sources[0];
+        if fs::symlink_metadata(source)
+            .map_err(|e| FsError::io(e, source))?
+            .is_dir()
+        {
+            return Err(FsError::new(
+                "invalid_path",
+                "Destination must be a directory",
+            ));
+        }
+        protect(&destination)?;
+        let parent = destination.parent().unwrap();
+        let parent = filesystem::absolute(if parent.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            parent
+        })?;
+        let target = parent.join(destination.file_name().unwrap());
+        let (bytes, items) = self.measure(source)?;
+        self.progress.total_bytes += bytes;
+        self.progress.total_items += items;
+        self.emit();
+        self.transfer(source, &target, moving)?;
         Ok(())
     }
     fn batch(&mut self, sources: Vec<PathBuf>, destination: PathBuf, moving: bool) -> Result<()> {
@@ -860,6 +901,171 @@ fn remove_leaf(p: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn copy_single_file_to_new_name_in_same_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        let destination = dir.path().join("copy.txt");
+        fs::write(&source, "payload").unwrap();
+        let mut w = worker("overwrite");
+        w.run(Operation::Copy {
+            sources: vec![source.clone()],
+            destination: destination.clone(),
+        })
+        .unwrap();
+        assert_eq!(fs::read_to_string(source).unwrap(), "payload");
+        assert_eq!(fs::read_to_string(destination).unwrap(), "payload");
+        assert_eq!(w.progress.total_bytes, 7);
+        assert_eq!(w.progress.processed_bytes, 7);
+        assert_eq!(w.progress.processed_items, 1);
+    }
+
+    #[test]
+    fn copy_single_file_to_existing_filename_uses_conflict_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        let destination = dir.path().join("copy.txt");
+        fs::write(&source, "payload").unwrap();
+        fs::write(&destination, "keep").unwrap();
+        worker("skip")
+            .transfer_sources(vec![source.clone()], destination.clone(), false)
+            .unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "keep");
+        worker("overwrite")
+            .transfer_sources(vec![source.clone()], destination.clone(), false)
+            .unwrap();
+        assert_eq!(fs::read_to_string(source).unwrap(), "payload");
+        assert_eq!(fs::read_to_string(destination).unwrap(), "payload");
+    }
+
+    #[test]
+    fn copy_multiple_files_to_filename_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        let destination = dir.path().join("copy.txt");
+        fs::write(&first, "first").unwrap();
+        fs::write(&second, "second").unwrap();
+        let error = worker("overwrite")
+            .transfer_sources(
+                vec![first.clone(), second.clone()],
+                destination.clone(),
+                false,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_path");
+        assert!(error.message.contains("multiple items"));
+        assert!(!destination.exists());
+        assert_eq!(fs::read_to_string(first).unwrap(), "first");
+        assert_eq!(fs::read_to_string(second).unwrap(), "second");
+    }
+
+    #[test]
+    fn copy_multiple_files_to_directory_still_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        let destination = dir.path().join("out");
+        fs::write(&first, "first").unwrap();
+        fs::write(&second, "second").unwrap();
+        fs::create_dir(&destination).unwrap();
+        worker("overwrite")
+            .transfer_sources(vec![first, second], destination.clone(), false)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(destination.join("first.txt")).unwrap(),
+            "first"
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("second.txt")).unwrap(),
+            "second"
+        );
+    }
+
+    #[test]
+    fn copy_to_same_filename_is_rejected_without_changing_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        fs::write(&source, "payload").unwrap();
+        let error = worker("overwrite")
+            .transfer_sources(vec![source.clone()], source.clone(), false)
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_path");
+        assert_eq!(fs::read_to_string(source).unwrap(), "payload");
+    }
+
+    #[test]
+    fn move_single_file_to_new_name_in_same_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        let destination = dir.path().join("renamed.txt");
+        fs::write(&source, "payload").unwrap();
+        let mut w = worker("overwrite");
+        w.run(Operation::Move {
+            sources: vec![source.clone()],
+            destination: destination.clone(),
+        })
+        .unwrap();
+        assert!(!source.exists());
+        assert_eq!(fs::read_to_string(destination).unwrap(), "payload");
+        assert_eq!(w.progress.total_bytes, 7);
+        assert_eq!(w.progress.processed_bytes, 7);
+        assert_eq!(w.progress.processed_items, 1);
+    }
+
+    #[test]
+    fn move_to_existing_filename_only_removes_source_after_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        let destination = dir.path().join("renamed.txt");
+        fs::write(&source, "payload").unwrap();
+        fs::write(&destination, "keep").unwrap();
+        worker("skip")
+            .transfer_sources(vec![source.clone()], destination.clone(), true)
+            .unwrap();
+        assert_eq!(fs::read_to_string(&source).unwrap(), "payload");
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "keep");
+        worker("overwrite")
+            .transfer_sources(vec![source.clone()], destination.clone(), true)
+            .unwrap();
+        assert!(!source.exists());
+        assert_eq!(fs::read_to_string(destination).unwrap(), "payload");
+    }
+
+    #[test]
+    fn move_multiple_files_to_filename_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.txt");
+        let second = dir.path().join("second.txt");
+        let destination = dir.path().join("renamed.txt");
+        fs::write(&first, "first").unwrap();
+        fs::write(&second, "second").unwrap();
+        let error = worker("overwrite")
+            .transfer_sources(
+                vec![first.clone(), second.clone()],
+                destination.clone(),
+                true,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_path");
+        assert!(error.message.contains("multiple items"));
+        assert!(!destination.exists());
+        assert_eq!(fs::read_to_string(first).unwrap(), "first");
+        assert_eq!(fs::read_to_string(second).unwrap(), "second");
+    }
+
+    #[test]
+    fn move_to_same_filename_is_rejected_without_changing_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        fs::write(&source, "payload").unwrap();
+        let error = worker("overwrite")
+            .transfer_sources(vec![source.clone()], source.clone(), true)
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_path");
+        assert_eq!(fs::read_to_string(source).unwrap(), "payload");
+    }
+
     #[test]
     fn snapshot_rejects_modified_source() {
         let dir = tempfile::tempdir().unwrap();

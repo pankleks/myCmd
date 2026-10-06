@@ -308,6 +308,17 @@
     errorTitle = title;
     error = message;
   }
+  async function openTerminal(path: string) {
+    if (!isLocalPath(path)) {
+      showError('Terminals can only be opened in local directories.');
+      return;
+    }
+    try {
+      await api.openTerminal(path);
+    } catch (cause) {
+      showError(errorMessage(cause), 'Unable to open terminal');
+    }
+  }
   function request(action: Action, permanent = false) {
     if (
       !ready ||
@@ -688,13 +699,19 @@
       return;
     }
     if (ctrl) {
-      handleControlShortcut(event, () => {
-        (
-          document.querySelector(
-            '.panel.active .pathbar input',
-          ) as HTMLInputElement
-        )?.select();
-      });
+      handleControlShortcut(
+        event,
+        () => {
+          (
+            document.querySelector(
+              '.panel.active .pathbar input',
+            ) as HTMLInputElement
+          )?.select();
+        },
+        (path) => {
+          void openTerminal(path);
+        },
+      );
       return;
     }
     const altGraph =
