@@ -6,16 +6,19 @@
     fileFontSize,
     showHidden,
     showFunctionBar,
+    editor,
     onsubmit,
     onclose,
   }: {
     fileFontSize: number;
     showHidden: boolean;
     showFunctionBar: boolean;
+    editor: string | null;
     onsubmit: (settings: {
       fileFontSize: number;
       showHidden: boolean;
       showFunctionBar: boolean;
+      editor: string | null;
     }) => void;
     onclose: () => void;
   } = $props();
@@ -23,12 +26,14 @@
   let fontSize = $state(MIN_FILE_FONT_SIZE);
   let hidden = $state(false);
   let functionBar = $state(true);
+  let editorPath = $state('');
   let dialog: HTMLDialogElement;
 
   onMount(() => {
     fontSize = fileFontSize;
     hidden = showHidden;
     functionBar = showFunctionBar;
+    editorPath = editor ?? '';
     dialog.showModal();
     void tick().then(() => {
       const input = dialog.querySelector('input');
@@ -55,6 +60,7 @@
           : fileFontSize,
         showHidden: hidden,
         showFunctionBar: functionBar,
+        editor: editorPath.trim() || null,
       });
     }}
   >
@@ -85,6 +91,19 @@
         bind:checked={functionBar}
       />
     </div>
+    <div class="settings-row">
+      <label
+        >Editor executable (optional)<input
+          bind:value={editorPath}
+          placeholder="System default application"
+          spellcheck="false"
+        /></label
+      >
+    </div>
+    <p>
+      Leave blank to use the system file association. Enter an executable name
+      or full path, without arguments.
+    </p>
     <div class="dialog-actions">
       <button type="button" onclick={onclose}>Cancel</button><button
         class="primary"

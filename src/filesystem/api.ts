@@ -28,6 +28,8 @@ export const api = {
     invoke<PreviewImage>('read_markdown_image', { markdownPath, source }),
   roots: () => invoke<Root[]>('list_roots'),
   open: (path: string) => invoke<void>('open_file', { path }),
+  edit: (path: string, editor: string | null) =>
+    invoke<void>('edit_file', { path, editor }),
   openTerminal: (path: string) => invoke<void>('open_terminal', { path }),
   measureDirectory: (path: string, requestId: string) =>
     invoke<number>('measure_directory', { path, requestId }),

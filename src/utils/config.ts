@@ -23,6 +23,7 @@ export interface AppConfig {
     boolean | { left?: boolean | null; right?: boolean | null } | null;
   showFunctionBar?: boolean | null;
   pinnedDirectories?: string[];
+  editor?: string | null;
 }
 
 export interface NormalizedConfig {
@@ -33,6 +34,7 @@ export interface NormalizedConfig {
   showHidden: boolean;
   showFunctionBar: boolean;
   pinnedDirectories?: string[];
+  editor?: string | null;
 }
 
 export function normalizeFontSize(value: unknown): number {
@@ -79,6 +81,7 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     showHidden: config.showHidden === true,
     showFunctionBar: config.showFunctionBar !== false,
     pinnedDirectories: normalizePins(config.pinnedDirectories),
+    editor: normalizePath(config.editor),
   };
 }
 
@@ -114,5 +117,6 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     showHidden: normalized.showHidden,
     showFunctionBar: normalized.showFunctionBar,
     pinnedDirectories: normalizePins(normalized.pinnedDirectories),
+    editor: normalizePath(normalized.editor),
   };
 }

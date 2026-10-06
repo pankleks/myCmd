@@ -47,6 +47,7 @@ pub struct AppConfig {
     #[serde(default = "default_true")]
     pub show_function_bar: bool,
     pub pinned_directories: Vec<String>,
+    pub editor: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -60,6 +61,7 @@ impl Default for AppConfig {
             show_hidden: false,
             show_function_bar: true,
             pinned_directories: Vec::new(),
+            editor: None,
         }
     }
 }
@@ -95,6 +97,7 @@ impl AppConfig {
                 .map(|size| size.clamp(MIN_FILE_FONT_SIZE, MAX_FILE_FONT_SIZE)),
             show_hidden: self.show_hidden,
             show_function_bar: self.show_function_bar,
+            editor: sanitize_path(self.editor.clone()),
             pinned_directories: {
                 let mut pins = Vec::new();
                 for path in &self.pinned_directories {
@@ -190,6 +193,7 @@ mod tests {
             show_hidden: true,
             show_function_bar: false,
             pinned_directories: vec!["/home/user/projects".into()],
+            editor: Some("/usr/bin/editor".into()),
         };
         save_to(&path, &config).expect("save");
         assert_eq!(load_from(&path), config.sanitized());
@@ -222,10 +226,12 @@ mod tests {
             show_hidden: true,
             show_function_bar: true,
             pinned_directories: Vec::new(),
+            editor: Some("   ".into()),
         };
         let sanitized = config.sanitized();
         assert_eq!(sanitized.version, CONFIG_VERSION);
         assert_eq!(sanitized.left_path, None);
+        assert_eq!(sanitized.editor, None);
         assert_eq!(sanitized.right_path.as_deref(), Some("D:\\Backup"));
         assert_eq!(sanitized.column_weights.left, None);
         assert_eq!(sanitized.column_weights.right, None);

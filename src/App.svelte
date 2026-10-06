@@ -68,12 +68,18 @@
   let previewMode = $state(false);
   let error = $state('');
   let errorTitle = $state('Error');
+  let createdFileEditor: { editor: string | null } | undefined;
   const operations = createOperationController({
     start: api.start,
     cancel: api.cancel,
     resolve: api.resolve,
-    failed: (cause) => showError(errorMessage(cause), 'Operation failed'),
+    failed: (cause) => {
+      createdFileEditor = undefined;
+      showError(errorMessage(cause), 'Operation failed');
+    },
     completed: async (payload, side) => {
+      const editor = createdFileEditor;
+      createdFileEditor = undefined;
       await Promise.all([
         load(
           commander.left,
@@ -87,6 +93,8 @@
         ),
       ]);
       commander[side].selected = new Set();
+      if (editor && payload.state === 'completed' && payload.resultPath)
+        await editFile(payload.resultPath, editor.editor);
     },
   });
   let busy = $derived(operations.state.busy);
@@ -187,6 +195,7 @@
     preferences.showHidden;
     preferences.showFunctionBar;
     preferences.pinnedDirectories;
+    preferences.editor;
     scheduleSave();
   });
   const actions: [string, Action, string][] = [
@@ -294,13 +303,37 @@
     previewMode = !previewMode;
     void tick().then(focusPanel);
   }
+  async function editFile(path: string, editor = preferences.editor) {
+    try {
+      await api.edit(path, editor);
+    } catch (cause) {
+      showError(errorMessage(cause), 'Unable to open editor');
+    }
+  }
+  function editCurrentFile() {
+    if (!ready || busy || commandRunning || active.loading) return;
+    if (!isLocalPath(active.path) && !searchSession(active.path)) {
+      showError('Editing archive contents is not supported.');
+      return;
+    }
+    const entry = rows(active)[active.cursor];
+    if (!entry || entry.parentEntry) return;
+    if (entry.type === 'directory' || entry.directoryTarget) {
+      showError('Only files can be edited.');
+      return;
+    }
+    quickFindClose();
+    void editFile(entry.path);
+  }
   function applySettings(settings: {
     fileFontSize: number;
     showHidden: boolean;
     showFunctionBar: boolean;
+    editor: string | null;
   }) {
     preferences.fileFontSize = settings.fileFontSize;
     preferences.showFunctionBar = settings.showFunctionBar;
+    preferences.editor = settings.editor;
     setShowHidden(settings.showHidden);
     closeSettings();
   }
@@ -353,7 +386,12 @@
       );
       return;
     }
-    if (action !== 'createDirectory' && !entries.length) return;
+    if (
+      action !== 'createDirectory' &&
+      action !== 'createFile' &&
+      !entries.length
+    )
+      return;
     if (action === 'rename' && entries.length !== 1) {
       showError('Select exactly one item to rename.');
       return;
@@ -392,6 +430,10 @@
       };
     }
     closeDialog();
+    createdFileEditor =
+      operation.type === 'createFile'
+        ? { editor: preferences.editor }
+        : undefined;
     await operations.start(operation, side);
   }
   async function resolve(resolution: Resolution) {
@@ -682,6 +724,12 @@
     ) {
       event.preventDefault();
       viewCurrentFile();
+      return;
+    }
+    if (event.key === 'F4' && !ctrl && !event.altKey) {
+      event.preventDefault();
+      if (event.shiftKey) request('createFile');
+      else editCurrentFile();
       return;
     }
     const action =
@@ -1017,6 +1065,9 @@
             disabled={!ready || busy || commandRunning}
             onclick={togglePreviewPane}
             title="Toggle preview pane"><kbd>Shift+F3</kbd>Preview</button
+          ><button
+            disabled={!ready || busy || commandRunning}
+            onclick={editCurrentFile}><kbd>F4</kbd>Edit</button
           >{/if}{#if key === 'F7'}<button
             disabled={!ready || busy || commandRunning}
             onclick={requestSearch}><kbd>Alt+F7</kbd>Search</button
@@ -1051,6 +1102,7 @@
     fileFontSize={preferences.fileFontSize}
     showHidden={preferences.showHidden}
     showFunctionBar={preferences.showFunctionBar}
+    editor={preferences.editor}
     onsubmit={applySettings}
     onclose={closeSettings}
   />{/if}

@@ -53,6 +53,10 @@ pub enum Operation {
         parent: PathBuf,
         name: String,
     },
+    CreateFile {
+        parent: PathBuf,
+        name: String,
+    },
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -567,6 +571,17 @@ impl Worker {
                 )?;
                 self.batch(sources, destination, false)?;
             }
+            Operation::CreateFile { parent, name } => {
+                filesystem::validate_name(&name)?;
+                let path = filesystem::absolute(&parent)?.join(name);
+                self.check()?;
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .map_err(|error| FsError::io(error, &path))?;
+                self.progress.result_path = Some(filesystem::text(&path));
+            }
             Operation::CreateDirectory { parent, name } => {
                 filesystem::validate_name(&name)?;
                 let p = filesystem::absolute(&parent)?.join(name);
@@ -901,6 +916,40 @@ fn remove_leaf(p: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn create_file_is_empty_and_never_overwrites_existing_contents() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("new file & notes.txt");
+        let operation = Operation::CreateFile {
+            parent: directory.path().to_owned(),
+            name: "new file & notes.txt".into(),
+        };
+        let mut w = worker("overwrite");
+        w.run(operation.clone()).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"");
+        assert_eq!(
+            w.progress.result_path,
+            Some(filesystem::text(&filesystem::absolute(&path).unwrap()))
+        );
+        fs::write(&path, "keep").unwrap();
+        assert_eq!(w.run(operation).unwrap_err().code, "already_exists");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "keep");
+    }
+
+    #[test]
+    fn create_file_rejects_names_that_escape_the_current_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["", ".", "..", "../outside", "nested/file", "nested\\file"] {
+            assert!(worker("overwrite")
+                .run(Operation::CreateFile {
+                    parent: directory.path().to_owned(),
+                    name: name.into(),
+                })
+                .is_err());
+        }
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+
     #[test]
     fn copy_single_file_to_new_name_in_same_directory() {
         let dir = tempfile::tempdir().unwrap();

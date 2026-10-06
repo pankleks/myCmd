@@ -28,6 +28,7 @@ fn main() {
             commands::read_markdown_image,
             commands::list_roots,
             commands::open_file,
+            commands::edit_file,
             terminal::open_terminal,
             commands::measure_directory,
             commands::cancel_directory_sizing,

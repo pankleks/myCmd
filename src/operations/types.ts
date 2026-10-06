@@ -16,7 +16,7 @@ export type FileOperation =
   | { type: 'copy' | 'move'; sources: string[]; destination: string }
   | { type: 'delete'; sources: string[]; permanent: boolean }
   | { type: 'rename'; path: string; name: string }
-  | { type: 'createDirectory'; parent: string; name: string };
+  | { type: 'createDirectory' | 'createFile'; parent: string; name: string };
 export interface Progress {
   operationId: string;
   state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

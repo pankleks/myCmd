@@ -39,6 +39,16 @@ describe('normalizeColumnWeights', () => {
 });
 
 describe('normalizeConfig', () => {
+  it('persists an editor executable and uses system defaults for blank settings', () => {
+    const config = normalizeConfig({ editor: ' /opt/My Editor/bin/editor ' });
+    expect(config.editor).toBe('/opt/My Editor/bin/editor');
+    expect(normalizeConfig(buildSavePayload(config)).editor).toBe(
+      config.editor,
+    );
+    for (const editor of [undefined, null, '', '   ', 123]) {
+      expect(normalizeConfig({ editor }).editor).toBeNull();
+    }
+  });
   it('normalizes and persists shared pins', () => {
     const config = normalizeConfig({
       pinnedDirectories: [' /tmp ', '/tmp', '', 5, '/home/user'],
@@ -61,6 +71,7 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: [175, 78, 113, 218],
       pinnedDirectories: [],
+      editor: null,
       fileFontSize: 20,
       showHidden: false,
       showFunctionBar: true,
@@ -103,6 +114,7 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: null,
       pinnedDirectories: [],
+      editor: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
       showHidden: false,
       showFunctionBar: true,
@@ -122,6 +134,7 @@ describe('normalizeConfig', () => {
     });
     expect(buildSavePayload(normalized)).toEqual({
       pinnedDirectories: [],
+      editor: null,
       version: 1,
       leftPath: '/home/user',
       rightPath: '/tmp',

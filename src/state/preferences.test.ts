@@ -26,6 +26,7 @@ beforeEach(() => {
   preferences.columnWidths = null;
   preferences.showHidden = false;
   preferences.showFunctionBar = true;
+  preferences.editor = null;
   commander.left.path = '';
   commander.right.path = '';
   commander.left.showHidden = false;
@@ -35,6 +36,20 @@ beforeEach(() => {
 });
 
 describe('loadPreferences', () => {
+  it('loads the configured editor and persists it', async () => {
+    loadConfig.mockResolvedValue({
+      version: 1,
+      editor: '/opt/My Editor/editor',
+    });
+    await loadPreferences();
+    expect(preferences.editor).toBe('/opt/My Editor/editor');
+    await persistPreferences();
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        editor: '/opt/My Editor/editor',
+      }),
+    );
+  });
   it('applies stored paths, columns and font size', async () => {
     loadConfig.mockResolvedValue({
       version: 1,
@@ -101,6 +116,7 @@ describe('persistPreferences', () => {
     await persistPreferences();
     expect(saveConfig).toHaveBeenCalledWith({
       pinnedDirectories: [],
+      editor: null,
       version: 1,
       leftPath: 'C:\\Users\\root',
       rightPath: 'D:\\Backup',

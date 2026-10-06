@@ -7,6 +7,8 @@
     ['F2', 'Rename selected item'],
     ['F3', 'View file'],
     ['Shift+F3', 'Toggle preview pane'],
+    ['F4', 'Edit file in configured or system default application'],
+    ['Shift+F4', 'Create a new file and edit it'],
     ['F5', 'Copy / extract from archive'],
     ['F6', 'Move'],
     ['F7', 'Create folder'],

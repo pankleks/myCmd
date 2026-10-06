@@ -8,7 +8,7 @@
     type DeleteCounts,
   } from '../filesystem/deleteCounts';
   export type Action =
-    'copy' | 'move' | 'rename' | 'createDirectory' | 'delete';
+    'copy' | 'move' | 'rename' | 'createDirectory' | 'createFile' | 'delete';
   let {
     action,
     entries,
@@ -31,6 +31,7 @@
     move: 'Move',
     rename: 'Rename',
     createDirectory: 'New folder',
+    createFile: 'New file and edit',
   };
   let title = $derived(
     action === 'delete'
@@ -73,7 +74,7 @@
         ? { type: action, sources: paths, destination: value }
         : action === 'rename'
           ? { type: action, path: paths[0], name: value }
-          : action === 'createDirectory'
+          : action === 'createDirectory' || action === 'createFile'
             ? { type: action, parent, name: value }
             : { type: 'delete', sources: paths, permanent };
     onsubmit(operation);
@@ -124,7 +125,7 @@
           Count is incomplete: {counts.skipped} entries could not be read.
         </p>{/if}
     {:else}
-      {#if action !== 'createDirectory'}<p>
+      {#if action !== 'createDirectory' && action !== 'createFile'}<p>
           {entries.length === 1
             ? entries[0].name
             : `${entries.length} selected items`}
