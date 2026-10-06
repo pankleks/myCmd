@@ -10,8 +10,8 @@ use std::{
 #[cfg(target_os = "linux")]
 fn configure_alternative(command: &mut Command, directory: &Path, name: &str) {
     match name {
-        "cosmic-term" | "gnome-terminal" | "kgx" | "xfce4-terminal" | "mate-terminal"
-        | "tilix" | "alacritty" => {
+        "cosmic-term" | "gnome-terminal" | "kgx" | "xfce4-terminal" | "mate-terminal" | "tilix"
+        | "alacritty" => {
             command.arg("--working-directory").arg(directory);
         }
         "konsole" => {
@@ -37,9 +37,8 @@ fn launchers(directory: &Path) -> Vec<Command> {
         // Debian/Ubuntu's alternatives system selects the user's terminal.
         let mut alternative = Command::new("x-terminal-emulator");
         if let Some(executable) = std::env::var_os("PATH").and_then(|path| {
-            std::env::split_paths(&path).find_map(|base| {
-                std::fs::canonicalize(base.join("x-terminal-emulator")).ok()
-            })
+            std::env::split_paths(&path)
+                .find_map(|base| std::fs::canonicalize(base.join("x-terminal-emulator")).ok())
         }) {
             if let Some(name) = executable.file_name().and_then(|name| name.to_str()) {
                 configure_alternative(&mut alternative, directory, name);
@@ -80,7 +79,10 @@ fn launchers(directory: &Path) -> Vec<Command> {
 fn open(path: &Path) -> Result<()> {
     let directory = filesystem::absolute(path)?;
     if !directory.is_dir() {
-        return Err(FsError::new("invalid_path", "Terminal requires a directory"));
+        return Err(FsError::new(
+            "invalid_path",
+            "Terminal requires a directory",
+        ));
     }
     for mut command in launchers(&directory) {
         match command.spawn() {
@@ -153,7 +155,9 @@ mod tests {
         let arguments: Vec<_> = commands[0].get_args().collect();
         assert_eq!(
             arguments,
-            vec![std::ffi::OsStr::new("--dir=/directory with spaces & symbols")]
+            vec![std::ffi::OsStr::new(
+                "--dir=/directory with spaces & symbols"
+            )]
         );
         assert_eq!(commands[1].get_program(), "x-terminal-emulator");
     }
