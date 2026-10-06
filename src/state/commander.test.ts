@@ -319,17 +319,31 @@ describe('quick find', () => {
       rows(p).findIndex((e) => e.name === 'łódka.txt'),
     );
   });
-  it('backspace shrinks the query and closes it when empty', () => {
+  it('backspace keeps an empty query open without moving the cursor', () => {
     setup();
     quickFindAppend('left', 'p');
     quickFindAppend('left', 'a');
     expect(commander.quickFind?.query).toBe('pa');
     quickFindBackspace();
     expect(commander.quickFind?.query).toBe('p');
+    const cursor = commander.left.cursor;
     quickFindBackspace();
-    expect(commander.quickFind).toBeNull();
+    expect(commander.quickFind).toEqual({
+      side: 'left',
+      query: '',
+      matched: true,
+    });
+    expect(commander.left.cursor).toBe(cursor);
     quickFindBackspace();
-    expect(commander.quickFind).toBeNull();
+    expect(commander.quickFind).toEqual({
+      side: 'left',
+      query: '',
+      matched: true,
+    });
+    expect(commander.left.cursor).toBe(cursor);
+    quickFindAppend('left', 'o');
+    expect(commander.quickFind?.query).toBe('o');
+    expect(commander.left.cursor).toBe(rowIndex('other.txt'));
   });
   it('closes explicitly', () => {
     setup();

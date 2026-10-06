@@ -346,7 +346,7 @@ export function quickFindBackspace() {
   if (!active) return;
   const query = active.query.slice(0, -1);
   if (!query) {
-    commander.quickFind = null;
+    commander.quickFind = { ...active, query, matched: true };
     return;
   }
   const panel = commander[active.side];
