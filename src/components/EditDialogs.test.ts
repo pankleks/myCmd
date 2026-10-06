@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import SettingsDialog from './SettingsDialog.svelte';
 import OperationDialog from './OperationDialog.svelte';
+import { version } from '../../package.json';
 
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
@@ -40,6 +41,13 @@ it.each([
     },
   });
   flushSync();
+  expect(target.querySelector('footer')?.textContent).toContain(
+    `myCmd · v${version}`,
+  );
+  expect(target.textContent).not.toContain('Customize your file manager.');
+  expect(
+    [...target.querySelectorAll('h3')].map((heading) => heading.textContent),
+  ).toEqual(['Appearance', 'Editor']);
   const input = target.querySelector<HTMLInputElement>('input[placeholder]')!;
   expect(input.value).toBe('/usr/bin/editor');
   input.value = value as string;
