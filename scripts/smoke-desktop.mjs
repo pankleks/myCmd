@@ -361,6 +361,19 @@ try {
     );
   }
   await selectPreviewFile('preview.md');
+  await evaluate(
+    `document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',ctrlKey:true,bubbles:true,cancelable:true}))`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `document.activeElement.id === 'system-command' && document.activeElement.value === 'preview.md'`,
+      ),
+    'Ctrl+Enter filename insertion',
+  );
+  await evaluate(
+    `(() => { const input = document.querySelector('#system-command'); input.value = ''; input.dispatchEvent(new Event('input', {bubbles:true})); document.querySelector('#list-left').focus(); })()`,
+  );
   await previewKey();
   await until(
     () =>

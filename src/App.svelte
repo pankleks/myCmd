@@ -633,6 +633,38 @@
       return;
     const target = event.target as HTMLElement;
     if (
+      event.key === 'Enter' &&
+      event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (!target.closest('input, select, textarea, dialog') ||
+        target === commandInputElement)
+    ) {
+      event.preventDefault();
+      const entry = rows(active)[active.cursor];
+      if (
+        !ready ||
+        busy ||
+        commandRunning ||
+        active.loading ||
+        !isLocalPath(active.path) ||
+        !entry ||
+        entry.parentEntry
+      )
+        return;
+      quickFindClose();
+      commandInput += `${commandInput && !/\s$/.test(commandInput) ? ' ' : ''}${entry.name}`;
+      void tick().then(() => {
+        commandInputElement.focus();
+        commandInputElement.setSelectionRange(
+          commandInput.length,
+          commandInput.length,
+        );
+      });
+      return;
+    }
+    if (
       event.altKey &&
       !event.ctrlKey &&
       !event.metaKey &&

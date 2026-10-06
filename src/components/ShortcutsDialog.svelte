@@ -42,6 +42,7 @@
     ['Ctrl+R', 'Refresh panel / repeat search'],
     ['Ctrl+I', 'Open same location in opposite panel'],
     ['Ctrl+P', 'Edit directory path'],
+    ['Ctrl+Enter', 'Append cursor item filename to command input'],
     ['Ctrl+T', 'Open system terminal in current directory'],
     [
       'Ctrl++ / Ctrl+- / Ctrl+0',

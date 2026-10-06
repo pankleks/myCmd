@@ -136,7 +136,7 @@
     padding: 0;
     background: #222b38;
     border: 1px solid #3c485c;
-    border-radius: 10px;
+    border-radius: 0;
     box-shadow: 0 24px 80px #0008;
     overflow: auto;
   }
@@ -181,7 +181,7 @@
   .settings-dialog input:not([type='checkbox']) {
     background: #151d29;
     border: 1px solid #46536a;
-    border-radius: 5px;
+    border-radius: 0;
     padding: 9px 11px;
   }
   .settings-row input[type='checkbox'] {
@@ -204,8 +204,8 @@
   }
   input:focus-visible,
   button:focus-visible {
-    outline: 2px solid #80aaff;
-    outline-offset: 3px;
+    outline: 1px solid #8290a3;
+    outline-offset: -1px;
   }
   .hint {
     color: #aab7ca;
@@ -234,7 +234,7 @@
     font-size: 13px;
     font-weight: 550;
     border: 1px solid #46536a;
-    border-radius: 5px;
+    border-radius: 0;
     padding: 9px 17px;
     background: transparent;
   }
