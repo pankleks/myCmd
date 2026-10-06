@@ -23,6 +23,8 @@ export const api = {
   list: (path: string) => invoke<Listing>('list_directory', { path }),
   readTextPreview: (path: string) =>
     invoke<string>('read_text_preview', { path }),
+  readPdfPreview: (path: string) =>
+    invoke<ArrayBuffer>('read_pdf_preview', { path }),
   readImagePreview: (path: string) =>
     invoke<string>('read_image_preview', { path }),
   readMarkdownImage: (markdownPath: string, source: string) =>

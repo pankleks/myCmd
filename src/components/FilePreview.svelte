@@ -4,6 +4,7 @@
   import { isImageFile, isMarkdownFile } from '../utils/viewer';
   import { formatJsonPreview } from '../utils/jsonPreview';
   import DirectorySummary from './DirectorySummary.svelte';
+  import PdfPreview from './PdfPreview.svelte';
 
   let {
     path,
@@ -39,8 +40,10 @@
   let sourceContent = $state<string>();
   let previewHtml = $state('');
   let imagePreview = $state('');
+  let pdfControls = $state<Snippet>();
   let isMarkdown = $derived(isMarkdownFile(extension));
   let isImage = $derived(isImageFile(extension));
+  let isPdf = $derived(extension.toLowerCase().replace(/^\./, '') === 'pdf');
   let isJson = $derived(
     ['json', 'jsonc'].includes(extension.toLowerCase().replace(/^\./, '')),
   );
@@ -61,6 +64,7 @@
 
   async function initialize() {
     try {
+      if (isPdf) return;
       if (isImage) {
         const dataUrl = await api.readImagePreview(path);
         if (!disposed) imagePreview = dataUrl;
@@ -161,17 +165,18 @@
   <DirectorySummary {path} {name} />
 {:else}
   <div class="file-preview-content">
-    <div class="viewer-header">
+    <div class="viewer-header" class:pdf-header={isPdf}>
       <div class="viewer-heading">
         <h2>
           {title ??
-            ((isMarkdown && mode === 'preview') || isImage
+            ((isMarkdown && mode === 'preview') || isImage || isPdf
               ? 'Preview'
               : 'View')}
         </h2>
         <span title={path}>{name}</span>
       </div>
       <div class="viewer-toolbar">
+        {@render pdfControls?.()}
         {#if isJson && !error && !editorError}
           <button
             type="button"
@@ -193,12 +198,23 @@
       </div>
     </div>
     {#if formatError}<div role="alert">{formatError}</div>{/if}
+    {#if openError && !error && !editorError}<div role="alert">
+        {openError}
+      </div>{/if}
     <div class="viewer-editor-shell">
       {#if error || editorError}
         <div class="viewer-message" role="alert">
           <p>{error || editorError}</p>
           {#if openError}<p>{openError}</p>{/if}
         </div>
+      {:else if isPdf}
+        <PdfPreview
+          {path}
+          {name}
+          {autofocus}
+          onerror={(message) => (error = message)}
+          oncontrols={(controls) => (pdfControls = controls)}
+        />
       {:else if isMarkdown && mode === 'preview'}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable preview needs keyboard focus) -->
         <article

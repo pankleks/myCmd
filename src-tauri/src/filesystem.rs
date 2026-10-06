@@ -9,6 +9,7 @@ use std::{
 };
 
 pub const MAX_TEXT_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
+pub const MAX_PDF_PREVIEW_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_IMAGE_PREVIEW_PIXELS: usize = 16_000_000;
 pub const MAX_IMAGE_PREVIEW_DIMENSION: usize = 16_384;
@@ -82,6 +83,38 @@ pub fn absolute(p: &Path) -> Result<PathBuf> {
         p.to_owned()
     };
     fs::canonicalize(&p).map_err(|e| FsError::io(e, &p))
+}
+
+pub fn read_pdf_preview(path: &Path) -> Result<Vec<u8>> {
+    let path = absolute(path)?;
+    let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
+    if !metadata.is_file() {
+        return Err(FsError::new("not_a_file", "Only files can be previewed"));
+    }
+    let too_large = || {
+        FsError::new(
+            "file_too_large",
+            "PDFs larger than 64 MiB cannot be previewed",
+        )
+    };
+    if metadata.len() > MAX_PDF_PREVIEW_BYTES {
+        return Err(too_large());
+    }
+    let file = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
+    let mut content = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_PDF_PREVIEW_BYTES + 1)
+        .read_to_end(&mut content)
+        .map_err(|e| FsError::io(e, &path))?;
+    if content.len() as u64 > MAX_PDF_PREVIEW_BYTES {
+        return Err(too_large());
+    }
+    if !content.starts_with(b"%PDF-") {
+        return Err(FsError::new(
+            "invalid_pdf",
+            "This file is not a PDF document",
+        ));
+    }
+    Ok(content)
 }
 
 pub fn read_text_preview(path: &Path) -> Result<String> {
@@ -1057,6 +1090,25 @@ mod tests {
         assert_eq!(error.code, "cancelled");
         assert_eq!(checks.get(), 4);
         assert_eq!(directory_size(temp.path()).unwrap(), 70);
+    }
+
+    #[test]
+    fn pdf_preview_is_bounded_and_rejects_non_documents() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.pdf");
+        fs::write(&path, b"%PDF-1.7\nfixture").unwrap();
+        assert_eq!(read_pdf_preview(&path).unwrap(), b"%PDF-1.7\nfixture");
+        fs::write(&path, b"not a PDF").unwrap();
+        assert_eq!(read_pdf_preview(&path).unwrap_err().code, "invalid_pdf");
+        assert_eq!(
+            read_pdf_preview(temp.path()).unwrap_err().code,
+            "not_a_file"
+        );
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_PDF_PREVIEW_BYTES + 1)
+            .unwrap();
+        assert_eq!(read_pdf_preview(&path).unwrap_err().code, "file_too_large");
     }
 
     #[test]

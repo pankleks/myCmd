@@ -21,7 +21,7 @@ In the repository settings for `main`, you can require **CI passed** before merg
 
 ## Local verification
 
-Requirements: Node.js 22.12+ from the 22 release line or Node.js 24 LTS, stable Rust with `rustfmt` and `clippy`, and the Tauri dependencies for your operating system.
+Requirements: Node.js 22.13+ from the 22 release line or Node.js 24 LTS, stable Rust with `rustfmt` and `clippy`, and the Tauri dependencies for your operating system.
 
 ```sh
 npm ci

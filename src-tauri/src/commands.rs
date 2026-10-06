@@ -120,6 +120,14 @@ pub async fn read_text_preview(path: String) -> Result<String> {
     .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
+pub async fn read_pdf_preview(path: String) -> Result<tauri::ipc::Response> {
+    tauri::async_runtime::spawn_blocking(move || {
+        filesystem::read_pdf_preview(std::path::Path::new(&path)).map(tauri::ipc::Response::new)
+    })
+    .await
+    .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+#[tauri::command]
 pub async fn read_image_preview(path: String) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || {
         filesystem::read_image_preview(std::path::Path::new(&path))

@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+    "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "npm run check && vite build",
+    "dev": "node scripts/prepare-pdf.mjs && vite",
+    "build": "node scripts/prepare-pdf.mjs && npm run check && vite build",
     "generate:file-icons": "node scripts/generate-file-icons.mjs",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test:desktop": "node scripts/smoke-desktop.mjs",
@@ -28,6 +28,7 @@
     "jsonc-parser": "^3.3.1",
     "marked": "^18.0.14",
     "monaco-editor": "^0.57.0",
+    "pdfjs-dist": "^6.4.299",
     "svelte": "^5.0.0"
   },
   "devDependencies": {

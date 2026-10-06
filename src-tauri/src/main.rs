@@ -24,6 +24,7 @@ fn main() {
             commands::count_delete_entries,
             archives::list_archive,
             commands::read_text_preview,
+            commands::read_pdf_preview,
             commands::read_image_preview,
             commands::read_markdown_image,
             commands::list_roots,

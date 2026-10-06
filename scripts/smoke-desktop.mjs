@@ -32,6 +32,33 @@ await mkdir(join(source, 'nested'), { recursive: true });
 await mkdir(destination);
 await writeFile(join(source, 'nested', 'sample.txt'), 'smoke payload');
 await writeFile(join(source, 'project.code-workspace'), '{}');
+// Two pages, standard fonts and an OpenAction script that must never execute.
+const pdfObjects = [
+  '<< /Type /Catalog /Pages 2 0 R /OpenAction 8 0 R >>',
+  '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
+  '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 900] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>',
+  '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 900] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>',
+  ...['PDF preview works', 'Second page'].map((text) => {
+    const content = `0 0 1 rg 20 20 50 50 re f BT /F1 18 Tf 20 300 Td (${text}) Tj ET`;
+    return `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  }),
+  '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  '<< /S /JavaScript /JS (globalThis.pdfScriptRan = true;) >>',
+];
+let pdfFixture = '%PDF-1.7\n';
+const pdfOffsets = [0];
+for (const [index, object] of pdfObjects.entries()) {
+  pdfOffsets.push(pdfFixture.length);
+  pdfFixture += `${index + 1} 0 obj\n${object}\nendobj\n`;
+}
+const pdfXref = pdfFixture.length;
+pdfFixture += `xref\n0 ${pdfOffsets.length}\n0000000000 65535 f \n`;
+pdfFixture += pdfOffsets
+  .slice(1)
+  .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
+  .join('');
+pdfFixture += `trailer\n<< /Size ${pdfOffsets.length} /Root 1 0 R >>\nstartxref\n${pdfXref}\n%%EOF\n`;
+await writeFile(join(source, 'preview.pdf'), pdfFixture);
 await writeFile(
   join(source, 'preview.md'),
   '# Native preview\n\n**Markdown works**\n\n![Local image](preview.png)',
@@ -361,6 +388,90 @@ try {
       `document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'F3', shiftKey:${shiftKey}, bubbles:true, cancelable:true}))`,
     );
   }
+  await selectPreviewFile('preview.pdf');
+  await previewKey();
+  await until(
+    () =>
+      evaluate(`(() => {
+    const canvas = document.querySelector('.file-viewer .pdf-page canvas');
+    if (!canvas || !canvas.width || !canvas.height) return false;
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 0; i < data.length; i += 4) if (data[i + 2] > 200 && data[i] < 50) return true;
+    return false;
+  })()`),
+    'PDF first page rendered',
+  );
+  assert.equal(
+    await evaluate(
+      `!!document.querySelector('.file-viewer .viewer-header .pdf-toolbar') && !document.querySelector('.file-viewer .viewer-editor-shell .pdf-toolbar') && !document.querySelector('.file-viewer .viewer-header').textContent.includes('Open in default app')`,
+    ),
+    true,
+    'PDF controls belong in the header',
+  );
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'PageDown',
+    code: 'PageDown',
+    windowsVirtualKeyCode: 34,
+  });
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'PageDown',
+    code: 'PageDown',
+    windowsVirtualKeyCode: 34,
+  });
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('.file-viewer .pdf-pages')?.scrollTop > 0`,
+      ),
+    'PDF keyboard scrolling',
+  );
+  assert.equal(
+    await evaluate('!!globalThis.pdfScriptRan'),
+    false,
+    'PDF scripts must not run',
+  );
+  await evaluate(
+    `document.querySelector('.file-viewer [aria-label="Next page"]').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('.file-viewer [aria-label="Page number"]')?.value === '2' && document.querySelector('.file-viewer canvas[data-page="2"]')?.width > 0`,
+      ),
+    'PDF page navigation',
+  );
+  const pdfWidth = await evaluate(
+    `document.querySelector('.file-viewer canvas[data-page="2"]').width`,
+  );
+  await evaluate(
+    `document.querySelector('.file-viewer [aria-label="Zoom in"]').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('.file-viewer canvas[data-page="2"]')?.width > ${pdfWidth}`,
+      ),
+    'PDF zoom',
+  );
+  await evaluate(
+    `Array.from(document.querySelectorAll('.file-viewer .pdf-toolbar button')).find(button => button.textContent === 'Fit width').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('.file-viewer .pdf-toolbar [aria-pressed="true"]')?.textContent === 'Fit width' && document.querySelector('.file-viewer canvas[data-page="2"]')?.width > ${pdfWidth}`,
+      ),
+    'PDF fit width',
+  );
+  await evaluate(
+    `document.querySelector('.file-viewer .pdf-pages').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}))`,
+  );
+  await until(
+    () => evaluate(`!document.querySelector('.file-viewer')`),
+    'PDF viewer closed',
+  );
   await selectPreviewFile('preview.md');
   await until(
     () =>
@@ -508,6 +619,14 @@ try {
       ),
     'preview panel follows cursor',
   );
+  await selectPreviewFile('preview.pdf');
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('.preview-panel canvas[data-page="1"]')?.width > 0 && !document.querySelector('.preview-panel [role="alert"]')`,
+      ),
+    'PDF preview panel',
+  );
   await previewKey(true);
   await until(
     () => evaluate(`!document.querySelector('.preview-panel')`),
@@ -603,7 +722,7 @@ try {
   });
   await assert.rejects(access(join(destination, 'archive')));
   console.log(
-    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image previews, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input and F7 keyboard flow.',
+    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image/PDF previews, PDF navigation/zoom/keyboard scrolling and disabled scripts, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input and F7 keyboard flow.',
   );
 } catch (error) {
   await writeFile(join(diagnostics, 'error.txt'), error.stack ?? String(error));
