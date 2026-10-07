@@ -50,7 +50,9 @@
         ? destination
         : action === 'rename'
           ? entries[0].name
-          : '';
+          : action === 'createDirectory' && entries[0]?.type === 'directory'
+            ? entries[0].name
+            : '';
     dialog.showModal();
     void tick().then(() => dialog.querySelector('input')?.select());
     let disposed = false;

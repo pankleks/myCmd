@@ -369,7 +369,12 @@
       !active.path
     )
       return;
-    const entries = sources(active);
+    const entries =
+      action === 'createDirectory'
+        ? rows(active)
+            .slice(active.cursor, active.cursor + 1)
+            .filter((entry) => !entry.parentEntry)
+        : sources(active);
     const opposite =
       commander[commander.activePanel === 'left' ? 'right' : 'left'];
     if (

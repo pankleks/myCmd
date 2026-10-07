@@ -4,6 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import SettingsDialog from './SettingsDialog.svelte';
 import OperationDialog from './OperationDialog.svelte';
 import { version } from '../../package.json';
+import type { FileEntry } from '../filesystem/types';
 
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
@@ -63,6 +64,49 @@ it.each([
     editor,
   });
 });
+
+it.each(['directory', 'file', undefined] as const)(
+  'defaults the new folder name for a cursor on %s',
+  (type) => {
+    const entry: FileEntry = {
+      name: 'Projects',
+      path: '/current/Projects',
+      type: type ?? 'file',
+      extension: '',
+      size: 0,
+      hidden: false,
+      readonly: false,
+      directoryTarget: type === 'directory',
+    };
+    const onsubmit = vi.fn();
+    component = mount(OperationDialog, {
+      target,
+      props: {
+        action: 'createDirectory',
+        entries: type ? [entry] : [],
+        parent: '/current',
+        destination: '/opposite',
+        permanent: false,
+        onsubmit,
+        onclose: vi.fn(),
+      },
+    });
+    flushSync();
+    const input = target.querySelector('input')!;
+    expect(input.value).toBe(type === 'directory' ? 'Projects' : '');
+    input.value = 'New Projects';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    target
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(onsubmit).toHaveBeenCalledWith({
+      type: 'createDirectory',
+      parent: '/current',
+      name: 'New Projects',
+    });
+  },
+);
 
 it('asks for a new filename even in an empty directory', () => {
   const onsubmit = vi.fn();
