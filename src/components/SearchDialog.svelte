@@ -1,11 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import FolderPicker from './FolderPicker.svelte';
+  import type { Root } from '../filesystem/types';
   let {
     folder,
+    roots,
     onsubmit,
     onclose,
   }: {
     folder: string;
+    roots: Root[];
     onsubmit: (folder: string, pattern: string) => void;
     onclose: () => void;
   } = $props();
@@ -41,13 +45,21 @@
         spellcheck="false"
       /></label
     >
-    <label
-      >Search folder<input
+    <div class="search-folder">
+      <span>Search folder</span>
+      <FolderPicker
         bind:value={root}
+        path={folder}
+        label={folder}
+        {roots}
+        id="search-folder-picker"
+        ariaLabel="Search folder"
         required
-        spellcheck="false"
-      /></label
-    >
+        onchoose={(path) => {
+          root = path;
+        }}
+      />
+    </div>
     <p>
       Searches names recursively, including folders. Archives and directory
       links are not traversed.
@@ -60,3 +72,17 @@
     </div>
   </form>
 </dialog>
+
+<style>
+  dialog {
+    overflow: visible;
+  }
+  .search-folder {
+    display: grid;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .search-folder :global(.location-menu) {
+    max-height: min(240px, 30vh);
+  }
+</style>

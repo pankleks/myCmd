@@ -1116,6 +1116,7 @@
 {#if shortcutsOpen}<ShortcutsDialog onclose={closeShortcuts} />{/if}
 {#if searchDialog}<SearchDialog
     folder={searchDialog.folder}
+    roots={commander.roots}
     onsubmit={submitSearch}
     onclose={closeSearchDialog}
   />{/if}
