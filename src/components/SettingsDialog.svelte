@@ -184,13 +184,6 @@
     border-radius: 0;
     padding: 9px 11px;
   }
-  .settings-row input[type='checkbox'] {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    accent-color: #80aaff;
-    cursor: pointer;
-  }
   .editor-label {
     margin-bottom: 9px;
   }

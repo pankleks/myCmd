@@ -116,9 +116,6 @@
     gap: 8px;
     margin-top: 20px;
   }
-  .content-toggle input {
-    margin: 0;
-  }
   .content-query {
     margin-top: 14px;
   }

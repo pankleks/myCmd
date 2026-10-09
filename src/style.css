@@ -962,11 +962,17 @@ dialog.file-viewer[open] {
   width: 84px;
   flex: none;
 }
-.settings-row input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
+input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
   flex: none;
-  accent-color: #365b97;
+  margin: 0;
+  accent-color: #80aaff;
+  cursor: pointer;
+}
+input[type='checkbox']:focus-visible {
+  outline: 1px solid #8290a3;
+  outline-offset: -1px;
 }
 dl {
   font-size: 14px;
