@@ -44,7 +44,8 @@ export function handleControlShortcut(
         const other =
           commander[commander.activePanel === 'left' ? 'right' : 'left'];
         const session = searchSession(active.path);
-        if (session) void startSearch(other, session.root, session.pattern);
+        if (session)
+          void startSearch(other, session.root, session.pattern, session.text);
         else void load(other, active.path, rows(active)[active.cursor]?.path);
       }
       break;

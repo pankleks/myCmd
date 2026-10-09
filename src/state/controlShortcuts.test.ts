@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { commander, createPanel, load, rows } from './commander.svelte';
+import {
+  commander,
+  createPanel,
+  load,
+  rows,
+  startSearch,
+} from './commander.svelte';
 import { preferences } from './preferences.svelte';
 import { handleControlShortcut, swapPanels } from './controlShortcuts';
 import {
@@ -13,6 +19,7 @@ import { searchSessions } from '../filesystem/providers';
 vi.mock('./commander.svelte', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./commander.svelte')>()),
   load: vi.fn().mockResolvedValue(undefined),
+  startSearch: vi.fn().mockResolvedValue(undefined),
 }));
 function file(name: string, hidden = false): FileEntry {
   return {
@@ -106,6 +113,22 @@ describe('panel control shortcuts', () => {
   it('does not mirror an unavailable path', () => {
     press('i');
     expect(load).not.toHaveBeenCalled();
+  });
+  it('preserves the content filter when mirroring a search to the other panel', () => {
+    searchSessions.set('content-test', {
+      root: '/files',
+      pattern: '*.txt',
+      text: 'needle',
+      returnPath: '/previous',
+    });
+    commander.left.path = 'search:content-test';
+    press('i');
+    expect(startSearch).toHaveBeenCalledWith(
+      commander.right,
+      '/files',
+      '*.txt',
+      'needle',
+    );
   });
   it.each(['p', 'P'])('delegates path-bar focus for Ctrl+%s', (key) => {
     const { focusPath, event } = press(key);

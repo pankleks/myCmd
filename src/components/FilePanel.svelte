@@ -3,6 +3,7 @@
   import LocationPicker from './LocationPicker.svelte';
   import { tick } from 'svelte';
   import Icon from '@iconify/svelte';
+  import { icons } from '../utils/uiIcons';
   import { fileIcon } from '../utils/fileIcon';
   import type { PanelState, Root, Column } from '../filesystem/types';
   import {
@@ -225,11 +226,13 @@
           onclick={() => sort(panel, item.column)}
           ondblclick={() => (preferences.columnWidths = null)}
           title={`Sort by ${item.label}; click again to reverse. Double-click to reset column widths.`}
-          >{item.label}{panel.sort.column === item.column
-            ? panel.sort.direction === 'asc'
-              ? ' ▴'
-              : ' ▾'
-            : ''}</button
+          >{item.label}{#if panel.sort.column === item.column}<Icon
+              icon={icons[
+                panel.sort.direction === 'asc' ? 'chevron-up' : 'chevron-down'
+              ]}
+              width="14"
+              height="14"
+            />{/if}</button
         >
         {#if index < columns.length - 1 && !searchResults}
           <button

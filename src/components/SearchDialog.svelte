@@ -10,11 +10,13 @@
   }: {
     folder: string;
     roots: Root[];
-    onsubmit: (folder: string, pattern: string) => void;
+    onsubmit: (folder: string, pattern: string, text?: string) => void;
     onclose: () => void;
   } = $props();
   let root = $state('');
   let pattern = $state('*.*');
+  let searchContent = $state(false);
+  let searchText = $state('');
   let dialog: HTMLDialogElement;
   onMount(() => {
     root = folder;
@@ -33,7 +35,8 @@
   <form
     onsubmit={(event) => {
       event.preventDefault();
-      onsubmit(root, pattern);
+      if (searchContent && !searchText) return;
+      onsubmit(root, pattern, searchContent ? searchText : undefined);
     }}
   >
     <h2>Search files and folders</h2>
@@ -60,9 +63,31 @@
         }}
       />
     </div>
+    <label class="check-label content-toggle">
+      <input type="checkbox" bind:checked={searchContent} />
+      Search text inside files
+    </label>
+    <label class="content-query">
+      Text to find
+      <input
+        bind:value={searchText}
+        disabled={!searchContent}
+        required={searchContent}
+        placeholder="Enter text to find…"
+        autocomplete="off"
+        spellcheck="false"
+        aria-describedby="content-search-hint"
+      />
+    </label>
+    <p id="content-search-hint" class="content-hint">
+      Literal, case-insensitive text search. Searches textual files matching the
+      glob pattern; binary files are skipped.
+    </p>
     <p>
-      Searches names recursively, including folders. Archives and directory
-      links are not traversed.
+      {searchContent
+        ? 'Searches recursively and returns files containing the text.'
+        : 'Searches names recursively, including folders.'}
+      Archives and directory links are not traversed.
     </p>
     <div class="dialog-actions">
       <button type="button" onclick={onclose}>Cancel</button><button
@@ -84,5 +109,24 @@
   }
   .search-folder :global(.location-menu) {
     max-height: min(240px, 30vh);
+  }
+  .content-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .content-toggle input {
+    margin: 0;
+  }
+  .content-query {
+    margin-top: 14px;
+  }
+  .content-query input:disabled {
+    opacity: 0.45;
+  }
+  .content-hint {
+    margin-top: 7px;
+    font-size: 12px;
   }
 </style>

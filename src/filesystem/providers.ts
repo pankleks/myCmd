@@ -26,6 +26,7 @@ export interface ContentProvider {
 export interface SearchSession {
   root: string;
   pattern: string;
+  text?: string;
   returnPath: string;
   focusPath?: string;
   requestId?: string;
@@ -78,6 +79,7 @@ export const searchProvider: ContentProvider = {
       }>('search_files', {
         root: session.root,
         pattern: session.pattern,
+        text: session.text,
         requestId,
       });
       session.root = result.root;
@@ -150,7 +152,7 @@ export function locationLabel(path: string): string {
   if (location.kind === 'search') {
     const session = searchSessions.get(location.sessionId);
     return session
-      ? `Search: ${session.pattern} — ${session.root}`
+      ? `Search: ${session.pattern}${session.text ? ` containing "${session.text}"` : ''} — ${session.root}`
       : 'Search results';
   }
   return location.kind === 'archive'

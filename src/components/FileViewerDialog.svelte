@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte';
+  import { icons } from '../utils/uiIcons';
   import { onMount } from 'svelte';
   import FilePreview from './FilePreview.svelte';
 
@@ -24,7 +26,8 @@
     type="button"
     class="viewer-close"
     onclick={onclose}
-    aria-label="Close viewer">×</button
+    aria-label="Close viewer"
+    ><Icon icon={icons.x} width="20" height="20" /></button
   >
 {/snippet}
 

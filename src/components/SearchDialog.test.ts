@@ -62,6 +62,7 @@ it('uses a typed folder when Search is clicked, without nested forms', () => {
   expect(submit).toHaveBeenCalledExactlyOnceWith(
     '/directory with spaces',
     '*.*',
+    undefined,
   );
 });
 
@@ -82,7 +83,7 @@ it.each([
     expect(submit).not.toHaveBeenCalled();
     expect(target.querySelector('.location-menu')).toBeNull();
     search();
-    expect(submit).toHaveBeenCalledExactlyOnceWith(path, '*.*');
+    expect(submit).toHaveBeenCalledExactlyOnceWith(path, '*.*', undefined);
   },
 );
 
@@ -100,7 +101,7 @@ it('chooses the filtered result with Enter instead of submitting the search', ()
   expect(folderInput().value).toBe('/home/user/Projects');
   expect(submit).not.toHaveBeenCalled();
   search();
-  expect(submit).toHaveBeenCalledWith('/home/user/Projects', '*.*');
+  expect(submit).toHaveBeenCalledWith('/home/user/Projects', '*.*', undefined);
 });
 
 it('Escape closes the dropdown first and preserves the typed folder', () => {
@@ -153,4 +154,29 @@ it('supports arrow-key navigation and Escape from a dropdown option', async () =
   flushSync();
   expect(target.querySelector('.location-menu')).toBeNull();
   expect(close).not.toHaveBeenCalled();
+});
+
+it('requires text only when content search is enabled and ignores it when disabled', () => {
+  const checkbox = target.querySelector<HTMLInputElement>('[type="checkbox"]')!;
+  const text = target.querySelector<HTMLInputElement>(
+    '[placeholder="Enter text to find…"]',
+  )!;
+  expect(text.disabled).toBe(true);
+  checkbox.click();
+  flushSync();
+  expect(text.disabled).toBe(false);
+  expect(text.required).toBe(true);
+  search();
+  expect(submit).not.toHaveBeenCalled();
+  text.value = 'literal .* text';
+  text.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  search();
+  expect(submit).toHaveBeenLastCalledWith('/current', '*.*', 'literal .* text');
+  checkbox.click();
+  flushSync();
+  expect(text.disabled).toBe(true);
+  expect(text.value).toBe('literal .* text');
+  search();
+  expect(submit).toHaveBeenLastCalledWith('/current', '*.*', undefined);
 });

@@ -128,6 +128,20 @@ main {
 .location-pin.pinned {
   color: #ffd478;
 }
+.location-pin.pinned svg path,
+.pin-star path {
+  fill: currentColor;
+}
+.location-pin,
+.viewer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.location-option svg,
+.column-heading svg {
+  vertical-align: middle;
+}
 .pin-star {
   color: #ffd478;
 }
@@ -761,6 +775,34 @@ dialog.file-viewer[open] {
 .directory-summary-note {
   padding: 0 24px 20px;
   color: #e0a44a;
+}
+.preview-search {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.preview-search input {
+  flex: 1;
+  min-width: 100px;
+}
+.preview-search button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.preview-search [role='status'] {
+  color: #b6c4d8;
+  font-size: 12px;
+}
+.markdown-preview mark[data-preview-search] {
+  background: #e2c15b;
+  color: #171b23;
+}
+.markdown-preview mark.search-current {
+  background: #ff963f;
+  outline: 2px solid #ff963f;
 }
 .markdown-preview {
   width: 100%;

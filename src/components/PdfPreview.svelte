@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte';
+  import { icons } from '../utils/uiIcons';
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import type {
     PDFDocumentLoadingTask,
@@ -235,17 +237,7 @@
       disabled={!pdf || currentPage === 1}
       aria-label="Previous page"
       onclick={() => goTo(currentPage - 1)}
-      ><svg
-        width="18"
-        height="18"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"><path d="m12 4-6 6 6 6" /></svg
-      ></button
+      ><Icon icon={icons['chevron-left']} width="18" height="18" /></button
     >
     <input
       aria-label="Page number"
@@ -261,48 +253,20 @@
       disabled={!pdf || currentPage === pageCount}
       aria-label="Next page"
       onclick={() => goTo(currentPage + 1)}
-      ><svg
-        width="18"
-        height="18"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"><path d="m8 4 6 6-6 6" /></svg
-      ></button
+      ><Icon icon={icons['chevron-right']} width="18" height="18" /></button
     >
     <button
       disabled={!pdf || scale <= 0.25}
       aria-label="Zoom out"
       onclick={() => (zoom = Math.max(0.25, scale / 1.25))}
-      ><svg
-        width="18"
-        height="18"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        aria-hidden="true"><path d="M4 10h12" /></svg
-      ></button
+      ><Icon icon={icons.minus} width="18" height="18" /></button
     >
     <span>{Math.round(scale * 100)}%</span>
     <button
       disabled={!pdf || scale >= 4}
       aria-label="Zoom in"
       onclick={() => (zoom = Math.min(4, scale * 1.25))}
-      ><svg
-        width="18"
-        height="18"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        aria-hidden="true"><path d="M4 10h12M10 4v12" /></svg
-      ></button
+      ><Icon icon={icons.plus} width="18" height="18" /></button
     >
     <button
       disabled={!pdf}
@@ -366,7 +330,7 @@
     min-width: 0;
     padding: 3px 8px;
   }
-  .pdf-toolbar svg {
+  .pdf-toolbar :global(svg) {
     display: block;
   }
   .pdf-pages {

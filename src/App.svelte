@@ -19,6 +19,7 @@
     commander,
     load,
     rows,
+    previewEntry,
     sources,
     toggle,
     invertSelection,
@@ -144,14 +145,9 @@
     commander.activePanel === 'left' ? 'right' : 'left',
   );
   let previewTarget = $derived.by(() => {
-    if (
-      !previewMode ||
-      active.loading ||
-      (!isLocalPath(active.path) && !searchSession(active.path))
-    )
-      return undefined;
-    const entry = rows(active)[active.cursor];
-    if (!entry || entry.parentEntry) return undefined;
+    if (!previewMode) return undefined;
+    const entry = previewEntry(active);
+    if (!entry) return undefined;
     return {
       path: entry.path,
       name: entry.name,
@@ -262,23 +258,23 @@
     searchDialog = undefined;
     void tick().then(focusPanel);
   }
-  function submitSearch(folder: string, pattern: string) {
+  function submitSearch(folder: string, pattern: string, text?: string) {
     const panel = commander[searchDialog!.side];
     closeSearchDialog();
-    void startSearch(panel, folder, pattern);
+    void startSearch(panel, folder, pattern, text);
   }
   function closeViewer() {
     viewer = undefined;
     void tick().then(focusPanel);
   }
   function viewCurrentFile() {
-    if (!ready || busy || commandRunning || active.loading) return;
+    if (!ready || busy || commandRunning) return;
     if (!isLocalPath(active.path) && !searchSession(active.path)) {
       showError('Archive previews are not supported yet.');
       return;
     }
-    const entry = rows(active)[active.cursor];
-    if (!entry || entry.parentEntry) return;
+    const entry = previewEntry(active);
+    if (!entry) return;
     quickFindClose();
     // Note: every real directory arrives with directoryTarget === true
     // (backend marks navigable targets), so check the type first.

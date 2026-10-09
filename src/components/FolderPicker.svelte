@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte';
+  import { icons } from '../utils/uiIcons';
   import { tick } from 'svelte';
   import type { Root } from '../filesystem/types';
   import { preferences } from '../state/preferences.svelte';
@@ -133,7 +135,7 @@
       query = '';
       input.focus();
       expanded = open;
-    }}>▾</button
+    }}><Icon icon={icons['chevron-down']} width="16" height="16" /></button
   >
   {#if expanded}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions (delegated keyboard navigation for child buttons) -->
@@ -174,7 +176,10 @@
             : undefined}
           onclick={() => void choose(root.path)}
         >
-          <span>▣ {root.name}</span><small>{root.path}</small>
+          <span
+            ><Icon icon={icons['hard-drive']} width="16" height="16" />
+            {root.name}</span
+          ><small>{root.path}</small>
         </button>
       {/each}
       <div class="location-heading">Pinned directories</div>
@@ -191,7 +196,7 @@
           onclick={() => void choose(pin)}
         >
           <span
-            ><span class="pin-star" aria-hidden="true">★</span>
+            ><Icon icon={icons.star} width="16" height="16" class="pin-star" />
             {pin.split(/[\\/]/).filter(Boolean).pop() ?? pin}</span
           ><small>{pin}</small>
         </button>
@@ -208,7 +213,10 @@
           class="location-option"
           onclick={() => void choose(path)}
         >
-          <span>✓ {displayPath(label)}</span>
+          <span
+            ><Icon icon={icons.check} width="16" height="16" />
+            {displayPath(label)}</span
+          >
         </button>
       {/if}
     </div>

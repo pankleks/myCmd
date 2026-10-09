@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   dispose: vi.fn(),
   focus: vi.fn(),
   setValue: vi.fn(),
+  getAction: vi.fn(),
+  find: vi.fn(),
 }));
 vi.mock('../filesystem/api', () => ({
   api: {
@@ -52,7 +54,9 @@ beforeEach(() => {
     dispose: mocks.dispose,
     focus: mocks.focus,
     setValue: mocks.setValue,
+    getAction: mocks.getAction,
   });
+  mocks.getAction.mockReturnValue({ run: mocks.find });
   target = document.createElement('div');
   document.body.append(target);
 });
@@ -63,6 +67,117 @@ afterEach(async () => {
 });
 
 describe('FilePreview', () => {
+  it.each(['txt', 'ts', 'json', 'jsonc', 'rs', 'svelte'])(
+    'opens Monaco search from the toolbar and keyboard for %s files',
+    async (extension) => {
+      mocks.text.mockResolvedValue('searchable text');
+      preview(extension);
+      await settle(() => expect(mocks.editor).toHaveBeenCalledOnce());
+      await settle(() =>
+        expect(
+          target.querySelector<HTMLButtonElement>(
+            '[title="Search file (Ctrl/Cmd+F)"]',
+          )?.disabled,
+        ).toBe(false),
+      );
+      target
+        .querySelector<HTMLButtonElement>('[title="Search file (Ctrl/Cmd+F)"]')!
+        .click();
+      expect(mocks.getAction).toHaveBeenCalledWith('actions.find');
+      expect(mocks.find).toHaveBeenCalledOnce();
+      for (const modifier of ['ctrlKey', 'metaKey']) {
+        const event = new KeyboardEvent('keydown', {
+          key: 'f',
+          [modifier]: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        target.querySelector('.viewer-editor')!.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+      }
+      expect(mocks.find).toHaveBeenCalledTimes(3);
+      expect(target.querySelector('.preview-search')).toBeNull();
+      expect(mocks.setValue).not.toHaveBeenCalled();
+    },
+  );
+  it('searches rendered Markdown, wraps navigation, and closes search without closing the viewer', async () => {
+    mocks.text.mockResolvedValue('# Hello\n\nHello **world** hello');
+    preview('md');
+    await settle(() =>
+      expect(target.querySelector('h1')?.textContent).toBe('Hello'),
+    );
+    const article = target.querySelector('article')!;
+    const key = (element: Element, name: string, options = {}) => {
+      const event = new KeyboardEvent('keydown', {
+        key: name,
+        bubbles: true,
+        cancelable: true,
+        ...options,
+      });
+      element.dispatchEvent(event);
+      flushSync();
+      return event;
+    };
+    expect(key(article, 'f', { ctrlKey: true }).defaultPrevented).toBe(true);
+    await settle(() =>
+      expect(document.activeElement).toBe(target.querySelector('input')),
+    );
+    const input = target.querySelector('input')!;
+    expect(
+      target
+        .querySelector('[aria-label="Next match"] svg')
+        ?.getAttribute('viewBox'),
+    ).toBe('0 0 24 24');
+    input.value = 'hello';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    expect(target.querySelectorAll('mark')).toHaveLength(3);
+    expect(
+      target.querySelector('.preview-search [role="status"]')?.textContent,
+    ).toBe('1 of 3');
+    key(input, 'Enter', { shiftKey: true });
+    expect(
+      target.querySelector('.preview-search [role="status"]')?.textContent,
+    ).toBe('3 of 3');
+    target
+      .querySelector<HTMLButtonElement>('[aria-label="Next match"]')!
+      .click();
+    flushSync();
+    expect(
+      target.querySelector('.preview-search [role="status"]')?.textContent,
+    ).toBe('1 of 3');
+    expect(target.querySelectorAll('mark.search-current')).toHaveLength(1);
+    target.querySelector<HTMLButtonElement>('.viewer-toggle')!.click();
+    await settle(() => expect(mocks.editor).toHaveBeenCalledOnce());
+    expect(target.querySelector('.preview-search')).toBeNull();
+    target
+      .querySelector<HTMLButtonElement>('[title="Search file (Ctrl/Cmd+F)"]')!
+      .click();
+    expect(mocks.find).toHaveBeenCalledOnce();
+    target.querySelector<HTMLButtonElement>('.viewer-toggle')!.click();
+    await settle(() => expect(target.querySelectorAll('mark')).toHaveLength(3));
+    const restoredInput = target.querySelector('input')!;
+    restoredInput.value = 'missing';
+    restoredInput.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    expect(
+      target.querySelector('.preview-search [role="status"]')?.textContent,
+    ).toBe('0 of 0');
+    expect(
+      target.querySelector<HTMLButtonElement>('[aria-label="Next match"]')!
+        .disabled,
+    ).toBe(true);
+    const parentKeydown = vi.fn();
+    document.body.addEventListener('keydown', parentKeydown);
+    key(restoredInput, 'Escape');
+    document.body.removeEventListener('keydown', parentKeydown);
+    expect(parentKeydown).not.toHaveBeenCalled();
+    expect(target.querySelector('input')).toBeNull();
+    expect(target.querySelector('mark')).toBeNull();
+    expect(document.activeElement).toBe(target.querySelector('article'));
+    expect(target.querySelector('article strong')?.textContent).toBe('world');
+  });
+
   it('formats JSON only in the preview editor', async () => {
     mocks.text.mockResolvedValue('{"a":1}');
     preview('json');

@@ -22,6 +22,7 @@ import {
   sources,
   toggle,
   startSearch,
+  previewEntry,
   leaveSearch,
 } from './commander.svelte';
 
@@ -77,6 +78,48 @@ beforeEach(() => {
 });
 
 describe('search result navigation', () => {
+  it('allows previewing streamed search results while the search is still running', async () => {
+    const p = panel();
+    const result = entry('match', { path: '/home/nested/match' });
+    const pending = deferred<{
+      path: string;
+      parent: string;
+      entries: FileEntry[];
+    }>();
+    const listing = vi
+      .spyOn(searchProvider, 'list')
+      .mockImplementation((location, onBatch) => {
+        onBatch?.([result]);
+        return pending.promise.then((value) => ({
+          ...value,
+          path: `search:${location.kind === 'search' ? location.sessionId : ''}`,
+        }));
+      });
+    try {
+      const searching = startSearch(p, '/home', '*');
+      expect(p.loading).toBe(true);
+      p.cursor = 1;
+      expect(previewEntry(p)?.path).toBe(result.path);
+      p.cursor = 0;
+      expect(previewEntry(p)).toBeUndefined();
+      pending.resolve({ path: '', parent: '/home', entries: [result] });
+      await searching;
+      expect(p.loading).toBe(false);
+    } finally {
+      listing.mockRestore();
+    }
+  });
+  it('does not preview stale entries during a regular directory load or archive contents', () => {
+    const p = panel();
+    p.entries = [entry('old')];
+    p.cursor = 1;
+    expect(previewEntry(p)?.name).toBe('old');
+    p.loading = true;
+    expect(previewEntry(p)).toBeUndefined();
+    p.loading = false;
+    p.path = 'archive:test.zip!/';
+    expect(previewEntry(p)).toBeUndefined();
+  });
   it.each(['file', 'directory'] as const)(
     'Enter locates a %s result in its containing directory',
     async (type) => {
@@ -121,7 +164,8 @@ describe('search result navigation', () => {
         parent: '/home',
         entries: [],
       }));
-    await startSearch(p, '/home', '*.exe');
+    await startSearch(p, '/home', '*.exe', 'needle');
+    expect(searchSession(p.path)?.text).toBe('needle');
     vi.mocked(api.list).mockResolvedValue({
       path: '/home',
       parent: '/',

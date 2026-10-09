@@ -11,6 +11,7 @@ import 'monaco-editor/languages/definitions/css/register.js';
 import 'monaco-editor/languages/definitions/xml/register.js';
 import 'monaco-editor/languages/features/json/register.js';
 import 'monaco-editor/editor/contrib/folding/browser/folding.js';
+import 'monaco-editor/editor/contrib/find/browser/findController.js';
 import '../node_modules/monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css';
 import '../node_modules/monaco-editor/min/vs/editor/editor.main.css';
 import { viewerLanguage } from './utils/viewer';

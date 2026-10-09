@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte';
+  import { icons } from '../utils/uiIcons';
   import FolderPicker from './FolderPicker.svelte';
   import type { Root } from '../filesystem/types';
   import { preferences, scheduleSave } from '../state/preferences.svelte';
@@ -67,6 +69,7 @@
     disabled={!path || !isLocalPath(path)}
     title={pinned ? 'Unpin current directory' : 'Pin current directory'}
     aria-label={pinned ? 'Unpin current directory' : 'Pin current directory'}
-    onclick={togglePin}>{pinned ? '★' : '☆'}</button
+    onclick={togglePin}
+    ><Icon icon={icons.star} width="18" height="18" /></button
   >
 </div>

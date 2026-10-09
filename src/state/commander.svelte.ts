@@ -47,6 +47,14 @@ export function rows(panel: PanelState): Row[] {
   return panel.visibleRows ?? buildRows(panel);
 }
 
+export function previewEntry(panel: PanelState): Row | undefined {
+  const searching = !!searchSession(panel.path);
+  if ((panel.loading && !searching) || (!isLocalPath(panel.path) && !searching))
+    return;
+  const entry = rows(panel)[panel.cursor];
+  return entry?.parentEntry ? undefined : entry;
+}
+
 function buildRows(panel: PanelState): Row[] {
   const items: Row[] = panel.entries
     .filter((e) => panel.showHidden || !e.hidden)
@@ -263,12 +271,14 @@ export async function startSearch(
   panel: PanelState,
   root: string,
   pattern: string,
+  text?: string,
 ) {
   const id = crypto.randomUUID();
   const previous = searchSession(panel.path);
   searchSessions.set(id, {
     root,
     pattern,
+    text,
     returnPath: previous?.returnPath ?? panel.path,
     focusPath: previous?.focusPath ?? rows(panel)[panel.cursor]?.path,
   });

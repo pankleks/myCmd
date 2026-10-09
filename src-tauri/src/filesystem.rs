@@ -117,6 +117,30 @@ pub fn read_pdf_preview(path: &Path) -> Result<Vec<u8>> {
     Ok(content)
 }
 
+pub(crate) fn utf16_encoding(content: &[u8]) -> Option<bool> {
+    if content.starts_with(&[0xff, 0xfe]) {
+        return Some(true);
+    }
+    if content.starts_with(&[0xfe, 0xff]) {
+        return Some(false);
+    }
+    if content.len() >= 4 && content.len().is_multiple_of(2) {
+        // Recognize BOM-less UTF-16 conservatively: ASCII text has a zero
+        // high byte in almost every code unit, but no zero low bytes.
+        let pairs = content.len() / 2;
+        let chunks = content.as_chunks::<2>().0;
+        let little = chunks.iter().filter(|p| p[1] == 0).count();
+        let big = chunks.iter().filter(|p| p[0] == 0).count();
+        if little * 10 >= pairs * 9 && chunks.iter().all(|p| p[0] != 0) {
+            return Some(true);
+        }
+        if big * 10 >= pairs * 9 && chunks.iter().all(|p| p[1] != 0) {
+            return Some(false);
+        }
+    }
+    None
+}
+
 pub fn read_text_preview(path: &Path) -> Result<String> {
     let path = absolute(path)?;
     let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
@@ -141,28 +165,12 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
             "Files larger than 8 MiB cannot be previewed",
         ));
     }
-    let utf16 = if content.starts_with(&[0xff, 0xfe]) {
-        Some((&content[2..], true))
-    } else if content.starts_with(&[0xfe, 0xff]) {
-        Some((&content[2..], false))
-    } else if content.len() >= 4 && content.len() % 2 == 0 {
-        // Recognize BOM-less UTF-16 conservatively: ASCII text has a zero
-        // high byte in almost every code unit, but no zero low bytes.
-        let pairs = content.len() / 2;
-        let chunks = content.as_chunks::<2>().0;
-        let little = chunks.iter().filter(|p| p[1] == 0).count();
-        let big = chunks.iter().filter(|p| p[0] == 0).count();
-        if little * 10 >= pairs * 9 && chunks.iter().all(|p| p[0] != 0) {
-            Some((&content[..], true))
-        } else if big * 10 >= pairs * 9 && chunks.iter().all(|p| p[1] != 0) {
-            Some((&content[..], false))
+    if let Some(little_endian) = utf16_encoding(&content) {
+        let bytes = if content.starts_with(&[0xff, 0xfe]) || content.starts_with(&[0xfe, 0xff]) {
+            &content[2..]
         } else {
-            None
-        }
-    } else {
-        None
-    };
-    if let Some((bytes, little_endian)) = utf16 {
+            &content[..]
+        };
         if bytes.len() % 2 != 0 {
             return Err(FsError::new(
                 "invalid_encoding",
