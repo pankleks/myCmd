@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import LocationPicker from './LocationPicker.svelte';
 import { preferences } from '../state/preferences.svelte';
+import styles from '../style.css?inline';
 
 vi.mock('../filesystem/api', () => ({ api: { saveConfig: vi.fn() } }));
 let component: ReturnType<typeof mount>;
@@ -53,6 +54,113 @@ it('opens the full dropdown when the path input receives focus', () => {
   expect(input.selectionEnd).toBe(input.value.length);
   expect(target.querySelector('.location-menu')).not.toBeNull();
   expect(target.querySelectorAll('.location-option')).toHaveLength(4);
+});
+
+it.each(['input', 'button'])(
+  'moves focus into dropdown options from the %s and wraps arrow navigation',
+  async (origin) => {
+    const trigger = target.querySelector<HTMLButtonElement>('#drive-left')!;
+    trigger.focus();
+    trigger.click();
+    flushSync();
+    const start =
+      origin === 'input'
+        ? target.querySelector<HTMLInputElement>('input')!
+        : trigger;
+    start.focus();
+    const key = async (element: HTMLElement, name: string) => {
+      const event = new KeyboardEvent('keydown', {
+        key: name,
+        bubbles: true,
+        cancelable: true,
+      });
+      element.dispatchEvent(event);
+      await vi.waitFor(() => {
+        flushSync();
+        expect(document.activeElement).not.toBe(element);
+      });
+      expect(event.defaultPrevented).toBe(true);
+    };
+    await key(start, 'ArrowDown');
+    const options = [
+      ...target.querySelectorAll<HTMLButtonElement>('.location-option'),
+    ];
+    expect(document.activeElement).toBe(options[0]);
+    await key(options[0], 'ArrowDown');
+    expect(document.activeElement).toBe(options[1]);
+    await key(options[1], 'ArrowUp');
+    expect(document.activeElement).toBe(options[0]);
+    await key(options[0], 'ArrowUp');
+    expect(document.activeElement).toBe(options.at(-1));
+  },
+);
+
+it('keeps the menu open when focusout has no related target but focus moves to an option', async () => {
+  const input = target.querySelector<HTMLInputElement>('input')!;
+  input.focus();
+  flushSync();
+  const option = target.querySelector<HTMLButtonElement>('.location-option')!;
+  input.dispatchEvent(
+    new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+  );
+  flushSync();
+  option.focus();
+  await Promise.resolve();
+  flushSync();
+  expect(document.activeElement).toBe(option);
+  expect(target.querySelector('.location-menu')).not.toBeNull();
+  const outside = document.createElement('button');
+  target.append(outside);
+  outside.focus();
+  await vi.waitFor(() => {
+    flushSync();
+    expect(target.querySelector('.location-menu')).toBeNull();
+  });
+});
+
+it('visibly highlights focused options after clicking the input and reopening the picker', async () => {
+  const stylesheet = document.createElement('style');
+  stylesheet.textContent = styles;
+  document.head.append(stylesheet);
+  try {
+    const input = target.querySelector<HTMLInputElement>('input')!;
+    const trigger = target.querySelector<HTMLButtonElement>('#drive-left')!;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      trigger.focus();
+      trigger.click();
+      flushSync();
+      input.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      input.focus();
+      input.click();
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowDown',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await vi.waitFor(() => {
+        flushSync();
+        const option =
+          target.querySelector<HTMLButtonElement>('.location-option')!;
+        expect(document.activeElement).toBe(option);
+        expect(getComputedStyle(option).backgroundColor).toBe(
+          'rgb(52, 64, 86)',
+        );
+      });
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      flushSync();
+      expect(target.querySelector('.location-menu')).toBeNull();
+    }
+  } finally {
+    stylesheet.remove();
+  }
 });
 
 it('submits a typed path directly', () => {

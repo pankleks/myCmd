@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [svelte()],
   test: {
     environment: 'node',
+    css: { include: /[/\\]src[/\\]style\.css(?:\?|$)/ },
     include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     coverage: {
       provider: 'v8',

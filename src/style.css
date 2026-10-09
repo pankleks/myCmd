@@ -179,7 +179,8 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.location-option.location-match {
+.location-option.location-match,
+.location-option:focus {
   background: #344056;
   outline: 1px solid #80aaff;
   outline-offset: -1px;

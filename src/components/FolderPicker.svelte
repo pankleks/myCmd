@@ -74,16 +74,30 @@
       event.stopPropagation();
       escape();
     }
-    if (event.key === 'Enter' && expanded) {
+    if (event.key === 'Enter' && expanded && event.target === input) {
       event.preventDefault();
       event.stopPropagation();
       submit();
     }
-    if (event.key === 'ArrowDown') {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
+      event.stopPropagation();
       expanded = true;
       await tick();
-      container.querySelector<HTMLButtonElement>('.location-option')?.focus();
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>('.location-option'),
+      );
+      const index = buttons.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      const next =
+        index < 0
+          ? event.key === 'ArrowDown'
+            ? 0
+            : buttons.length - 1
+          : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) %
+            buttons.length;
+      buttons[next]?.focus();
     }
   }
 </script>
@@ -93,11 +107,15 @@
     if (expanded && !container.contains(event.target as Node)) expanded = false;
   }}
 />
+<!-- svelte-ignore a11y_no_static_element_interactions (delegated shortcuts for the input, toggle, and dropdown options) -->
 <div
   class="folder-picker"
   bind:this={container}
-  onfocusout={(event) => {
-    if (!container.contains(event.relatedTarget as Node)) expanded = false;
+  onkeydown={keydown}
+  onfocusout={async () => {
+    // WebKit can omit relatedTarget when focus moves to a dropdown button.
+    await tick();
+    if (!container.contains(document.activeElement)) expanded = false;
   }}
 >
   <input
@@ -121,7 +139,6 @@
       query = value;
       expanded = true;
     }}
-    onkeydown={keydown}
   />
   <button
     type="button"
@@ -138,33 +155,7 @@
     }}><Icon icon={icons['chevron-down']} width="16" height="16" /></button
   >
   {#if expanded}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions (delegated keyboard navigation for child buttons) -->
-    <div
-      id={menuId}
-      class="location-menu"
-      role="group"
-      aria-label="Locations"
-      onkeydown={(event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          event.stopPropagation();
-          escape();
-        }
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-          event.preventDefault();
-          const buttons = Array.from(
-            container.querySelectorAll<HTMLButtonElement>('.location-option'),
-          );
-          const i = buttons.indexOf(
-            document.activeElement as HTMLButtonElement,
-          );
-          buttons[
-            (i + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) %
-              buttons.length
-          ]?.focus();
-        }
-      }}
-    >
+    <div id={menuId} class="location-menu" role="group" aria-label="Locations">
       <div class="location-heading">Drives</div>
       {#each filteredRoots as root, index}
         <button
