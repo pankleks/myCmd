@@ -21,6 +21,116 @@ pub struct ColumnWeights {
     pub right: Option<[f64; COLUMN_COUNT]>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LaunchRules {
+    pub run_in_terminal: Vec<String>,
+    pub ignore: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LaunchConfig {
+    pub linux: Option<LaunchRules>,
+    pub windows: Option<LaunchRules>,
+    pub macos: Option<LaunchRules>,
+}
+
+fn default_launch_rules() -> LaunchRules {
+    // No fallback between sections: a missing section means these hardcoded
+    // per-OS defaults.
+    #[cfg(target_os = "linux")]
+    {
+        LaunchRules {
+            run_in_terminal: ["sh", "bash", "zsh"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            ignore: vec!["exe".to_owned()],
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        LaunchRules::default()
+    }
+}
+
+impl LaunchConfig {
+    pub fn for_current_os(&self) -> LaunchRules {
+        let section = {
+            #[cfg(target_os = "linux")]
+            {
+                &self.linux
+            }
+            #[cfg(windows)]
+            {
+                &self.windows
+            }
+            #[cfg(target_os = "macos")]
+            {
+                &self.macos
+            }
+            #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+            {
+                &None
+            }
+        };
+        section.clone().unwrap_or_else(default_launch_rules)
+    }
+}
+
+const MAX_LAUNCH_EXTENSIONS: usize = 64;
+
+fn sanitize_extensions(values: Vec<String>) -> Vec<String> {
+    let mut extensions = Vec::new();
+    for value in values {
+        let extension = value.trim().trim_start_matches('.').to_lowercase();
+        if extension.is_empty()
+            || extension.contains(['/', '\\', '.'])
+            || extensions.contains(&extension)
+        {
+            continue;
+        }
+        extensions.push(extension);
+        if extensions.len() >= MAX_LAUNCH_EXTENSIONS {
+            break;
+        }
+    }
+    extensions
+}
+
+fn sanitize_launch_rules(rules: LaunchRules) -> LaunchRules {
+    let run_in_terminal = sanitize_extensions(rules.run_in_terminal);
+    let ignore = sanitize_extensions(rules.ignore)
+        .into_iter()
+        .filter(|extension| !run_in_terminal.contains(extension))
+        .collect();
+    LaunchRules {
+        run_in_terminal,
+        ignore,
+    }
+}
+
+fn sanitize_launch(config: LaunchConfig) -> LaunchConfig {
+    let section = |rules: Option<LaunchRules>| {
+        rules.map(|rules| {
+            let sanitized = sanitize_launch_rules(rules);
+            if sanitized.run_in_terminal.is_empty() && sanitized.ignore.is_empty() {
+                None
+            } else {
+                Some(sanitized)
+            }
+        })
+    };
+    LaunchConfig {
+        // Flatten explicitly emptied sections so a missing section keeps
+        // meaning "use the hardcoded OS defaults".
+        linux: section(config.linux).flatten(),
+        windows: section(config.windows).flatten(),
+        macos: section(config.macos).flatten(),
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -48,6 +158,7 @@ pub struct AppConfig {
     pub show_function_bar: bool,
     pub pinned_directories: Vec<String>,
     pub editor: Option<String>,
+    pub launch: LaunchConfig,
 }
 
 impl Default for AppConfig {
@@ -62,6 +173,7 @@ impl Default for AppConfig {
             show_function_bar: true,
             pinned_directories: Vec::new(),
             editor: None,
+            launch: LaunchConfig::default(),
         }
     }
 }
@@ -98,6 +210,7 @@ impl AppConfig {
             show_hidden: self.show_hidden,
             show_function_bar: self.show_function_bar,
             editor: sanitize_path(self.editor.clone()),
+            launch: sanitize_launch(self.launch.clone()),
             pinned_directories: {
                 let mut pins = Vec::new();
                 for path in &self.pinned_directories {
@@ -152,7 +265,11 @@ pub fn load() -> AppConfig {
 }
 
 pub fn save(config: &AppConfig) -> Result<()> {
-    save_to(&config_path(), config)
+    let mut incoming = config.sanitized();
+    // The UI has no editor for launch rules; preserve hand-edited per-OS
+    // rules so a settings save never wipes config.json changes.
+    incoming.launch = load().sanitized().launch;
+    save_to(&config_path(), &incoming)
 }
 
 #[cfg(test)]
@@ -194,6 +311,14 @@ mod tests {
             show_function_bar: false,
             pinned_directories: vec!["/home/user/projects".into()],
             editor: Some("/usr/bin/editor".into()),
+            launch: LaunchConfig {
+                linux: Some(LaunchRules {
+                    run_in_terminal: vec!["sh".into()],
+                    ignore: vec!["exe".into()],
+                }),
+                windows: None,
+                macos: None,
+            },
         };
         save_to(&path, &config).expect("save");
         assert_eq!(load_from(&path), config.sanitized());
@@ -227,6 +352,7 @@ mod tests {
             show_function_bar: true,
             pinned_directories: Vec::new(),
             editor: Some("   ".into()),
+            launch: LaunchConfig::default(),
         };
         let sanitized = config.sanitized();
         assert_eq!(sanitized.version, CONFIG_VERSION);
@@ -238,5 +364,87 @@ mod tests {
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
         assert!(sanitized.show_hidden);
         assert!(sanitized.show_function_bar);
+    }
+
+    #[test]
+    fn launch_rules_missing_section_uses_hardcoded_os_defaults() {
+        let rules = LaunchConfig::default().for_current_os();
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(rules.run_in_terminal, vec!["sh", "bash", "zsh"]);
+            assert_eq!(rules.ignore, vec!["exe"]);
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(rules.run_in_terminal.is_empty());
+            assert!(rules.ignore.is_empty());
+        }
+    }
+
+    #[test]
+    fn launch_rules_select_only_the_current_os_section_without_merging() {
+        let config = LaunchConfig {
+            linux: Some(LaunchRules {
+                run_in_terminal: vec!["sh".into()],
+                ignore: vec![],
+            }),
+            windows: Some(LaunchRules {
+                run_in_terminal: vec![],
+                ignore: vec!["lnk".into()],
+            }),
+            macos: None,
+        };
+        let rules = config.for_current_os();
+        #[cfg(target_os = "linux")]
+        assert_eq!(rules.run_in_terminal, vec!["sh"]);
+        #[cfg(windows)]
+        assert_eq!(rules.ignore, vec!["lnk"]);
+        #[cfg(target_os = "macos")]
+        assert!(rules.run_in_terminal.is_empty() && rules.ignore.is_empty());
+    }
+
+    #[test]
+    fn launch_rules_normalize_extensions_and_drop_overlaps() {
+        let sanitized = sanitize_launch(LaunchConfig {
+            linux: Some(LaunchRules {
+                run_in_terminal: vec![
+                    " SH ".into(),
+                    ".bash".into(),
+                    "sh".into(),
+                    "a/b".into(),
+                    String::new(),
+                ],
+                ignore: vec!["sh".into(), "EXE".into()],
+            }),
+            windows: None,
+            macos: None,
+        });
+        assert_eq!(
+            sanitized.linux,
+            Some(LaunchRules {
+                run_in_terminal: vec!["sh".into(), "bash".into()],
+                ignore: vec!["exe".into()],
+            })
+        );
+        assert_eq!(
+            sanitize_launch(LaunchConfig {
+                linux: Some(LaunchRules::default()),
+                windows: None,
+                macos: None,
+            })
+            .linux,
+            None
+        );
+    }
+
+    #[test]
+    fn launch_rules_survive_unknown_os_keys() {
+        let (_dir, path) = temp_path("config.json");
+        fs::write(
+            &path,
+            r#"{"version":1,"launch":{"plan9":{"runInTerminal":["rc"]}}}"#,
+        )
+        .expect("write fixture");
+        assert_eq!(load_from(&path).launch, LaunchConfig::default());
     }
 }

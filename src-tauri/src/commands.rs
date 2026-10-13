@@ -104,6 +104,41 @@ mod tests {
         assert_eq!(counts.files, 2);
         assert_eq!(counts.skipped, 0);
     }
+
+    #[test]
+    fn launch_action_routes_scripts_and_ignored_types_case_insensitively() {
+        let rules = config::LaunchRules {
+            run_in_terminal: vec!["sh".into(), "bash".into(), "zsh".into()],
+            ignore: vec!["exe".into()],
+        };
+        assert_eq!(
+            launch_action(std::path::Path::new("/tmp/deploy.SH"), &rules),
+            LaunchAction::RunInTerminal
+        );
+        assert_eq!(
+            launch_action(std::path::Path::new("/tmp/app.Exe"), &rules),
+            LaunchAction::Ignore
+        );
+        assert_eq!(
+            launch_action(std::path::Path::new("/tmp/notes.txt"), &rules),
+            LaunchAction::Open
+        );
+        assert_eq!(
+            launch_action(std::path::Path::new("/tmp/Makefile"), &rules),
+            LaunchAction::Open
+        );
+        assert_eq!(
+            launch_action(std::path::Path::new("/tmp/archive.tar.gz"), &rules),
+            LaunchAction::Open
+        );
+        assert_eq!(
+            launch_action(
+                std::path::Path::new("/tmp/script.sh"),
+                &config::LaunchRules::default()
+            ),
+            LaunchAction::Open
+        );
+    }
 }
 #[tauri::command]
 pub async fn list_directory(path: String) -> Result<filesystem::Listing> {
@@ -156,10 +191,53 @@ pub async fn list_roots() -> Result<Vec<filesystem::Root>> {
 pub async fn open_file(path: String) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || {
         let p = filesystem::absolute(std::path::Path::new(&path))?;
+        if p.is_file() {
+            match launch_action(&p, &config::load().launch.for_current_os()) {
+                LaunchAction::Ignore => return Ok(()),
+                LaunchAction::RunInTerminal => return launch_in_terminal(&p),
+                LaunchAction::Open => {}
+            }
+        }
         open::that_detached(&p).map_err(|e| FsError::io(e, &p))
     })
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+
+#[derive(Debug, PartialEq)]
+enum LaunchAction {
+    Ignore,
+    RunInTerminal,
+    Open,
+}
+
+fn launch_action(path: &std::path::Path, rules: &config::LaunchRules) -> LaunchAction {
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default();
+    if extension.is_empty() {
+        return LaunchAction::Open;
+    }
+    if rules.run_in_terminal.iter().any(|rule| rule == &extension) {
+        LaunchAction::RunInTerminal
+    } else if rules.ignore.iter().any(|rule| rule == &extension) {
+        LaunchAction::Ignore
+    } else {
+        LaunchAction::Open
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn launch_in_terminal(path: &std::path::Path) -> Result<()> {
+    crate::terminal::run_script(path)
+}
+
+// ponytail: script terminals are Linux-only; other systems keep the OS file association.
+#[cfg(not(target_os = "linux"))]
+fn launch_in_terminal(path: &std::path::Path) -> Result<()> {
+    open::that_detached(path).map_err(|e| FsError::io(e, path))
 }
 #[tauri::command]
 pub fn load_config() -> Result<AppConfig> {

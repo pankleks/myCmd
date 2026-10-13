@@ -21,7 +21,7 @@
     ['Page Up / Page Down', 'Move cursor by one page'],
     [
       'Enter / double-click',
-      'Open file, folder or archive; locate search result',
+      'Open or run file, folder or archive; locate search result',
     ],
     ['Backspace', 'Parent folder; leave search results'],
     ['Tab', 'Switch active panel'],
