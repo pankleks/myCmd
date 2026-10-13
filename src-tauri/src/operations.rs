@@ -992,8 +992,9 @@ mod tests {
     #[test]
     fn bare_transfer_filename_uses_source_directory_not_process_working_directory() {
         let dir = tempfile::tempdir().unwrap();
+        let canonical = filesystem::absolute(dir.path()).unwrap();
         let source = dir.path().join("pkmain01.sh");
-        let target = dir.path().join("pkmain02.sh");
+        let target = canonical.join("pkmain02.sh");
         for moving in [false, true] {
             fs::write(&source, "payload").unwrap();
             let destination =
@@ -1008,7 +1009,7 @@ mod tests {
         }
         assert_eq!(
             transfer_destination(std::slice::from_ref(&source), PathBuf::from("src")).unwrap(),
-            dir.path().join("src")
+            canonical.join("src")
         );
         #[cfg(unix)]
         {
@@ -1019,7 +1020,7 @@ mod tests {
             std::os::unix::fs::symlink(other.join("original.sh"), &link).unwrap();
             assert_eq!(
                 transfer_destination(&[link], PathBuf::from("renamed.sh")).unwrap(),
-                dir.path().join("renamed.sh")
+                canonical.join("renamed.sh")
             );
         }
         for destination in [
