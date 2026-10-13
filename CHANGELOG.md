@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7] - 2026-10-13
+
+- Fix F5/F6 destinations containing only a filename to use the source file's directory instead of the application's working directory.
+- Give F2 renames the same conflict resolution options as F5/F6: Skip, Rename, Overwrite, and Cancel.
+- Fix location dropdown keyboard navigation after mouse input, including Linux/WebKit focus handling and visible selection.
+- Use the Settings checkbox styling throughout the app.
+
 ## [0.2.6] - 2026-10-09
 
 - Add highlighted search and match navigation in rendered Markdown previews.

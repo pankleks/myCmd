@@ -172,7 +172,7 @@ impl Manager {
     }
 }
 enum TransferStep {
-    Finished(bool),
+    Finished(Option<PathBuf>),
     Directory(Box<DirectoryTransfer>),
 }
 struct DirectoryTransfer {
@@ -285,10 +285,15 @@ impl Worker {
             }
         }
     }
-    fn transfer(&mut self, source: &Path, destination: &Path, moving: bool) -> Result<bool> {
+    fn transfer(
+        &mut self,
+        source: &Path,
+        destination: &Path,
+        moving: bool,
+    ) -> Result<Option<PathBuf>> {
         let mut stack = Vec::new();
         match self.transfer_item(source, destination, moving)? {
-            TransferStep::Finished(complete) => return Ok(complete),
+            TransferStep::Finished(target) => return Ok(target),
             TransferStep::Directory(directory) => stack.push(directory),
         }
         loop {
@@ -298,8 +303,8 @@ impl Worker {
                 let child = child.map_err(|e| FsError::io(e, &directory.source))?;
                 let target = directory.target.join(child.file_name());
                 match self.transfer_item(&child.path(), &target, moving)? {
-                    TransferStep::Finished(complete) => {
-                        stack.last_mut().unwrap().complete &= complete
+                    TransferStep::Finished(target) => {
+                        stack.last_mut().unwrap().complete &= target.is_some()
                     }
                     TransferStep::Directory(child) => stack.push(child),
                 }
@@ -322,7 +327,7 @@ impl Worker {
                 if let Some(parent) = stack.last_mut() {
                     parent.complete &= directory.complete;
                 } else {
-                    return Ok(directory.complete);
+                    return Ok(directory.complete.then_some(directory.target));
                 }
             }
         }
@@ -363,7 +368,7 @@ impl Worker {
                 "skip" => {
                     let n = self.measure(source)?;
                     self.tick(source, n.0, n.1)?;
-                    return Ok(TransferStep::Finished(false));
+                    return Ok(TransferStep::Finished(None));
                 }
                 "cancel" => return Err(FsError::new("cancelled", "Operation cancelled")),
                 "rename" => {
@@ -407,7 +412,7 @@ impl Worker {
             match rename_noreplace(source, &target) {
                 Ok(()) => {
                     self.record_progress(&target, n.0, n.1);
-                    return Ok(TransferStep::Finished(true));
+                    return Ok(TransferStep::Finished(Some(target)));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {}
                 Err(e) => return Err(FsError::io(e, &target)),
@@ -504,7 +509,7 @@ impl Worker {
             remove_leaf(source)?;
         }
         self.record_progress(source, 0, 1);
-        Ok(TransferStep::Finished(true))
+        Ok(TransferStep::Finished(Some(target)))
     }
     fn delete(&mut self, p: &Path) -> Result<()> {
         let mut directories: Vec<(PathBuf, fs::ReadDir)> = Vec::new();
@@ -597,12 +602,13 @@ impl Worker {
                     self.progress.result_path = Some(filesystem::text(&path));
                     return Ok(());
                 }
-                if fs::symlink_metadata(&target).is_ok() {
-                    return Err(FsError::new("already_exists", "Destination already exists"));
-                }
-                self.check()?;
-                rename_noreplace(&path, &target).map_err(|e| FsError::io(e, &path))?;
-                self.progress.result_path = Some(filesystem::text(&target));
+                let (bytes, items) = self.measure(&path)?;
+                self.progress.total_bytes = bytes;
+                self.progress.total_items = items;
+                self.emit();
+                self.progress.result_path = self
+                    .transfer(&path, &target, true)?
+                    .map(|target| filesystem::text(&target));
             }
             Operation::Delete { sources, permanent } => {
                 let sources = normalize_sources(sources)?;
@@ -644,6 +650,7 @@ impl Worker {
         destination: PathBuf,
         moving: bool,
     ) -> Result<()> {
+        let destination = transfer_destination(&sources, destination)?;
         if destination.is_dir() || destination == Path::new("~") {
             return self.batch(sources, destination, moving);
         }
@@ -869,6 +876,19 @@ fn preserve_directory_metadata(
     fs::set_permissions(destination, metadata.permissions())
 }
 
+fn transfer_destination(sources: &[PathBuf], destination: PathBuf) -> Result<PathBuf> {
+    if let [source] = sources {
+        if destination != Path::new("~")
+            && destination.parent() == Some(Path::new(""))
+            && destination.file_name().is_some()
+        {
+            protect(source)?;
+            return Ok(filesystem::absolute(source.parent().unwrap())?.join(destination));
+        }
+    }
+    Ok(destination)
+}
+
 fn protect(p: &Path) -> Result<()> {
     if p.file_name().is_none() || p.parent().is_none() {
         return Err(FsError::new(
@@ -970,6 +990,56 @@ mod tests {
     }
 
     #[test]
+    fn bare_transfer_filename_uses_source_directory_not_process_working_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("pkmain01.sh");
+        let target = dir.path().join("pkmain02.sh");
+        for moving in [false, true] {
+            fs::write(&source, "payload").unwrap();
+            let destination =
+                transfer_destination(std::slice::from_ref(&source), PathBuf::from("pkmain02.sh"))
+                    .unwrap();
+            assert_eq!(destination, target);
+            let mut w = worker("overwrite");
+            w.transfer_sources(vec![source.clone()], destination, moving)
+                .unwrap();
+            assert_eq!(source.exists(), !moving);
+            assert_eq!(fs::read_to_string(&target).unwrap(), "payload");
+        }
+        assert_eq!(
+            transfer_destination(std::slice::from_ref(&source), PathBuf::from("src")).unwrap(),
+            dir.path().join("src")
+        );
+        #[cfg(unix)]
+        {
+            let other = dir.path().join("other");
+            fs::create_dir(&other).unwrap();
+            fs::write(other.join("original.sh"), "target").unwrap();
+            let link = dir.path().join("link.sh");
+            std::os::unix::fs::symlink(other.join("original.sh"), &link).unwrap();
+            assert_eq!(
+                transfer_destination(&[link], PathBuf::from("renamed.sh")).unwrap(),
+                dir.path().join("renamed.sh")
+            );
+        }
+        for destination in [
+            dir.path().join("elsewhere.txt"),
+            PathBuf::from("~"),
+            PathBuf::from("."),
+            PathBuf::from("nested/name.txt"),
+        ] {
+            assert_eq!(
+                transfer_destination(std::slice::from_ref(&source), destination.clone()).unwrap(),
+                destination
+            );
+        }
+        assert_eq!(
+            transfer_destination(&[source.clone(), source], PathBuf::from("out")).unwrap(),
+            PathBuf::from("out")
+        );
+    }
+
+    #[test]
     fn copy_single_file_to_existing_filename_uses_conflict_policy() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source.txt");
@@ -1060,6 +1130,63 @@ mod tests {
         assert_eq!(w.progress.total_bytes, 7);
         assert_eq!(w.progress.processed_bytes, 7);
         assert_eq!(w.progress.processed_items, 1);
+    }
+
+    #[test]
+    fn rename_uses_move_conflict_choices_and_reports_the_actual_result_path() {
+        for action in ["skip", "rename", "overwrite", "cancel"] {
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("source.txt");
+            let target = dir.path().join("renamed.txt");
+            fs::write(&source, "source").unwrap();
+            fs::write(&target, "existing").unwrap();
+            let mut w = worker(action);
+            let result = w.run(Operation::Rename {
+                path: source.clone(),
+                name: "renamed.txt".into(),
+            });
+            if action == "cancel" {
+                assert_eq!(result.unwrap_err().code, "cancelled");
+            } else {
+                result.unwrap();
+            }
+            if action == "rename" || action == "overwrite" {
+                let actual = if action == "rename" {
+                    dir.path().join("renamed.txt (1)")
+                } else {
+                    target.clone()
+                };
+                assert!(!source.exists());
+                assert_eq!(fs::read_to_string(&actual).unwrap(), "source");
+                assert_eq!(w.progress.result_path, Some(filesystem::text(&actual)));
+            } else {
+                assert_eq!(fs::read_to_string(&source).unwrap(), "source");
+                assert!(w.progress.result_path.is_none());
+            }
+            if action != "overwrite" {
+                assert_eq!(fs::read_to_string(&target).unwrap(), "existing");
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("folder");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("file"), "payload").unwrap();
+        let mut w = worker("overwrite");
+        w.run(Operation::Rename {
+            path: source.clone(),
+            name: "folder".into(),
+        })
+        .unwrap();
+        assert_eq!(w.progress.result_path, Some(filesystem::text(&source)));
+        w.run(Operation::Rename {
+            path: source.clone(),
+            name: "new-folder".into(),
+        })
+        .unwrap();
+        assert!(!source.exists());
+        let target = dir.path().join("new-folder");
+        assert_eq!(fs::read_to_string(target.join("file")).unwrap(), "payload");
+        assert_eq!(w.progress.result_path, Some(filesystem::text(&target)));
     }
 
     #[test]
@@ -1297,7 +1424,7 @@ mod tests {
         }
         fs::write(leaf.join("payload"), b"content").unwrap();
         let mut copier = worker("overwrite");
-        assert!(copier.transfer(&source, &target, false).unwrap());
+        assert!(copier.transfer(&source, &target, false).unwrap().is_some());
         let relative = leaf.strip_prefix(&source).unwrap();
         assert_eq!(
             fs::read(target.join(relative).join("payload")).unwrap(),
@@ -1307,7 +1434,7 @@ mod tests {
         assert_eq!(copier.progress.processed_items, 42);
         // Existing destination directories force the copy-and-remove merge path.
         let mut mover = worker("overwrite");
-        assert!(mover.transfer(&source, &target, true).unwrap());
+        assert!(mover.transfer(&source, &target, true).unwrap().is_some());
         assert!(!source.exists());
         assert_eq!(
             fs::read(target.join(relative).join("payload")).unwrap(),
@@ -1339,7 +1466,7 @@ mod tests {
         filetime::set_file_mtime(&source, modified).unwrap();
         let target = destination_temp.path().join("tree");
         let mut mover = worker("overwrite");
-        assert!(mover.transfer(&source, &target, true).unwrap());
+        assert!(mover.transfer(&source, &target, true).unwrap().is_some());
         assert!(!source.exists());
         assert_eq!(
             fs::read(target.join("nested/file")).unwrap(),
