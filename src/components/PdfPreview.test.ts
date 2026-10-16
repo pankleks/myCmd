@@ -168,6 +168,23 @@ it('places PDF controls in the shared header without the external-open button', 
   expect(target.textContent).not.toContain('Open in default app');
 });
 
+it('starts at fit width when requested, 100% otherwise', async () => {
+  await loaded();
+  expect(target.querySelector('.pdf-toolbar')!.textContent).toContain('100%');
+  await unmount(component!);
+  component = mount(PdfPreview, {
+    target,
+    props: { path: '/sample.pdf', name: 'sample.pdf', fitWidth: true, onerror },
+  });
+  flushSync();
+  await loaded();
+  expect(
+    target.querySelector<HTMLButtonElement>(
+      '.pdf-toolbar [aria-pressed="true"]',
+    )?.textContent,
+  ).toBe('Fit width');
+});
+
 it.each(['PasswordException', 'InvalidPDFException'])(
   'reports %s with no unhandled load failure',
   async (name) => {

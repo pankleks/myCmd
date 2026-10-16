@@ -15,6 +15,7 @@
     extension,
     isDirectory = false,
     autofocus = false,
+    pdfFitWidth = false,
     title,
     onopened,
     headerActions,
@@ -25,6 +26,7 @@
     extension: string;
     isDirectory?: boolean;
     autofocus?: boolean;
+    pdfFitWidth?: boolean;
     title?: string;
     onopened?: () => void;
     headerActions?: Snippet;
@@ -356,6 +358,7 @@
           {path}
           {name}
           {autofocus}
+          fitWidth={pdfFitWidth}
           onerror={(message) => (error = message)}
           oncontrols={(controls) => (pdfControls = controls)}
         />

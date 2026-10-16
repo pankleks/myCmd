@@ -42,6 +42,7 @@
         extension={settledTarget.extension}
         isDirectory={settledTarget.isDirectory}
         title="Preview"
+        pdfFitWidth
       />
     {/key}
   {:else}

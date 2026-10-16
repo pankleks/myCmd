@@ -13,12 +13,14 @@
     path,
     name,
     autofocus = false,
+    fitWidth = false,
     onerror,
     oncontrols,
   }: {
     path: string;
     name: string;
     autofocus?: boolean;
+    fitWidth?: boolean;
     onerror: (message: string) => void;
     oncontrols?: (controls: Snippet | undefined) => void;
   } = $props();
@@ -29,7 +31,10 @@
   let width = $state(0);
   let pageWidth = $state(612);
   let pageHeight = $state(792);
-  let zoom = $state<number | null>(1);
+  // fitWidth is fixed for the lifetime of each mount (callers remount per
+  // file), so capturing it once as the initial zoom is intentional.
+  // svelte-ignore state_referenced_locally
+  let zoom = $state<number | null>(fitWidth ? null : 1);
   let scale = $derived(zoom ?? Math.max(0.1, (width - 32) / pageWidth));
   let loading = $state(true);
   let disposed = false;
