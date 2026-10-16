@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.8] - 2026-10-16
+
+- Fix location dropdown entries not responding to clicks in WebKit-based builds by deciding whether focus left the picker from the focus target instead of the WebKit-reported active element.
+
 ## [0.2.7] - 2026-10-13
 
 - Fix F5/F6 destinations containing only a filename to use the source file's directory instead of the application's working directory.
