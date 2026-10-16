@@ -41,7 +41,9 @@
   });
   let filteredRoots = $derived(roots.filter((r) => matches(r.name, r.path)));
   let filteredPins = $derived(
-    preferences.pinnedDirectories.filter((p) => matches(p, p)),
+    preferences.pinnedDirectories
+      .filter((p) => matches(p, p))
+      .sort((a, b) => a.localeCompare(b)),
   );
   let firstMatch = $derived(
     expanded && query.trim()

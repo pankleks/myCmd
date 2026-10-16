@@ -184,6 +184,15 @@ it('visibly highlights focused options after clicking the input and reopening th
   }
 });
 
+it('sorts pinned directories in the dropdown', () => {
+  target.querySelector<HTMLInputElement>('input')!.focus();
+  flushSync();
+  const pins = Array.from(target.querySelectorAll('.location-option small'))
+    .map((element) => element.textContent)
+    .filter((text) => text?.startsWith('/home'));
+  expect(pins).toEqual(['/home/user/Downloads', '/home/user/Projects']);
+});
+
 it('submits a typed path directly', () => {
   const input = target.querySelector('input')!;
   input.value = '/new/path';
