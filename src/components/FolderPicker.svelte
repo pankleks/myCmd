@@ -112,10 +112,18 @@
   class="folder-picker"
   bind:this={container}
   onkeydown={keydown}
-  onfocusout={async () => {
-    // WebKit can omit relatedTarget when focus moves to a dropdown button.
+  onfocusout={async (event) => {
+    // WebKit can omit relatedTarget when focus moves to a dropdown button and
+    // updates document.activeElement only later, so fall back to it after the
+    // tick. <body> means the destination is unknown (e.g. a pressed button
+    // that has not taken focus yet), not that focus left the picker.
     await tick();
-    if (!container.contains(document.activeElement)) expanded = false;
+    const next =
+      (event.relatedTarget as Node | null) ??
+      (document.activeElement === document.body
+        ? null
+        : document.activeElement);
+    if (next && !container.contains(next)) expanded = false;
   }}
 >
   <input

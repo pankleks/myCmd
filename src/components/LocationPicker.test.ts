@@ -118,6 +118,27 @@ it('keeps the menu open when focusout has no related target but focus moves to a
   });
 });
 
+it('keeps the menu open when a WebKit button click leaves focus on the body', async () => {
+  const input = target.querySelector<HTMLInputElement>('input')!;
+  input.focus();
+  flushSync();
+  const option = target.querySelector<HTMLButtonElement>('.location-option')!;
+  option.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+  // WebKit blurs the input without focusing the pressed button.
+  input.blur();
+  input.dispatchEvent(
+    new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+  );
+  // Let the async focusout handler finish before the click, as in a browser.
+  await new Promise((resolve) => setTimeout(resolve));
+  flushSync();
+  expect(document.activeElement).toBe(document.body);
+  expect(target.querySelector('.location-menu')).not.toBeNull();
+  option.click();
+  await Promise.resolve();
+  expect(navigate).toHaveBeenCalledWith('/');
+});
+
 it('visibly highlights focused options after clicking the input and reopening the picker', async () => {
   const stylesheet = document.createElement('style');
   stylesheet.textContent = styles;
