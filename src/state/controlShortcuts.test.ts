@@ -29,7 +29,6 @@ function file(name: string, hidden = false): FileEntry {
     extension: '',
     size: 0,
     hidden,
-    readonly: false,
     directoryTarget: false,
   };
 }

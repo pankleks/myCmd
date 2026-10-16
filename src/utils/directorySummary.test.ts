@@ -15,7 +15,6 @@ function entry(
     extension: '',
     size,
     hidden: false,
-    readonly: false,
     directoryTarget: false,
   };
 }

@@ -75,7 +75,6 @@ it.each(['directory', 'file', undefined] as const)(
       extension: '',
       size: 0,
       hidden: false,
-      readonly: false,
       directoryTarget: type === 'directory',
     };
     const onsubmit = vi.fn();

@@ -44,7 +44,6 @@ function conflict(operationId = 'own'): Conflict {
     extension: '',
     size: 0,
     hidden: false,
-    readonly: false,
     directoryTarget: false,
   };
   return { operationId, source: entry, destination: entry };

@@ -80,7 +80,6 @@ function buildRows(panel: PanelState): Row[] {
       extension: '',
       size: 0,
       hidden: false,
-      readonly: false,
       directoryTarget: true,
       parentEntry: true,
     });

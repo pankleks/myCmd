@@ -25,9 +25,7 @@ pub struct Entry {
     pub extension: String,
     pub size: u64,
     pub modified: Option<u64>,
-    pub created: Option<u64>,
     pub hidden: bool,
-    pub readonly: bool,
     pub directory_target: bool,
 }
 #[derive(Serialize)]
@@ -513,13 +511,7 @@ pub fn entry(p: &Path) -> Result<Entry> {
             .ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_secs()),
-        created: m
-            .created()
-            .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_secs()),
         hidden,
-        readonly: m.permissions().readonly(),
         directory_target: p.is_dir(),
     })
 }

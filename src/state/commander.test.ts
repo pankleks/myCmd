@@ -44,7 +44,6 @@ function entry(name: string, options: Partial<FileEntry> = {}): FileEntry {
     extension: 'txt',
     size: 0,
     hidden: false,
-    readonly: false,
     directoryTarget: false,
     ...options,
   };

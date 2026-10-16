@@ -445,9 +445,7 @@ fn listing(path: &Path, directory: &str, members: Vec<(String, bool, u64)>) -> R
             },
             size: if folder { 0 } else { size },
             modified: None,
-            created: None,
             hidden: first.starts_with('.'),
-            readonly: true,
             directory_target: folder,
         };
         match entries.get(first) {

@@ -41,7 +41,6 @@ function file(name: string, path: string, size: number) {
     extension: 'txt',
     size,
     hidden: false,
-    readonly: false,
     directoryTarget: false,
   };
 }
@@ -54,7 +53,6 @@ function dir(name: string, path: string) {
     extension: '',
     size: 0,
     hidden: false,
-    readonly: false,
     directoryTarget: false,
   };
 }

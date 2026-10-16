@@ -142,7 +142,6 @@ describe('setShowHidden', () => {
       extension: 'txt',
       size: 0,
       hidden,
-      readonly: false,
       directoryTarget: false,
     };
   }
@@ -179,7 +178,6 @@ describe('setShowHidden', () => {
       extension: 'txt',
       size: 0,
       hidden,
-      readonly: false,
       directoryTarget: false,
     });
     commander.left.entries = [

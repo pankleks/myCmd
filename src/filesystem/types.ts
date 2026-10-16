@@ -6,9 +6,7 @@ export interface FileEntry {
   extension: string;
   size: number;
   modified?: number;
-  created?: number;
   hidden: boolean;
-  readonly: boolean;
   directoryTarget: boolean;
 }
 export interface Listing {

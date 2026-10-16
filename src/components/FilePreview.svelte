@@ -19,7 +19,6 @@
     title,
     onopened,
     headerActions,
-    footerActions,
   }: {
     path: string;
     name: string;
@@ -30,7 +29,6 @@
     title?: string;
     onopened?: () => void;
     headerActions?: Snippet;
-    footerActions?: Snippet;
   } = $props();
 
   let editorContainer = $state<HTMLDivElement | undefined>();
@@ -389,15 +387,10 @@
           {loading ? 'Loading preview…' : 'Loading Monaco…'}
         </div>{/if}
     </div>
-    {#if footerActions || error || editorError}<div
-        class="dialog-actions viewer-actions"
-      >
-        {#if error || editorError}<button
-            type="button"
-            disabled={opening}
-            onclick={openInDefaultApp}>Open in default app</button
-          >{/if}
-        {@render footerActions?.()}
+    {#if error || editorError}<div class="dialog-actions viewer-actions">
+        <button type="button" disabled={opening} onclick={openInDefaultApp}
+          >Open in default app</button
+        >
       </div>{/if}
   </div>
 {/if}

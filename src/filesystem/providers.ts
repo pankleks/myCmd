@@ -10,13 +10,6 @@ export type PanelLocation =
   | { kind: 'search'; sessionId: string };
 
 export interface ContentProvider {
-  readonly kind: PanelLocation['kind'];
-  readonly capabilities: {
-    mutate: boolean;
-    preview: boolean;
-    command: boolean;
-    extract: boolean;
-  };
   list(
     location: PanelLocation,
     onBatch?: (entries: FileEntry[]) => void,
@@ -43,13 +36,6 @@ export async function cancelSearch(path: string) {
   if (requestId) await invoke('cancel_search', { requestId });
 }
 export const searchProvider: ContentProvider = {
-  kind: 'search',
-  capabilities: {
-    mutate: false,
-    preview: true,
-    command: false,
-    extract: false,
-  },
   async list(location, onBatch) {
     if (location.kind !== 'search')
       throw new Error('Expected search location.');
@@ -168,8 +154,6 @@ export function parentFocus(path: string): string {
     : path;
 }
 export const localProvider: ContentProvider = {
-  kind: 'local',
-  capabilities: { mutate: true, preview: true, command: true, extract: false },
   async list(location) {
     if (location.kind !== 'local') throw new Error('Expected local location.');
     const result = await api.list(location.path);
@@ -181,13 +165,6 @@ export const localProvider: ContentProvider = {
   },
 };
 export const archiveProvider: ContentProvider = {
-  kind: 'archive',
-  capabilities: {
-    mutate: false,
-    preview: false,
-    command: false,
-    extract: true,
-  },
   async list(location) {
     if (location.kind !== 'archive')
       throw new Error('Expected archive location.');
