@@ -1,6 +1,6 @@
+use crate::cancellation::{Registry, Request};
 use serde::Serialize;
 use std::{
-    collections::VecDeque,
     env,
     io::Read,
     process::{Command, Stdio},
@@ -13,82 +13,23 @@ use std::{
 
 const OUTPUT_LIMIT: usize = 1024 * 1024;
 const RUNTIME_LIMIT: Duration = Duration::from_secs(120);
-type ActiveCommand = Option<(String, Arc<AtomicBool>)>;
-#[derive(Default)]
-struct ShellState {
-    active: ActiveCommand,
-    early_cancellations: VecDeque<String>,
-}
 #[derive(Default, Clone)]
-pub struct ShellManager(Arc<Mutex<ShellState>>);
-struct CommandLease {
-    manager: ShellManager,
-    cancel: Arc<AtomicBool>,
-}
+pub struct ShellManager(Registry);
 impl ShellManager {
-    fn begin(&self, id: String) -> std::result::Result<CommandLease, String> {
-        validate_command_id(&id)?;
-        let mut state = self.0.lock().map_err(|e| e.to_string())?;
-        if state.active.is_some() {
-            return Err("A shell command is already running".into());
-        }
-        let cancelled = state
-            .early_cancellations
-            .iter()
-            .position(|pending| pending == &id)
-            .and_then(|index| state.early_cancellations.remove(index))
-            .is_some();
-        let cancel = Arc::new(AtomicBool::new(cancelled));
-        state.active = Some((id, cancel.clone()));
-        Ok(CommandLease {
-            manager: self.clone(),
-            cancel,
+    fn begin(&self, id: String) -> std::result::Result<Request, String> {
+        self.0.register_exclusive(id).map_err(|error| {
+            if error.code == "busy" {
+                "A shell command is already running".into()
+            } else {
+                error.message.replace("Request ID", "Command ID")
+            }
         })
     }
     fn cancel(&self, id: &str) -> std::result::Result<(), String> {
-        validate_command_id(id)?;
-        let mut state = self.0.lock().map_err(|e| e.to_string())?;
-        if let Some((active_id, cancel)) = state.active.as_ref() {
-            if active_id == id {
-                cancel.store(true, Ordering::Relaxed);
-                return Ok(());
-            }
-        }
-        if !state
-            .early_cancellations
-            .iter()
-            .any(|pending| pending == id)
-        {
-            if state.early_cancellations.len() >= 64 {
-                state.early_cancellations.pop_front();
-            }
-            state.early_cancellations.push_back(id.to_owned());
-        }
-        Ok(())
+        self.0
+            .cancel(&[id.to_owned()])
+            .map_err(|error| error.message.replace("Request ID", "Command ID"))
     }
-}
-impl Drop for CommandLease {
-    fn drop(&mut self) {
-        let mut active = self
-            .manager
-            .0
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if active
-            .active
-            .as_ref()
-            .is_some_and(|(_, token)| Arc::ptr_eq(token, &self.cancel))
-        {
-            active.active = None;
-        }
-    }
-}
-
-fn validate_command_id(id: &str) -> std::result::Result<(), String> {
-    if id.is_empty() || id.len() > 128 {
-        return Err("Command ID must contain 1 to 128 bytes".into());
-    }
-    Ok(())
 }
 
 #[derive(Default)]
@@ -456,7 +397,7 @@ pub async fn run_system_command(
             !cfg!(windows),
             &command,
             &cwd,
-            &lease.cancel,
+            lease.token(),
             RUNTIME_LIMIT,
         )?;
         #[cfg(not(windows))]
@@ -492,15 +433,36 @@ mod tests {
     fn manager_rejects_concurrent_commands_and_isolates_cancellation() {
         let manager = ShellManager::default();
         let lease = manager.begin("first".into()).unwrap();
-        assert!(manager.begin("second".into()).is_err());
+        assert_eq!(
+            manager.clone().begin("second".into()).err().unwrap(),
+            "A shell command is already running"
+        );
         manager.cancel("unrelated").unwrap();
-        assert!(!lease.cancel.load(Ordering::Relaxed));
+        assert!(!lease.token().load(Ordering::Relaxed));
         manager.cancel("first").unwrap();
-        assert!(lease.cancel.load(Ordering::Relaxed));
+        assert!(lease.token().load(Ordering::Relaxed));
         drop(lease);
         let next = manager.begin("second".into()).unwrap();
         manager.cancel("first").unwrap();
-        assert!(!next.cancel.load(Ordering::Relaxed));
+        assert!(!next.token().load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn shell_cancellation_is_separate_from_other_registries() {
+        let manager = ShellManager::default();
+        let other = Registry::default();
+        other.cancel(&["early".into()]).unwrap();
+        let shell = manager.begin("early".into()).unwrap();
+        assert!(!shell.token().load(Ordering::Relaxed));
+        let request = other.register("early".into()).unwrap();
+        assert!(request.check().is_err());
+        drop(shell);
+
+        let shell = manager.begin("shared".into()).unwrap();
+        let request = other.register("shared".into()).unwrap();
+        manager.cancel("shared").unwrap();
+        assert!(shell.token().load(Ordering::Relaxed));
+        assert!(request.check().is_ok());
     }
 
     #[test]
@@ -508,10 +470,10 @@ mod tests {
         let manager = ShellManager::default();
         manager.cancel("early").unwrap();
         let lease = manager.begin("early".into()).unwrap();
-        assert!(lease.cancel.load(Ordering::Relaxed));
+        assert!(lease.token().load(Ordering::Relaxed));
         drop(lease);
         let next = manager.begin("different".into()).unwrap();
-        assert!(!next.cancel.load(Ordering::Relaxed));
+        assert!(!next.token().load(Ordering::Relaxed));
     }
 
     #[test]
@@ -523,12 +485,11 @@ mod tests {
         for _ in 0..100 {
             manager.cancel("id-99").unwrap();
         }
-        assert_eq!(manager.0.lock().unwrap().early_cancellations.len(), 64);
         let evicted = manager.begin("id-0".into()).unwrap();
-        assert!(!evicted.cancel.load(Ordering::Relaxed));
+        assert!(!evicted.token().load(Ordering::Relaxed));
         drop(evicted);
         let retained = manager.begin("id-36".into()).unwrap();
-        assert!(retained.cancel.load(Ordering::Relaxed));
+        assert!(retained.token().load(Ordering::Relaxed));
     }
 
     #[test]
@@ -538,7 +499,6 @@ mod tests {
             assert!(manager.cancel(&id).is_err());
             assert!(manager.begin(id).is_err());
         }
-        assert!(manager.0.lock().unwrap().early_cancellations.is_empty());
         assert!(manager.begin("valid".into()).is_ok());
     }
 
@@ -564,7 +524,7 @@ mod tests {
             false,
             "echo test",
             temp.path().to_str().unwrap(),
-            &lease.cancel,
+            lease.token(),
             Duration::from_secs(1)
         )
         .is_err());

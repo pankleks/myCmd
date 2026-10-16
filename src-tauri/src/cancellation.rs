@@ -30,12 +30,18 @@ fn validate(id: &str) -> Result<()> {
 }
 impl Registry {
     pub fn register(&self, id: String) -> Result<Request> {
+        self.register_limited(id, 64)
+    }
+    pub fn register_exclusive(&self, id: String) -> Result<Request> {
+        self.register_limited(id, 1)
+    }
+    fn register_limited(&self, id: String, limit: usize) -> Result<Request> {
         validate(&id)?;
         let mut state = self
             .0
             .lock()
             .map_err(|_| FsError::new("io_error", "Cancellation state unavailable"))?;
-        if state.active.len() >= 64 || state.active.contains_key(&id) {
+        if state.active.len() >= limit || state.active.contains_key(&id) {
             return Err(FsError::new(
                 "busy",
                 "Too many requests or duplicate request ID",
@@ -83,6 +89,9 @@ impl Registry {
     }
 }
 impl Request {
+    pub fn token(&self) -> &AtomicBool {
+        &self.cancelled
+    }
     pub fn check(&self) -> Result<()> {
         if self.cancelled.load(Ordering::Relaxed) {
             Err(FsError::new("cancelled", "Directory sizing cancelled"))
