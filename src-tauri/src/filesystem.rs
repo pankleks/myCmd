@@ -139,6 +139,26 @@ pub(crate) fn utf16_encoding(content: &[u8]) -> Option<bool> {
     None
 }
 
+pub(crate) fn utf16_units(bytes: &[u8], little_endian: bool) -> Vec<u16> {
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|p| {
+            if little_endian {
+                u16::from_le_bytes([p[0], p[1]])
+            } else {
+                u16::from_be_bytes([p[0], p[1]])
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn has_binary_controls(text: &str) -> bool {
+    text.chars()
+        .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{1b}' | '\u{8}' | '\u{c}'))
+}
+
 pub fn read_text_preview(path: &Path) -> Result<String> {
     let path = absolute(path)?;
     let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
@@ -175,23 +195,10 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
                 "File is not valid UTF-16 text",
             ));
         }
-        let units: Vec<u16> = bytes
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|p| {
-                if little_endian {
-                    u16::from_le_bytes([p[0], p[1]])
-                } else {
-                    u16::from_be_bytes([p[0], p[1]])
-                }
-            })
-            .collect();
+        let units = utf16_units(bytes, little_endian);
         let text = String::from_utf16(&units)
             .map_err(|_| FsError::new("invalid_encoding", "File is not valid UTF-16 text"))?;
-        if text.chars().any(|c| {
-            c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{1b}' | '\u{8}' | '\u{c}')
-        }) {
+        if has_binary_controls(&text) {
             return Err(FsError::new(
                 "binary_file",
                 "Binary files cannot be previewed as text",
@@ -1183,6 +1190,16 @@ mod tests {
         }
         fs::write(&path, bytes).unwrap();
         assert_eq!(read_text_preview(&path).unwrap(), text);
+    }
+
+    #[test]
+    fn binary_control_detection_preserves_terminal_controls() {
+        assert!(!has_binary_controls(
+            "Log: café 日本語 😀\n\r\t\u{1b}\u{8}\u{c}"
+        ));
+        for control in ['\0', '\u{1}', '\u{7}', '\u{7f}', '\u{85}'] {
+            assert!(has_binary_controls(&format!("text{control}")));
+        }
     }
 
     #[test]

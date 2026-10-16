@@ -55,19 +55,7 @@ fn contains_text(path: &Path, needle: &str, check: &impl Fn() -> Result<()>) -> 
             if eof && buffer.len() % 2 != 0 {
                 return Ok(false);
             }
-            let mut units: Vec<u16> = buffer
-                .as_chunks::<2>()
-                .0
-                .iter()
-                .map(|p| {
-                    let bytes = [p[0], p[1]];
-                    if little_endian {
-                        u16::from_le_bytes(bytes)
-                    } else {
-                        u16::from_be_bytes(bytes)
-                    }
-                })
-                .collect();
+            let mut units = filesystem::utf16_units(&buffer, little_endian);
             // Keep a split surrogate pair for the next chunk.
             if !eof && units.last().is_some_and(|u| (0xd800..=0xdbff).contains(u)) {
                 units.pop();
@@ -88,9 +76,7 @@ fn contains_text(path: &Path, needle: &str, check: &impl Fn() -> Result<()>) -> 
                 consumed,
             )
         };
-        if text.chars().any(|c| {
-            c.is_control() && !matches!(c, '\n' | '\r' | '\t' | '\u{1b}' | '\u{8}' | '\u{c}')
-        }) {
+        if filesystem::has_binary_controls(&text) {
             return Ok(false);
         }
         if !found {
