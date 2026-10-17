@@ -344,6 +344,18 @@ impl Worker {
         let mut overwrite = false;
         while fs::symlink_metadata(&target).is_ok() {
             if same_file::is_same_file(source, &target).unwrap_or(false) {
+                // Windows resolves case-only names to the same entry, but
+                // MoveFileExW without replacement can still update its casing.
+                // Canonical paths distinguish separate hard-link names.
+                #[cfg(windows)]
+                if moving
+                    && source.parent() == target.parent()
+                    && source.file_name() != target.file_name()
+                    && fs::canonicalize(source).map_err(|e| FsError::io(e, source))?
+                        == fs::canonicalize(&target).map_err(|e| FsError::io(e, &target))?
+                {
+                    break;
+                }
                 return Err(FsError::new(
                     "invalid_path",
                     "Source and destination are the same item",
@@ -1131,6 +1143,92 @@ mod tests {
         assert_eq!(w.progress.total_bytes, 7);
         assert_eq!(w.progress.processed_bytes, 7);
         assert_eq!(w.progress.processed_items, 1);
+    }
+
+    #[test]
+    fn rename_changes_only_the_case_of_files_and_directories() {
+        for directory in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("pgdev");
+            let target = dir.path().join("pgDEV");
+            if directory {
+                fs::create_dir(&source).unwrap();
+                fs::write(source.join("file"), "payload").unwrap();
+            } else {
+                fs::write(&source, "payload").unwrap();
+            }
+            let mut w = worker("cancel");
+            w.run(Operation::Rename {
+                path: source,
+                name: "pgDEV".into(),
+            })
+            .unwrap();
+            let names: Vec<_> = fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(names, vec![std::ffi::OsString::from("pgDEV")]);
+            let payload = if directory {
+                target.join("file")
+            } else {
+                target.clone()
+            };
+            assert_eq!(fs::read_to_string(payload).unwrap(), "payload");
+            assert_eq!(w.progress.result_path, Some(filesystem::text(&target)));
+        }
+    }
+
+    #[test]
+    fn transfers_preserve_distinct_hard_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("original");
+        let target = dir.path().join("other-link");
+        fs::write(&source, "payload").unwrap();
+        fs::hard_link(&source, &target).unwrap();
+        for moving in [false, true] {
+            assert_eq!(
+                worker("overwrite")
+                    .transfer(&source, &target, moving)
+                    .err()
+                    .unwrap()
+                    .code,
+                "invalid_path"
+            );
+            assert_eq!(fs::read_to_string(&source).unwrap(), "payload");
+            assert_eq!(fs::read_to_string(&target).unwrap(), "payload");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn case_only_copy_is_rejected_but_move_updates_the_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("pgdev");
+        let target = dir.path().join("pgDEV");
+        fs::write(&source, "payload").unwrap();
+        assert_eq!(
+            worker("overwrite")
+                .transfer(&source, &target, false)
+                .err()
+                .unwrap()
+                .code,
+            "invalid_path"
+        );
+        let mut w = worker("cancel");
+        assert_eq!(
+            w.transfer(&source, &target, true).unwrap(),
+            Some(target.clone())
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), "payload");
+        assert_eq!(
+            fs::read_dir(dir.path())
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .file_name(),
+            "pgDEV"
+        );
     }
 
     #[test]
