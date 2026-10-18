@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9] - 2026-10-18
+
+- Fix case-only file and folder renames on Windows, such as `pgdev` to `pgDEV`, while preserving overwrite protection. Case-only renames on case-insensitive macOS filesystems remain unsupported.
+- Fit PDF previews to the preview panel width by default.
+- Sort pinned directories alphabetically in the location dropdown.
+- Remove unused code and share cancellation and text-decoding logic.
+
 ## [0.2.8] - 2026-10-16
 
 - Fix location dropdown entries not responding to clicks in WebKit-based builds by deciding whether focus left the picker from the focus target instead of the WebKit-reported active element.

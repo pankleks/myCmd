@@ -1145,6 +1145,7 @@ mod tests {
         assert_eq!(w.progress.processed_items, 1);
     }
 
+    #[cfg(windows)]
     #[test]
     fn rename_changes_only_the_case_of_files_and_directories() {
         for directory in [false, true] {
