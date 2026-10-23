@@ -43,6 +43,7 @@
     setShowHidden,
   } from './state/preferences.svelte';
   import { handleControlShortcut, swapPanels } from './state/controlShortcuts';
+  import { createFileClipboard } from './state/fileClipboard';
   import { api, errorMessage } from './filesystem/api';
   import {
     isLocalPath,
@@ -141,6 +142,25 @@
     permanent: boolean;
   }>();
   let active = $derived(commander[commander.activePanel]);
+  const fileClipboard = createFileClipboard({
+    available: () =>
+      isTauri() &&
+      ready &&
+      !busy &&
+      !commandRunning &&
+      !dialog &&
+      !selectionDialog &&
+      !settingsOpen &&
+      !searchDialog &&
+      !viewer &&
+      !conflict &&
+      !commandError &&
+      !error &&
+      !shortcutsOpen,
+    start: (operation, side) => operations.start(operation, side),
+    failed: (cause) =>
+      showError(errorMessage(cause), 'Clipboard operation failed'),
+  });
   let previewSide = $derived(
     commander.activePanel === 'left' ? 'right' : 'left',
   );
@@ -633,6 +653,7 @@
     )
       return;
     const target = event.target as HTMLElement;
+    if (fileClipboard.handle(event)) return;
     if (
       event.key === 'Enter' &&
       event.ctrlKey &&

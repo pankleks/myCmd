@@ -20,6 +20,9 @@ export interface PreviewImage {
   frames: number;
 }
 export const api = {
+  copyFilesToClipboard: (paths: string[]) =>
+    invoke<void>('copy_files_to_clipboard', { paths }),
+  readFilesFromClipboard: () => invoke<string[]>('read_files_from_clipboard'),
   list: (path: string) => invoke<Listing>('list_directory', { path }),
   readTextPreview: (path: string) =>
     invoke<string>('read_text_preview', { path }),

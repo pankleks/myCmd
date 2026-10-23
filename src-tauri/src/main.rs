@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod archives;
 mod cancellation;
+mod clipboard;
+mod clipboard_commands;
 mod commands;
 mod config;
 mod error;
@@ -12,12 +14,15 @@ mod terminal;
 mod watcher;
 fn main() {
     tauri::Builder::default()
+        .manage(clipboard::FileClipboard::default())
         .manage(operations::Manager::default())
         .manage(shell::ShellManager::default())
         .manage(search::SearchManager::default())
         .manage(commands::DirectorySizing::default())
         .manage(watcher::DirectoryWatchers::default())
         .invoke_handler(tauri::generate_handler![
+            clipboard_commands::copy_files_to_clipboard,
+            clipboard_commands::read_files_from_clipboard,
             commands::list_directory,
             search::search_files,
             search::cancel_search,

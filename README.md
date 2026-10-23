@@ -10,6 +10,7 @@ myCmd is a keyboard-centric, two-panel file manager in the Norton / Total Comman
 
 - Two file panels with full keyboard navigation (arrows, Home/End, PageUp/PageDown, Tab to switch, Shift+Tab to swap)
 - Copy (F5), Move (F6), Rename (F2), New folder (F7), Delete to Recycle Bin/Trash (F8) or permanently (Shift+F8)
+- Copy/paste files between myCmd and other file managers using the system clipboard (Ctrl+C / Ctrl+V; Cmd+C / Cmd+V on macOS)
 - View files (F3) and a toggleable preview pane (Shift+F3): rendered Markdown, PDF with page navigation and zoom, syntax-highlighted code/text/JSON via Monaco, with search and match navigation
 - Search (Alt+F7) by file/folder name glob, optionally by file content (UTF-8/UTF-16, binaries skipped); browse results while the search is still running
 - Selection by glob (+/-), invert (\*), quick find by typing, directory-size calculation (Space)

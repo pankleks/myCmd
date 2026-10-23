@@ -32,6 +32,11 @@
     ['*', 'Invert selection'],
     ['+ / -', 'Add / remove selection by glob'],
     ['Ctrl+A', 'Select all visible items'],
+    ['Ctrl+C / Cmd+C', 'Copy selected files to the system clipboard'],
+    [
+      'Ctrl+V / Cmd+V',
+      'Paste files from the system clipboard into the active folder',
+    ],
     [
       'Esc',
       'Clear command / selection; close quick find or dialog; leave search',
