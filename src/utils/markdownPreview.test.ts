@@ -2,6 +2,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderMarkdownPreview } from './markdownPreview';
 
+const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
+vi.mock('mermaid', () => ({ default: mermaid }));
+
 const image = {
   dataUrl: 'data:image/png;base64,cG5n',
   width: 1,
@@ -13,6 +16,83 @@ function documentFor(html: string) {
 }
 
 describe('Markdown preview', () => {
+  it('renders fenced Mermaid as an isolated, sanitized SVG image', async () => {
+    mermaid.render.mockResolvedValueOnce({
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><style>text { fill: white; }</style><text>Start → PLB-10</text><script>alert(1)</script><foreignObject><div>unsafe</div></foreignObject><image href="https://example.com/image.png"/><a href="https://example.com"><text>link</text></a></svg>',
+    });
+    const source =
+      'flowchart TD\n A([Start]) --> B[PLB-10<br/>Scan label to print]';
+    const loader = vi.fn();
+    const html = await renderMarkdownPreview(
+      '```mermaid\n' + source + '\n```\n\n```js\nconst x = 1;\n```',
+      loader,
+    );
+    const doc = documentFor(html);
+    const img = doc.querySelector('img');
+    expect(img?.getAttribute('alt')).toContain('Mermaid diagram');
+    expect(img?.getAttribute('width')).toBe('100');
+    expect(img?.getAttribute('height')).toBe('100');
+    const svg = decodeURIComponent(img!.getAttribute('src')!.split(',')[1]);
+    expect(svg).toContain('Start → PLB-10');
+    expect(svg).toContain('<style>');
+    expect(svg).not.toMatch(/<script|<foreignObject|<image|<a\s/);
+    expect(doc.querySelector('svg, style, code.language-mermaid')).toBeNull();
+    expect(doc.querySelector('code.language-js')?.textContent).toContain(
+      'const x',
+    );
+    expect(loader).not.toHaveBeenCalled();
+    expect(mermaid.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ securityLevel: 'strict', htmlLabels: false }),
+    );
+  });
+
+  it('keeps failed diagrams readable and continues with the next diagram', async () => {
+    mermaid.render
+      .mockRejectedValueOnce(new Error('parse error'))
+      .mockResolvedValueOnce({
+        svg: '<svg xmlns="http://www.w3.org/2000/svg" />',
+      });
+    const doc = documentFor(
+      await renderMarkdownPreview(
+        '```mermaid\ninvalid diagram\n```\n\n```mermaid\nflowchart TD; A-->B\n```',
+        vi.fn(),
+      ),
+    );
+    expect(doc.querySelector('code.language-mermaid')?.textContent).toContain(
+      'invalid diagram',
+    );
+    expect(doc.body.textContent).toContain('Diagram unavailable');
+    expect(doc.querySelectorAll('img')).toHaveLength(1);
+  });
+
+  it('does not publish a diagram when cancelled during rendering', async () => {
+    let cancelled = false;
+    mermaid.render.mockImplementationOnce(async () => {
+      cancelled = true;
+      return { svg: '<svg />' };
+    });
+    expect(
+      await renderMarkdownPreview(
+        '```mermaid\nflowchart TD; A-->B\n```',
+        vi.fn(),
+        () => cancelled,
+      ),
+    ).toBe('');
+  });
+
+  it('leaves oversized diagrams as code without sending them to Mermaid', async () => {
+    const calls = mermaid.render.mock.calls.length;
+    const doc = documentFor(
+      await renderMarkdownPreview(
+        '```mermaid\n' + 'x'.repeat(50_001) + '\n```',
+        vi.fn(),
+      ),
+    );
+    expect(mermaid.render.mock.calls).toHaveLength(calls);
+    expect(doc.querySelector('code.language-mermaid')).not.toBeNull();
+    expect(doc.body.textContent).toContain('preview limit exceeded');
+  });
+
   it('counts all GIF frames toward the aggregate pixel budget', async () => {
     const loader = vi.fn().mockResolvedValue({
       ...image,

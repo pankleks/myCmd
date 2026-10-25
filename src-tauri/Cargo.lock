@@ -2149,7 +2149,7 @@ dependencies = [
 
 [[package]]
 name = "mycmd"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "base64 0.22.1",
  "clipboard-rs",

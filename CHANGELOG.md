@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.10] - 2026-10-25
+
+- Render fenced Mermaid diagrams in Markdown previews, with isolated SVG images that fit the available width and readable source fallbacks for invalid diagrams.
+- Update compatible npm dependencies and override Monaco's DOMPurify dependency with the patched version, clearing all reported npm audit vulnerabilities.
+
 ## [0.2.9] - 2026-10-18
 
 - Fix case-only file and folder renames on Windows, such as `pgdev` to `pgDEV`, while preserving overwrite protection. Case-only renames on case-insensitive macOS filesystems remain unsupported.

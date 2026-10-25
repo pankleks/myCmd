@@ -5,6 +5,7 @@ import type { PreviewImage } from '../filesystem/api';
 const MAX_IMAGES = 24;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 32_000_000;
+let diagramId = 0;
 const sanitizeOptions = {
   USE_PROFILES: { html: true },
   FORBID_TAGS: [
@@ -87,6 +88,79 @@ export async function renderMarkdownPreview(
     } catch {
       if (!image.getAttribute('alt'))
         image.setAttribute('alt', 'Image unavailable in preview');
+    }
+  }
+  const diagrams = preview.body.querySelectorAll('pre > code.language-mermaid');
+  if (diagrams.length && !isCancelled()) {
+    try {
+      const { default: mermaid } = await import('mermaid');
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        suppressErrorRendering: true,
+        maxTextSize: 50_000,
+        maxEdges: 500,
+        theme: 'dark',
+        htmlLabels: false,
+        flowchart: { htmlLabels: false },
+        secure: [
+          'secure',
+          'securityLevel',
+          'startOnLoad',
+          'suppressErrorRendering',
+          'maxTextSize',
+          'maxEdges',
+          'htmlLabels',
+          'flowchart',
+        ],
+      });
+      for (const [index, code] of Array.from(diagrams).entries()) {
+        if (isCancelled()) return '';
+        try {
+          if (index >= 24 || (code.textContent?.length ?? 0) > 50_000)
+            throw new Error('Diagram preview limit exceeded');
+          const { svg } = await mermaid.render(
+            `preview-diagram-${++diagramId}`,
+            code.textContent ?? '',
+          );
+          if (isCancelled()) return '';
+          // An image keeps diagram CSS, links and scripts out of the app DOM.
+          const safeSvg = DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+            FORBID_TAGS: ['foreignObject', 'a', 'image'],
+          });
+          const image = preview.createElement('img');
+          const svgRoot = new DOMParser().parseFromString(
+            safeSvg,
+            'image/svg+xml',
+          ).documentElement;
+          const [, , width, height] = (svgRoot.getAttribute('viewBox') ?? '')
+            .trim()
+            .split(/[\s,]+/)
+            .map(Number);
+          if (
+            Number.isFinite(width) &&
+            width > 0 &&
+            Number.isFinite(height) &&
+            height > 0
+          ) {
+            image.width = Math.ceil(width);
+            image.height = Math.ceil(height);
+          }
+          image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(safeSvg)}`;
+          image.alt = 'Mermaid diagram (source available in source view)';
+          code.parentElement?.replaceWith(image);
+        } catch {
+          const error = preview.createElement('p');
+          error.textContent =
+            'Diagram unavailable: invalid Mermaid syntax or preview limit exceeded.';
+          code.parentElement?.after(error);
+        }
+      }
+    } catch {
+      const error = preview.createElement('p');
+      error.textContent = 'Mermaid diagram renderer unavailable.';
+      diagrams[0]?.parentElement?.before(error);
     }
   }
   return isCancelled()
