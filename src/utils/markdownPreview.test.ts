@@ -30,6 +30,7 @@ describe('Markdown preview', () => {
     const doc = documentFor(html);
     const img = doc.querySelector('img');
     expect(img?.getAttribute('alt')).toContain('Mermaid diagram');
+    expect(img?.classList.contains('mermaid-diagram')).toBe(true);
     expect(img?.getAttribute('width')).toBe('100');
     expect(img?.getAttribute('height')).toBe('100');
     const svg = decodeURIComponent(img!.getAttribute('src')!.split(',')[1]);
@@ -42,7 +43,11 @@ describe('Markdown preview', () => {
     );
     expect(loader).not.toHaveBeenCalled();
     expect(mermaid.initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ securityLevel: 'strict', htmlLabels: false }),
+      expect.objectContaining({
+        securityLevel: 'strict',
+        htmlLabels: false,
+        themeCSS: '.edgeLabel rect { fill: #171b23; opacity: 1; }',
+      }),
     );
   });
 

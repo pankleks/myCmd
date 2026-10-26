@@ -807,6 +807,8 @@ dialog.file-viewer[open] {
 }
 .markdown-preview {
   width: 100%;
+  max-width: 60vw;
+  margin-inline: auto;
   height: 100%;
   overflow: auto;
   padding: 22px 32px 36px;
@@ -892,6 +894,10 @@ dialog.file-viewer[open] {
 .markdown-preview img {
   max-width: 100%;
   height: auto;
+}
+.markdown-preview img.mermaid-diagram {
+  display: block;
+  margin-inline: auto;
 }
 .image-preview {
   display: flex;

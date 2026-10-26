@@ -101,6 +101,7 @@ export async function renderMarkdownPreview(
         maxTextSize: 50_000,
         maxEdges: 500,
         theme: 'dark',
+        themeCSS: '.edgeLabel rect { fill: #171b23; opacity: 1; }',
         htmlLabels: false,
         flowchart: { htmlLabels: false },
         secure: [
@@ -130,6 +131,7 @@ export async function renderMarkdownPreview(
             FORBID_TAGS: ['foreignObject', 'a', 'image'],
           });
           const image = preview.createElement('img');
+          image.className = 'mermaid-diagram';
           const svgRoot = new DOMParser().parseFromString(
             safeSvg,
             'image/svg+xml',
