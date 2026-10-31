@@ -18,7 +18,11 @@
   } from '../state/commander.svelte';
   import { bytes, date } from '../utils/format';
   import { displayPath } from '../utils/paths';
-  import { locationLabel, searchSession } from '../filesystem/providers';
+  import {
+    locationLabel,
+    searchSession,
+    parseLocation,
+  } from '../filesystem/providers';
   import { resizeColumn } from '../utils/resizeColumns';
   import { preferences } from '../state/preferences.svelte';
   import { errorMessage } from '../filesystem/api';
@@ -28,12 +32,14 @@
     roots,
     hidden = false,
     oncontext,
+    onconnections,
   }: {
     panel: PanelState;
     side: Side;
     roots: Root[];
     hidden?: boolean;
     oncontext?: (side: Side, x: number, y: number, item: boolean) => void;
+    onconnections?: (side: Side) => void;
   } = $props();
   let scroller: HTMLDivElement;
   let header: HTMLDivElement;
@@ -227,6 +233,7 @@
     label={locationLabel(panel.path)}
     {roots}
     {side}
+    onconnections={onconnections ? () => onconnections?.(side) : undefined}
     onnavigate={async (path) => {
       commander.activePanel = side;
       await load(panel, path);
@@ -391,6 +398,10 @@
   </div>
   {#if panel.error}<div class="panel-error" role="alert">
       {panel.error}
+      {#if parseLocation(panel.path).kind === 'sftp' && onconnections}<button
+          type="button"
+          onclick={() => onconnections?.(side)}>Reconnect…</button
+        >{/if}
     </div>{/if}
   {#if panel.skippedEntries}
     <details class="panel-warning">

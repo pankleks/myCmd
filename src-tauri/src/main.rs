@@ -10,6 +10,7 @@ mod filesystem;
 mod operations;
 mod properties;
 mod search;
+mod sftp;
 mod shell;
 mod system_actions;
 mod terminal;
@@ -24,12 +25,16 @@ fn main() {
         .manage(operations::Manager::default())
         .manage(shell::ShellManager::default())
         .manage(search::SearchManager::default())
+        .manage(std::sync::Arc::new(sftp::Manager::default()))
         .manage(commands::DirectorySizing::default())
         .manage(watcher::DirectoryWatchers::default())
         .invoke_handler(tauri::generate_handler![
             clipboard_commands::copy_files_to_clipboard,
             clipboard_commands::read_files_from_clipboard,
             commands::list_directory,
+            sftp::connect_sftp,
+            sftp::disconnect_sftp,
+            sftp::list_sftp,
             properties::get_file_properties,
             properties::set_file_permissions,
             system_actions::show_system_actions,

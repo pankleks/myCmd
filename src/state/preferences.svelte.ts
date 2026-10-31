@@ -1,5 +1,6 @@
 import { api } from '../filesystem/api';
-import { searchSession } from '../filesystem/providers';
+import { searchSession, sftpNames } from '../filesystem/providers';
+import type { SftpProfile } from '../filesystem/types';
 import {
   buildSavePayload,
   DEFAULT_FILE_FONT_SIZE,
@@ -22,6 +23,7 @@ export const preferences = $state({
   pinnedDirectories: [] as string[],
   pinnedDirectoryNames: {} as Record<string, string>,
   compressionLevel: DEFAULT_COMPRESSION_LEVEL,
+  sftpProfiles: [] as SftpProfile[],
   editor: null as string | null,
 });
 
@@ -59,6 +61,9 @@ export async function loadPreferences(): Promise<SavedPaths> {
   preferences.compressionLevel =
     normalized.compressionLevel ?? DEFAULT_COMPRESSION_LEVEL;
   preferences.editor = normalized.editor ?? null;
+  preferences.sftpProfiles = normalized.sftpProfiles ?? [];
+  for (const profile of preferences.sftpProfiles)
+    sftpNames.set(profile.id, profile.name);
   setShowHidden(normalized.showHidden);
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
 }
@@ -83,6 +88,7 @@ export async function persistPreferences(): Promise<void> {
     pinnedDirectories: preferences.pinnedDirectories,
     pinnedDirectoryNames: preferences.pinnedDirectoryNames,
     compressionLevel: preferences.compressionLevel,
+    sftpProfiles: preferences.sftpProfiles,
     editor: preferences.editor,
   });
   try {

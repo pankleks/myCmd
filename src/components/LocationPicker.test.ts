@@ -4,6 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import LocationPicker from './LocationPicker.svelte';
 import { preferences } from '../state/preferences.svelte';
 import styles from '../style.css?inline';
+import { locationKey, parseLocation } from '../filesystem/providers';
 
 vi.mock('../filesystem/api', () => ({ api: { saveConfig: vi.fn() } }));
 let component: ReturnType<typeof mount>;
@@ -46,6 +47,39 @@ it('filters shared pins while typing and navigates when a result is clicked', as
   results[0].click();
   await Promise.resolve();
   expect(navigate).toHaveBeenCalledWith('/home/user/Projects');
+});
+
+it('interprets typed absolute paths in an SFTP panel as remote, not local roots or pins', async () => {
+  await unmount(component);
+  const path = locationKey({
+    kind: 'sftp',
+    connectionId: 'test',
+    path: '/data',
+  });
+  component = mount(LocationPicker, {
+    target,
+    props: {
+      path,
+      label: 'SFTP · Work — /data',
+      side: 'left',
+      roots: [{ name: 'Home', path: '/home', type: 'home' }],
+      onnavigate: navigate,
+      onescape: vi.fn(),
+    },
+  });
+  flushSync();
+  const input = target.querySelector('input')!;
+  input.value = '/home';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  target
+    .querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  expect(parseLocation(navigate.mock.calls[0][0])).toEqual({
+    kind: 'sftp',
+    connectionId: 'test',
+    path: '/home',
+  });
 });
 it('opens the full dropdown when the path input receives focus', () => {
   const input = target.querySelector<HTMLInputElement>('input')!;

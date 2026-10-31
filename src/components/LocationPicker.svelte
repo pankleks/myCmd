@@ -6,6 +6,7 @@
   import { preferences, scheduleSave } from '../state/preferences.svelte';
   import { displayPath } from '../utils/paths';
   import { isLocalPath } from '../filesystem/providers';
+  import { parseLocation, locationKey } from '../filesystem/providers';
 
   let {
     path,
@@ -14,6 +15,7 @@
     side,
     onnavigate,
     onescape,
+    onconnections,
   }: {
     path: string;
     label: string;
@@ -21,6 +23,7 @@
     side: string;
     onnavigate: (path: string) => Promise<void>;
     onescape: () => void;
+    onconnections?: () => void;
   } = $props();
   let value = $state('');
   let picker: { submit: () => void };
@@ -47,12 +50,19 @@
       {path}
       {label}
       {roots}
+      {onconnections}
+      remote={parseLocation(path).kind === 'sftp'}
       id={`drive-${side}`}
       buttonTitle={side === 'left'
         ? 'Locations (Alt+F1)'
         : 'Locations (Alt+F2)'}
-      onchoose={async (path) => {
-        await onnavigate(path);
+      onchoose={async (chosen, typed) => {
+        const current = parseLocation(path);
+        const target =
+          typed && current.kind === 'sftp' && chosen.startsWith('/')
+            ? locationKey({ ...current, path: chosen })
+            : chosen;
+        await onnavigate(target);
         value = displayPath(label);
       }}
       onescape={() => {

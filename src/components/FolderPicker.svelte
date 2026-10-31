@@ -17,6 +17,8 @@
     required = false,
     onchoose,
     onescape,
+    onconnections,
+    remote = false,
   }: {
     path: string;
     label: string;
@@ -26,8 +28,10 @@
     ariaLabel?: string;
     buttonTitle?: string;
     required?: boolean;
-    onchoose: (path: string) => void | Promise<void>;
+    onchoose: (path: string, typed?: boolean) => void | Promise<void>;
     onescape?: () => void;
+    onconnections?: () => void;
+    remote?: boolean;
   } = $props();
   let query = $state('');
   let expanded = $state(false);
@@ -84,7 +88,7 @@
       .sort((a, b) => a.localeCompare(b)),
   );
   let firstMatch = $derived(
-    expanded && query.trim()
+    expanded && query.trim() && !(remote && query.trim().startsWith('/'))
       ? (filteredRoots[0]?.path ?? filteredPins[0])
       : undefined,
   );
@@ -93,15 +97,18 @@
       .toLowerCase()
       .includes(query.trim().toLowerCase());
   }
-  async function choose(path: string) {
+  async function choose(path: string, typed = false) {
     if (!path.trim()) return;
     expanded = false;
     value = displayPath(path);
     query = '';
-    await onchoose(path);
+    await onchoose(path, typed);
   }
   export function submit() {
-    void choose(firstMatch ?? (value === displayPath(label) ? path : value));
+    void choose(
+      firstMatch ?? (value === displayPath(label) ? path : value),
+      !firstMatch,
+    );
   }
   function escape() {
     query = '';
@@ -222,6 +229,14 @@
         </button>
       {/each}
       <div class="location-heading">Pinned directories</div>
+      {#if onconnections}<button
+          type="button"
+          class="location-option connections-button"
+          onclick={() => {
+            expanded = false;
+            onconnections?.();
+          }}>Connections…</button
+        >{/if}
       {#each filteredPins as pin, index (pin)}
         <div class="pin-row">
           {#if editingPin === pin}

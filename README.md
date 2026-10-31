@@ -22,6 +22,19 @@ myCmd is a keyboard-centric, two-panel file manager in the Norton / Total Comman
 - Drive picker (Alt+F1 / Alt+F2), hidden-files toggle (Ctrl+H), file-list font sizing, resizable columns, Catppuccin file icons
 - Settings dialog (F9) and a shortcuts reference (F1)
 - File properties (Alt+Enter): copy the full path, calculate folder size, inspect symbolic links, and edit Unix permissions or the Windows read-only attribute without recursive changes
+- SFTP connections in either panel: SSH agent, private key, or password authentication; saved connection details without secrets; F5 uploads/downloads, remote rename, folder creation, and permanent deletion
+
+## SFTP connections
+
+Open **Connections…** in either panel's location dropdown. Enter the resolved hostname/IP, port, username, and optional absolute starting directory. Choose SSH agent, private key file (with optional passphrase), or password authentication. SSH config aliases, automatic key-file discovery, ProxyJump, and tunnels are not applied. Passwords and passphrases are never saved; saved connections do not reconnect automatically after restarting.
+
+Server keys are checked against `~/.ssh/known_hosts` and `sftp_known_hosts` in myCmd's configuration directory. Unknown keys require explicit confirmation of their SHA-256 fingerprint. Verify the fingerprint with the server administrator first. Changed keys are blocked, not silently replaced.
+
+Use **F5** to copy between one local panel and one SFTP panel. Transfers reuse progress, cancellation, and conflict handling. Files are written to temporary siblings before commit; source files are never deleted. An interrupted upload may leave a `.mycmd-*.part` file. Replacing an existing remote file uses a recoverable `.mycmd-*.backup` because SFTP v3 lacks a standard atomic replace operation. Errors identify backups that need manual recovery after reconnecting. Cancellation can take until the current network request times out.
+
+Remote folders support **F7**, **F2**, and **F8** (permanent deletion with confirmation). Transfers reject symbolic links rather than following them; remote deletion removes the link itself. New transferred folders use private permissions; regular-file permissions and modification times are preserved where supported, without ownership or special permission bits.
+
+Remote Move, remote-to-remote copies, ZIP, search, previews/editing, clipboard file export, and native system actions are not supported on SFTP locations. Use **Connections…** to disconnect or reconnect, and **Ctrl+R** to refresh remote listings.
 
 ## Install
 

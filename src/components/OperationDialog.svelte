@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import type { FileEntry } from '../filesystem/types';
   import type { FileOperation } from '../operations/types';
-  import { isLocalPath } from '../filesystem/providers';
+  import { isLocalPath, parseLocation } from '../filesystem/providers';
   import { preferences, scheduleSave } from '../state/preferences.svelte';
   import {
     countDeleteEntries,
@@ -64,6 +64,10 @@
             ? entries[0].name
             : '';
     archiveName = `${entries.length === 1 ? entries[0].name : 'Archive'}.zip`;
+    if (action === 'copy') {
+      const target = parseLocation(destination);
+      if (target.kind === 'sftp') value = target.path;
+    }
     dialog.showModal();
     void tick().then(() => dialog?.querySelector('input')?.select());
     let disposed = false;
@@ -132,7 +136,7 @@
         <p class="danger-text">
           Folders and all their contents will be deleted. This cannot be undone.
         </p>
-        {#if !isLocalPath(parent)}<p>
+        {#if parseLocation(parent).kind === 'archive'}<p>
             The archive will be rewritten. Deleted entries do not go to the
             Recycle Bin.
           </p>{/if}

@@ -1,5 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { FileProperties, Listing, Root } from './types';
+import type {
+  FileProperties,
+  Listing,
+  Root,
+  SftpConnectRequest,
+  SftpConnectResult,
+} from './types';
 import type { FileOperation, Resolution } from '../operations/types';
 import type { AppConfig } from '../utils/config';
 export interface CommandResult {
@@ -24,6 +30,11 @@ export interface ClipboardFiles {
   cut: boolean;
 }
 export const api = {
+  connectSftp: (request: SftpConnectRequest) =>
+    invoke<SftpConnectResult>('connect_sftp', { request }),
+  disconnectSftp: (id: string) => invoke<void>('disconnect_sftp', { id }),
+  listSftp: (id: string, path: string) =>
+    invoke<Listing>('list_sftp', { id, path }),
   systemActions: (path: string) =>
     invoke<void>('show_system_actions', { path }),
   properties: (path: string) =>

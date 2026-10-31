@@ -39,6 +39,28 @@ describe('normalizeColumnWeights', () => {
 });
 
 describe('normalizeConfig', () => {
+  it('saves only connection details, never credentials', () => {
+    const profile = {
+      id: 'b02db8da-ccdc-41bb-8db0-5c7b0e798d7a',
+      name: 'Work',
+      host: 'server',
+      port: 22,
+      username: 'user',
+      directory: '/data',
+      keyPath: '/home/user/.ssh/id_ed25519',
+    };
+    const config = normalizeConfig({
+      sftpProfiles: [
+        { ...profile, password: 'secret', passphrase: 'private' },
+        { host: 'invalid' },
+      ],
+    });
+    expect(config.sftpProfiles).toEqual([profile]);
+    const payload = buildSavePayload(config);
+    expect(JSON.stringify(payload)).not.toContain('secret');
+    expect(JSON.stringify(payload)).not.toContain('private');
+    expect(normalizeConfig(payload).sftpProfiles).toEqual([profile]);
+  });
   it('validates compression levels and persists supported choices', () => {
     for (const compressionLevel of [1, 6, 9]) {
       const config = normalizeConfig({ compressionLevel });
@@ -105,6 +127,7 @@ describe('normalizeConfig', () => {
       columns: [175, 78, 113, 218],
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
       fileFontSize: 20,
@@ -150,6 +173,7 @@ describe('normalizeConfig', () => {
       columns: null,
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
@@ -172,6 +196,7 @@ describe('normalizeConfig', () => {
     expect(buildSavePayload(normalized)).toEqual({
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
       version: 1,

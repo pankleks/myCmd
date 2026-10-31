@@ -1,6 +1,20 @@
 import type { FileEntry } from '../filesystem/types';
 export type FileOperation =
   | {
+      type: 'sftp';
+      connectionId: string;
+      operation:
+        | {
+            type: 'copy';
+            sources: string[];
+            destination: string;
+            upload: boolean;
+          }
+        | { type: 'rename'; path: string; name: string }
+        | { type: 'createDirectory'; parent: string; name: string }
+        | { type: 'delete'; sources: string[] };
+    }
+  | {
       type: 'compress';
       sources: string[];
       destination: string;

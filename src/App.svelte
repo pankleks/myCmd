@@ -11,6 +11,7 @@
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
   import PropertiesDialog from './components/PropertiesDialog.svelte';
+  import ConnectionsDialog from './components/ConnectionsDialog.svelte';
   import ContextMenu, { type MenuItem } from './components/ContextMenu.svelte';
   import SearchDialog from './components/SearchDialog.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
@@ -52,9 +53,11 @@
     parentFocus,
     parseLocation,
     searchSession,
+    locationKey,
+    sftpNames,
     cancelSearch,
   } from './filesystem/providers';
-  import type { FileEntry } from './filesystem/types';
+  import type { FileEntry, SftpConnectResult } from './filesystem/types';
   import type {
     Conflict,
     FileOperation,
@@ -118,6 +121,7 @@
   let selectionDialog = $state<{ mode: SelectionMode }>();
   let settingsOpen = $state(false);
   let propertiesDialog = $state<{ path: string; side: Side }>();
+  let connectionsDialog = $state<{ side: Side; initialId?: string }>();
   let shortcutsOpen = $state(false);
   let contextMenu = $state<{
     side: Side;
@@ -165,6 +169,7 @@
       !selectionDialog &&
       !settingsOpen &&
       !propertiesDialog &&
+      !connectionsDialog &&
       !searchDialog &&
       !viewer &&
       !conflict &&
@@ -194,6 +199,7 @@
       selectionDialog ||
       settingsOpen ||
       propertiesDialog ||
+      connectionsDialog ||
       searchDialog ||
       viewer ||
       conflict ||
@@ -242,12 +248,27 @@
     if (!contextMenu) return [];
     const panel = commander[contextMenu.side];
     const localFolder = isLocalPath(panel.path);
+    const remote = parseLocation(panel.path).kind === 'sftp';
     const paste: MenuItem = {
       label: 'Paste',
       shortcut: 'Ctrl+V',
       disabled: !contextMenu.paste || !localFolder,
       run: () => void fileClipboard.run('paste'),
     };
+    if (!contextMenu.item && remote)
+      return [
+        {
+          label: 'New folder…',
+          shortcut: 'F7',
+          run: () => request('createDirectory'),
+        },
+        {
+          label: 'Connections…',
+          run: () =>
+            requestConnections(contextMenu?.side ?? commander.activePanel),
+        },
+        { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
+      ];
     if (!contextMenu.item && !localFolder)
       return [
         { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
@@ -285,6 +306,7 @@
     const localTarget = isLocalPath(
       searchSession(opposite.path)?.root ?? opposite.path,
     );
+    const sftpTarget = parseLocation(opposite.path).kind === 'sftp';
     const items: MenuItem[] = [
       {
         label: 'Open',
@@ -293,6 +315,43 @@
         run: () => void open(panel, entry),
       },
     ];
+    if (remote)
+      return [
+        {
+          label: 'Open folder',
+          shortcut: 'Enter',
+          disabled: !single || !entry?.directoryTarget,
+          run: () => void open(panel, entry),
+        },
+        {
+          label: 'Download to opposite panel…',
+          shortcut: 'F5',
+          disabled: !localTarget,
+          separator: true,
+          run: () => request('copy'),
+        },
+        {
+          label: 'New folder…',
+          shortcut: 'F7',
+          run: () => request('createDirectory'),
+        },
+        {
+          label: 'Rename…',
+          shortcut: 'F2',
+          disabled: !single,
+          run: () => request('rename'),
+        },
+        {
+          label: 'Delete permanently…',
+          shortcut: 'F8',
+          run: () => request('delete', true),
+        },
+        {
+          label: 'Connections…',
+          separator: true,
+          run: () => requestConnections(commander.activePanel),
+        },
+      ];
     if (
       entry &&
       isLocalPath(entry.path) &&
@@ -342,9 +401,11 @@
       },
       paste,
       {
-        label: 'Copy to opposite panel…',
+        label: sftpTarget
+          ? 'Upload to opposite panel…'
+          : 'Copy to opposite panel…',
         shortcut: 'F5',
-        disabled: !localTarget,
+        disabled: !localTarget && !sftpTarget,
         separator: true,
         run: () => request('copy'),
       },
@@ -481,6 +542,61 @@
     settingsOpen = false;
     void tick().then(focusPanel);
   }
+  function requestConnections(side: Side) {
+    if (
+      !ready ||
+      busy ||
+      commandRunning ||
+      connectionsDialog ||
+      dialog ||
+      settingsOpen ||
+      propertiesDialog ||
+      viewer ||
+      searchDialog ||
+      error ||
+      conflict ||
+      selectionDialog ||
+      shortcutsOpen
+    )
+      return;
+    commander.activePanel = side;
+    const location = parseLocation(commander[side].path);
+    quickFindClose();
+    connectionsDialog = {
+      side,
+      initialId: location.kind === 'sftp' ? location.connectionId : undefined,
+    };
+  }
+  function closeConnections() {
+    connectionsDialog = undefined;
+    void tick().then(focusPanel);
+  }
+  async function connected(
+    connection: Extract<SftpConnectResult, { status: 'connected' }>,
+  ) {
+    const panel = commander[connectionsDialog!.side];
+    sftpNames.set(connection.id, connection.name);
+    closeConnections();
+    await load(
+      panel,
+      locationKey({
+        kind: 'sftp',
+        connectionId: connection.id,
+        path: connection.path,
+      }),
+    );
+    focusPanel();
+  }
+  async function disconnected(id: string) {
+    const home =
+      commander.roots.find((root) => root.type === 'home')?.path ?? '~';
+    for (const panel of [commander.left, commander.right]) {
+      const location = parseLocation(panel.path);
+      if (location.kind === 'sftp' && location.connectionId === id)
+        await load(panel, home);
+    }
+    closeConnections();
+  }
   function requestSearch() {
     if (
       !ready ||
@@ -490,12 +606,17 @@
       selectionDialog ||
       settingsOpen ||
       propertiesDialog ||
+      connectionsDialog ||
       viewer ||
       error ||
       searchDialog
     )
       return;
     const location = parseLocation(active.path);
+    if (location.kind === 'sftp') {
+      showError('Recursive search is not available on SFTP connections.');
+      return;
+    }
     const folder =
       searchSession(active.path)?.root ??
       (location.kind === 'archive'
@@ -557,7 +678,7 @@
   function viewCurrentFile() {
     if (!ready || busy || commandRunning) return;
     if (!isLocalPath(active.path) && !searchSession(active.path)) {
-      showError('Archive previews are not supported yet.');
+      showError('Previews are available for local files only.');
       return;
     }
     const entry = previewEntry(active);
@@ -582,6 +703,12 @@
   }
   function togglePreviewPane() {
     if (!ready || busy || commandRunning) return;
+    if (!previewMode && parseLocation(active.path).kind === 'sftp') {
+      showError(
+        'Download remote files to a local folder before previewing them.',
+      );
+      return;
+    }
     quickFindClose();
     previewMode = !previewMode;
     void tick().then(focusPanel);
@@ -596,7 +723,7 @@
   function editCurrentFile() {
     if (!ready || busy || commandRunning || active.loading) return;
     if (!isLocalPath(active.path) && !searchSession(active.path)) {
-      showError('Editing archive contents is not supported.');
+      showError('Editing remote or archived files is not supported.');
       return;
     }
     const entry = rows(active)[active.cursor];
@@ -645,6 +772,7 @@
       searchDialog ||
       settingsOpen ||
       propertiesDialog ||
+      connectionsDialog ||
       viewer ||
       conflict ||
       commandError ||
@@ -661,6 +789,31 @@
         : sources(active);
     const opposite =
       commander[commander.activePanel === 'left' ? 'right' : 'left'];
+    const sourceLocation = parseLocation(active.path);
+    const targetLocation = parseLocation(
+      searchSession(opposite.path)?.root ?? opposite.path,
+    );
+    if (
+      sourceLocation.kind === 'sftp' ||
+      ((action === 'copy' || action === 'move') &&
+        targetLocation.kind === 'sftp')
+    ) {
+      const copyAllowed =
+        action === 'copy' &&
+        ((sourceLocation.kind === 'sftp' && targetLocation.kind === 'local') ||
+          ((sourceLocation.kind === 'local' ||
+            sourceLocation.kind === 'search') &&
+            targetLocation.kind === 'sftp'));
+      const mutationAllowed =
+        sourceLocation.kind === 'sftp' &&
+        ['rename', 'delete', 'createDirectory'].includes(action);
+      if (!copyAllowed && !mutationAllowed) {
+        showError(
+          'SFTP supports upload/download with F5, rename, new folder, and permanent delete. Remote Move, ZIP, and remote-to-remote transfers are not supported.',
+        );
+        return;
+      }
+    }
     if (
       action === 'compress' &&
       ((!isLocalPath(active.path) && !searchSession(active.path)) ||
@@ -673,13 +826,13 @@
       return;
     }
     if (
-      (!isLocalPath(active.path) &&
+      (sourceLocation.kind === 'archive' &&
         !searchSession(active.path) &&
         action !== 'copy' &&
         action !== 'delete') ||
       ((action === 'copy' || action === 'move') &&
-        !isLocalPath(opposite.path) &&
-        !searchSession(opposite.path))
+        targetLocation.kind !== 'local' &&
+        targetLocation.kind !== 'sftp')
     ) {
       showError(
         'Archives support F5 extraction to a local directory and F8 permanent deletion. Other changes are not supported yet.',
@@ -712,6 +865,59 @@
   async function submit(operation: FileOperation) {
     const side = dialog!.side;
     const location = parseLocation(dialog!.parent);
+    const target = parseLocation(dialog!.destination);
+    if (
+      operation.type === 'copy' &&
+      (location.kind === 'sftp' || target.kind === 'sftp')
+    ) {
+      const upload = target.kind === 'sftp';
+      const connectionId = upload
+        ? target.connectionId
+        : location.kind === 'sftp'
+          ? location.connectionId
+          : '';
+      const paths = operation.sources.map((path) => {
+        const resource = parseLocation(path);
+        return resource.kind === 'sftp' ? resource.path : path;
+      });
+      operation = {
+        type: 'sftp',
+        connectionId,
+        operation: {
+          type: 'copy',
+          sources: paths,
+          destination: operation.destination,
+          upload,
+        },
+      };
+    } else if (location.kind === 'sftp') {
+      const paths = dialog!.entries.map((entry) => {
+        const resource = parseLocation(entry.path);
+        return resource.kind === 'sftp' ? resource.path : entry.path;
+      });
+      if (operation.type === 'rename')
+        operation = {
+          type: 'sftp',
+          connectionId: location.connectionId,
+          operation: { type: 'rename', path: paths[0], name: operation.name },
+        };
+      else if (operation.type === 'createDirectory')
+        operation = {
+          type: 'sftp',
+          connectionId: location.connectionId,
+          operation: {
+            type: 'createDirectory',
+            parent: location.path,
+            name: operation.name,
+          },
+        };
+      else if (operation.type === 'delete')
+        operation = {
+          type: 'sftp',
+          connectionId: location.connectionId,
+          operation: { type: 'delete', sources: paths },
+        };
+    }
     if (operation.type === 'delete' && location.kind === 'archive') {
       operation = {
         type: 'deleteArchive',
@@ -864,6 +1070,7 @@
     };
   });
   function previewShortcut(event: KeyboardEvent) {
+    if (connectionsDialog) return;
     if (contextMenu) return;
     if (shortcutsOpen) return;
     if (
@@ -919,6 +1126,7 @@
       !searchDialog &&
       !settingsOpen &&
       !propertiesDialog &&
+      !connectionsDialog &&
       !viewer &&
       !conflict &&
       !error &&
@@ -934,6 +1142,7 @@
       selectionDialog ||
       settingsOpen ||
       propertiesDialog ||
+      connectionsDialog ||
       searchDialog ||
       viewer ||
       conflict ||
@@ -1290,6 +1499,7 @@
       side="left"
       roots={commander.roots}
       oncontext={showContextMenu}
+      onconnections={requestConnections}
       hidden={previewMode && previewSide === 'left'}
     />
     {#if previewMode && previewSide === 'left'}{@render previewPane()}{/if}
@@ -1298,6 +1508,7 @@
       side="right"
       roots={commander.roots}
       oncontext={showContextMenu}
+      onconnections={requestConnections}
       hidden={previewMode && previewSide === 'right'}
     />
     {#if previewMode && previewSide === 'right'}{@render previewPane()}{/if}
@@ -1476,6 +1687,12 @@
     path={propertiesDialog.path}
     onclose={closeProperties}
     onapplied={refreshProperties}
+  />{/if}
+{#if connectionsDialog}<ConnectionsDialog
+    initialId={connectionsDialog.initialId}
+    onconnected={connected}
+    ondisconnected={disconnected}
+    onclose={closeConnections}
   />{/if}
 {#if shortcutsOpen}<ShortcutsDialog onclose={closeShortcuts} />{/if}
 {#if searchDialog}<SearchDialog

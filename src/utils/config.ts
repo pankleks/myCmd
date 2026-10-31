@@ -1,3 +1,4 @@
+import type { SftpProfile } from '../filesystem/types';
 export const CONFIG_VERSION = 1;
 export const DEFAULT_FILE_FONT_SIZE = 18;
 export const DEFAULT_COMPRESSION_LEVEL = 6;
@@ -26,6 +27,7 @@ export interface AppConfig {
   pinnedDirectories?: string[];
   pinnedDirectoryNames?: Record<string, string>;
   compressionLevel?: number;
+  sftpProfiles?: SftpProfile[];
   editor?: string | null;
 }
 
@@ -39,6 +41,7 @@ export interface NormalizedConfig {
   pinnedDirectories?: string[];
   pinnedDirectoryNames?: Record<string, string>;
   compressionLevel?: number;
+  sftpProfiles?: SftpProfile[];
   editor?: string | null;
 }
 
@@ -92,6 +95,7 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     pinnedDirectories: normalizePins(config.pinnedDirectories),
     pinnedDirectoryNames: normalizePinNames(config.pinnedDirectoryNames),
     compressionLevel: normalizeCompressionLevel(config.compressionLevel),
+    sftpProfiles: normalizeSftpProfiles(config.sftpProfiles),
     editor: normalizePath(config.editor),
   };
 }
@@ -101,6 +105,43 @@ export function normalizePins(value: unknown): string[] {
   return [
     ...new Set(value.map(normalizePath).filter((p): p is string => p !== null)),
   ];
+}
+function normalizeSftpProfiles(value: unknown): SftpProfile[] {
+  if (!Array.isArray(value)) return [];
+  const profiles: SftpProfile[] = [];
+  for (const item of value.slice(0, 100)) {
+    if (!item || typeof item !== 'object') continue;
+    const { id, name, host, port, username, directory, keyPath } = item;
+    if (
+      typeof id !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id,
+      ) ||
+      typeof name !== 'string' ||
+      !name.trim() ||
+      typeof host !== 'string' ||
+      !host.trim() ||
+      typeof username !== 'string' ||
+      !username.trim() ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65535 ||
+      (directory != null && typeof directory !== 'string') ||
+      (keyPath != null && typeof keyPath !== 'string')
+    )
+      continue;
+    if (profiles.some((profile) => profile.id === id)) continue;
+    profiles.push({
+      id,
+      name: name.trim(),
+      host: host.trim(),
+      port,
+      username: username.trim(),
+      directory: directory ?? '',
+      keyPath: keyPath ?? null,
+    });
+  }
+  return profiles;
 }
 
 function normalizePinNames(value: unknown): Record<string, string> {
@@ -143,6 +184,7 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     pinnedDirectories: normalizePins(normalized.pinnedDirectories),
     pinnedDirectoryNames: normalizePinNames(normalized.pinnedDirectoryNames),
     compressionLevel: normalizeCompressionLevel(normalized.compressionLevel),
+    sftpProfiles: normalizeSftpProfiles(normalized.sftpProfiles),
     editor: normalizePath(normalized.editor),
   };
 }

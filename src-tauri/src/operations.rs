@@ -15,10 +15,16 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter};
+mod sftp;
 
 #[derive(Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Operation {
+    #[serde(rename_all = "camelCase")]
+    Sftp {
+        connection_id: String,
+        operation: sftp::SftpOperation,
+    },
     #[serde(rename_all = "camelCase")]
     Compress {
         sources: Vec<PathBuf>,
@@ -265,10 +271,16 @@ impl Worker {
         if let Some(p) = &self.policy {
             return Ok(p.clone());
         }
+        self.ask_entries(filesystem::entry(source)?, filesystem::entry(destination)?)
+    }
+    fn ask_entries(&mut self, source: Entry, destination: Entry) -> Result<Resolution> {
+        if let Some(p) = &self.policy {
+            return Ok(p.clone());
+        }
         let conflict = Conflict {
             operation_id: self.progress.operation_id.clone(),
-            source: filesystem::entry(source)?,
-            destination: filesystem::entry(destination)?,
+            source,
+            destination,
         };
         let (tx, rx) = mpsc::channel();
         *self.control.answer.lock().unwrap() = Some(tx);
@@ -570,6 +582,23 @@ impl Worker {
     }
     fn run(&mut self, op: Operation) -> Result<()> {
         match op {
+            Operation::Sftp {
+                connection_id,
+                operation,
+            } => {
+                use tauri::Manager as _;
+                let app = self
+                    .app
+                    .as_ref()
+                    .ok_or_else(|| FsError::new("sftp_disconnected", "SFTP session unavailable"))?;
+                let connection = app
+                    .state::<Arc<crate::sftp::Manager>>()
+                    .get(&connection_id)?;
+                let connection = connection
+                    .lock()
+                    .map_err(|e| FsError::new("sftp_error", e.to_string()))?;
+                self.run_sftp(&connection.sftp, operation)?;
+            }
             Operation::Compress {
                 sources,
                 destination,
@@ -2269,7 +2298,7 @@ mod tests {
         assert_eq!(worker.delete(&path).unwrap_err().code, "cancelled");
         assert_eq!(fs::read(&path).unwrap(), b"safe");
     }
-    fn worker(policy: &str) -> Worker {
+    pub(super) fn worker(policy: &str) -> Worker {
         Worker {
             app: None,
             control: Arc::new(Control {

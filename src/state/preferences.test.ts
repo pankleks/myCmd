@@ -30,6 +30,7 @@ beforeEach(() => {
   preferences.pinnedDirectories = [];
   preferences.pinnedDirectoryNames = {};
   preferences.compressionLevel = 6;
+  preferences.sftpProfiles = [];
   commander.left.path = '';
   commander.right.path = '';
   commander.left.showHidden = false;
@@ -146,6 +147,7 @@ describe('persistPreferences', () => {
     expect(saveConfig).toHaveBeenCalledWith({
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
       version: 1,

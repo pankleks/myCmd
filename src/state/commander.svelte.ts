@@ -260,7 +260,9 @@ export async function open(panel: PanelState, row?: Row) {
   } else
     try {
       if (!isLocalPath(row.path))
-        throw new Error('Opening archived files is not supported yet.');
+        throw new Error(
+          'Opening remote or archived files is not supported. Download the file to a local folder first.',
+        );
       await api.open(row.path);
     } catch (error) {
       panel.error = errorMessage(error);

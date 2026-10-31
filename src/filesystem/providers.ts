@@ -1,12 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { api } from './api';
 import { listen } from '@tauri-apps/api/event';
+import { SvelteMap } from 'svelte/reactivity';
 import type { FileEntry, Listing } from './types';
 
 export type PanelLocation =
   | { kind: 'local'; path: string }
   | { kind: 'archive'; archivePath: string; directory: string }
-  | { kind: 'ftp' | 'sftp' | 'smb' | 'nfs'; connectionId: string; path: string }
+  | { kind: 'sftp'; connectionId: string; path: string }
+  | { kind: 'ftp' | 'smb' | 'nfs'; connectionId: string; path: string }
   | { kind: 'search'; sessionId: string };
 
 export interface ContentProvider {
@@ -109,14 +111,31 @@ export const searchProvider: ContentProvider = {
 };
 
 const archivePrefix = 'archive:';
+export const sftpNames = new SvelteMap<string, string>();
 export function locationKey(location: PanelLocation): string {
   if (location.kind === 'search') return `search:${location.sessionId}`;
   if (location.kind === 'local') return location.path;
+  if (location.kind === 'sftp')
+    return `sftp:${encodeURIComponent(location.connectionId)}!/${encodeURIComponent(location.path)}`;
   if (location.kind === 'archive')
     return `${archivePrefix}${encodeURIComponent(location.archivePath)}!/${encodeURIComponent(location.directory)}`;
   throw new Error(`Provider ${location.kind} is not implemented yet.`);
 }
 export function parseLocation(path: string): PanelLocation {
+  if (path.startsWith('sftp:')) {
+    const separator = path.indexOf('!/', 5);
+    if (separator < 0)
+      throw new Error('Use Connections to open an SFTP location.');
+    const connectionId = decodeURIComponent(path.slice(5, separator));
+    const remotePath = decodeURIComponent(path.slice(separator + 2));
+    if (
+      !connectionId ||
+      !remotePath.startsWith('/') ||
+      remotePath.includes('\0')
+    )
+      throw new Error('Invalid SFTP location.');
+    return { kind: 'sftp', connectionId, path: remotePath };
+  }
   if (path.startsWith('search:'))
     return { kind: 'search', sessionId: path.slice(7) };
   if (!path.startsWith(archivePrefix)) return { kind: 'local', path };
@@ -131,10 +150,16 @@ export function parseLocation(path: string): PanelLocation {
   };
 }
 export function isLocalPath(path: string): boolean {
-  return !path.startsWith(archivePrefix) && !path.startsWith('search:');
+  return (
+    !path.startsWith(archivePrefix) &&
+    !path.startsWith('search:') &&
+    !path.startsWith('sftp:')
+  );
 }
 export function locationLabel(path: string): string {
   const location = parseLocation(path);
+  if (location.kind === 'sftp')
+    return `SFTP · ${sftpNames.get(location.connectionId) ?? location.connectionId} — ${location.path}`;
   if (location.kind === 'search') {
     const session = searchSessions.get(location.sessionId);
     return session
@@ -190,10 +215,30 @@ export const archiveProvider: ContentProvider = {
     return result;
   },
 };
+export const sftpProvider: ContentProvider = {
+  async list(location) {
+    if (location.kind !== 'sftp') throw new Error('Expected SFTP location.');
+    const listing = await api.listSftp(location.connectionId, location.path);
+    const resource = (path: string): PanelLocation => ({ ...location, path });
+    return {
+      ...listing,
+      path: locationKey(resource(listing.path)),
+      parent: listing.parent
+        ? locationKey(resource(listing.parent))
+        : undefined,
+      entries: listing.entries.map((entry) => ({
+        ...entry,
+        path: locationKey(resource(entry.path)),
+        resource: resource(entry.path),
+      })),
+    };
+  },
+};
 export function providerFor(location: PanelLocation): ContentProvider {
   if (location.kind === 'search') return searchProvider;
   if (location.kind === 'local') return localProvider;
   if (location.kind === 'archive') return archiveProvider;
+  if (location.kind === 'sftp') return sftpProvider;
   throw new Error(`Provider ${location.kind} is not implemented yet.`);
 }
 export function archiveLocation(entry: FileEntry): PanelLocation | undefined {

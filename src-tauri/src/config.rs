@@ -139,6 +139,27 @@ pub fn default_compression_level() -> u8 {
     6
 }
 
+fn sftp_profiles_or_default<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<crate::sftp::Profile>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let mut profiles = Vec::new();
+    if let Some(items) = value.as_array() {
+        for item in items.iter().take(100) {
+            if let Ok(profile) = serde_json::from_value::<crate::sftp::Profile>(item.clone()) {
+                if profile.validate().is_ok()
+                    && !profiles
+                        .iter()
+                        .any(|existing: &crate::sftp::Profile| existing.id == profile.id)
+                {
+                    profiles.push(profile);
+                }
+            }
+        }
+    }
+    Ok(profiles)
+}
+
 fn compression_level_or_default<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> std::result::Result<u8, D::Error> {
@@ -175,6 +196,8 @@ pub struct AppConfig {
     pub pinned_directory_names: std::collections::BTreeMap<String, String>,
     #[serde(deserialize_with = "compression_level_or_default")]
     pub compression_level: u8,
+    #[serde(deserialize_with = "sftp_profiles_or_default")]
+    pub sftp_profiles: Vec<crate::sftp::Profile>,
     pub editor: Option<String>,
     pub launch: LaunchConfig,
 }
@@ -192,6 +215,7 @@ impl Default for AppConfig {
             pinned_directories: Vec::new(),
             pinned_directory_names: Default::default(),
             compression_level: default_compression_level(),
+            sftp_profiles: Vec::new(),
             editor: None,
             launch: LaunchConfig::default(),
         }
@@ -233,6 +257,12 @@ impl AppConfig {
                 1 | 9 => self.compression_level,
                 _ => default_compression_level(),
             },
+            sftp_profiles: self
+                .sftp_profiles
+                .iter()
+                .filter(|profile| profile.validate().is_ok())
+                .cloned()
+                .collect(),
             editor: sanitize_path(self.editor.clone()),
             launch: sanitize_launch(self.launch.clone()),
             pinned_directory_names: self
@@ -330,6 +360,26 @@ mod tests {
     }
 
     #[test]
+    fn connection_profiles_round_trip_without_credentials_or_config_loss() {
+        let (_dir, path) = temp_path("config.json");
+        let profile = crate::sftp::tests::profile();
+        let config = AppConfig {
+            sftp_profiles: vec![profile.clone()],
+            ..AppConfig::default()
+        };
+        save_to(&path, &config).unwrap();
+        assert_eq!(load_from(&path).sftp_profiles, vec![profile.clone()]);
+        let mut secret = serde_json::to_value(&profile).unwrap();
+        secret["password"] = serde_json::json!("must not persist");
+        let config: AppConfig = serde_json::from_value(serde_json::json!({"editor": "/editor", "sftpProfiles": [secret, {"broken": true}, profile]})).unwrap();
+        assert_eq!(config.editor.as_deref(), Some("/editor"));
+        assert_eq!(config.sftp_profiles.len(), 1);
+        assert!(!serde_json::to_string(&config)
+            .unwrap()
+            .contains("must not persist"));
+    }
+
+    #[test]
     fn compression_settings_default_safely_without_losing_other_preferences() {
         for value in [
             serde_json::Value::Null,
@@ -377,6 +427,7 @@ mod tests {
             pinned_directories: vec!["/home/user/projects".into()],
             pinned_directory_names: [("/home/user/projects".into(), "Work projects".into())].into(),
             compression_level: 9,
+            sftp_profiles: Vec::new(),
             editor: Some("/usr/bin/editor".into()),
             launch: LaunchConfig {
                 linux: Some(LaunchRules {
@@ -419,6 +470,7 @@ mod tests {
             show_function_bar: true,
             pinned_directories: Vec::new(),
             compression_level: 99,
+            sftp_profiles: Vec::new(),
             pinned_directory_names: [
                 ("/tmp".into(), "  Temporary  ".into()),
                 ("/blank".into(), "  ".into()),

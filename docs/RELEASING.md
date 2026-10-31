@@ -45,6 +45,14 @@ npm run test:desktop
 
 `npm test` runs tests without measuring coverage; `npm run test:watch` runs in watch mode. `npm run format` and `cargo fmt --manifest-path src-tauri/Cargo.toml` fix formatting.
 
+The opt-in SFTP integration test starts a private OpenSSH server on a random loopback port, with temporary keys and fixtures. On Linux, it requires `/usr/sbin/sshd`, `ssh-keygen`, and the system's SSH privilege-separation directory (typically `/run/sshd`). It never uses production credentials or servers:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --locked sftp_live_round_trip_and_failure_safety -- --ignored
+```
+
+SFTP uses libssh2 through the `ssh2` crate. Windows and macOS builds use vendored OpenSSL; Windows also needs Perl available when building OpenSSL (the GitHub Windows runners provide it).
+
 ## Preparing a version
 
 The version must match in:

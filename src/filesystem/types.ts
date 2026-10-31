@@ -9,6 +9,25 @@ export interface FileEntry {
   hidden: boolean;
   directoryTarget: boolean;
 }
+export interface SftpProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  directory: string;
+  keyPath: string | null;
+}
+export interface SftpConnectRequest {
+  profile: SftpProfile;
+  auth: 'agent' | 'key' | 'password';
+  password?: string;
+  passphrase?: string;
+  trustFingerprint?: string;
+}
+export type SftpConnectResult =
+  | { status: 'hostKey'; fingerprint: string }
+  | { status: 'connected'; id: string; path: string; name: string };
 export interface Listing {
   path: string;
   parent?: string;
