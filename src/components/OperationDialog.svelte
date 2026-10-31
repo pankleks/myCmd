@@ -8,7 +8,13 @@
     type DeleteCounts,
   } from '../filesystem/deleteCounts';
   export type Action =
-    'copy' | 'move' | 'rename' | 'createDirectory' | 'createFile' | 'delete';
+    | 'copy'
+    | 'move'
+    | 'compress'
+    | 'rename'
+    | 'createDirectory'
+    | 'createFile'
+    | 'delete';
   let {
     action,
     entries,
@@ -29,6 +35,7 @@
   const labels = {
     copy: 'Copy',
     move: 'Move',
+    compress: 'Compress to ZIP',
     rename: 'Rename',
     createDirectory: 'New folder',
     createFile: 'New file and edit',
@@ -41,18 +48,20 @@
       : labels[action],
   );
   let value = $state('');
+  let archiveName = $state('');
   let dialog: HTMLDialogElement;
   let counts = $state<DeleteCounts>();
   let countFailed = $state(false);
   onMount(() => {
     value =
-      action === 'copy' || action === 'move'
+      action === 'copy' || action === 'move' || action === 'compress'
         ? destination
         : action === 'rename'
           ? entries[0].name
           : action === 'createDirectory' && entries[0]?.type === 'directory'
             ? entries[0].name
             : '';
+    archiveName = `${entries.length === 1 ? entries[0].name : 'Archive'}.zip`;
     dialog.showModal();
     void tick().then(() => dialog.querySelector('input')?.select());
     let disposed = false;
@@ -72,13 +81,20 @@
   function submit() {
     const paths = entries.map((e) => e.path);
     const operation: FileOperation =
-      action === 'copy' || action === 'move'
-        ? { type: action, sources: paths, destination: value }
-        : action === 'rename'
-          ? { type: action, path: paths[0], name: value }
-          : action === 'createDirectory' || action === 'createFile'
-            ? { type: action, parent, name: value }
-            : { type: 'delete', sources: paths, permanent };
+      action === 'compress'
+        ? {
+            type: action,
+            sources: paths,
+            destination: value,
+            name: archiveName,
+          }
+        : action === 'copy' || action === 'move'
+          ? { type: action, sources: paths, destination: value }
+          : action === 'rename'
+            ? { type: action, path: paths[0], name: value }
+            : action === 'createDirectory' || action === 'createFile'
+              ? { type: action, parent, name: value }
+              : { type: 'delete', sources: paths, permanent };
     onsubmit(operation);
   }
 </script>
@@ -132,6 +148,16 @@
             ? entries[0].name
             : `${entries.length} selected items`}
         </p>{/if}
+      {#if action === 'compress'}
+        <p>Symbolic links are skipped.</p>
+        <label
+          >Archive name<input
+            bind:value={archiveName}
+            required
+            spellcheck="false"
+          /></label
+        >
+      {/if}
       <label
         >{action === 'copy' || action === 'move'
           ? entries.length === 1 &&
@@ -139,7 +165,9 @@
             entries[0].type !== 'directory'
             ? 'Destination folder or filename'
             : 'Destination folder'
-          : 'Name'}<input bind:value required spellcheck="false" /></label
+          : action === 'compress'
+            ? 'Destination folder'
+            : 'Name'}<input bind:value required spellcheck="false" /></label
       >
     {/if}
     <div class="dialog-actions">

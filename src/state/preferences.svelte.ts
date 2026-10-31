@@ -19,6 +19,7 @@ export const preferences = $state({
   showHidden: false,
   showFunctionBar: true,
   pinnedDirectories: [] as string[],
+  pinnedDirectoryNames: {} as Record<string, string>,
   editor: null as string | null,
 });
 
@@ -52,6 +53,7 @@ export async function loadPreferences(): Promise<SavedPaths> {
   preferences.columnWidths = normalized.columns;
   preferences.showFunctionBar = normalized.showFunctionBar;
   preferences.pinnedDirectories = normalized.pinnedDirectories ?? [];
+  preferences.pinnedDirectoryNames = normalized.pinnedDirectoryNames ?? {};
   preferences.editor = normalized.editor ?? null;
   setShowHidden(normalized.showHidden);
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
@@ -75,6 +77,7 @@ export async function persistPreferences(): Promise<void> {
     showHidden: preferences.showHidden,
     showFunctionBar: preferences.showFunctionBar,
     pinnedDirectories: preferences.pinnedDirectories,
+    pinnedDirectoryNames: preferences.pinnedDirectoryNames,
     editor: preferences.editor,
   });
   try {

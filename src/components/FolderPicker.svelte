@@ -3,7 +3,7 @@
   import { icons } from '../utils/uiIcons';
   import { tick } from 'svelte';
   import type { Root } from '../filesystem/types';
-  import { preferences } from '../state/preferences.svelte';
+  import { preferences, scheduleSave } from '../state/preferences.svelte';
   import { displayPath } from '../utils/paths';
 
   let {
@@ -33,6 +33,44 @@
   let expanded = $state(false);
   let container: HTMLDivElement;
   let input: HTMLInputElement;
+  let editingPin = $state<string | null>(null);
+  let pinName = $state('');
+  let nameInput = $state<HTMLInputElement>();
+  let renameRow: HTMLElement;
+  $effect(() => {
+    if (!expanded) editingPin = null;
+  });
+  function favoriteName(pin: string) {
+    return (
+      preferences.pinnedDirectoryNames[pin] ??
+      pin.split(/[\\/]/).filter(Boolean).pop() ??
+      pin
+    );
+  }
+  async function startRename(pin: string, button: HTMLButtonElement) {
+    renameRow = button.parentElement!;
+    pinName = favoriteName(pin);
+    editingPin = pin;
+    await tick();
+    nameInput?.focus();
+    nameInput?.select();
+  }
+  async function finishRename(save: boolean) {
+    if (save && editingPin) {
+      const names = { ...preferences.pinnedDirectoryNames };
+      if (pinName.trim()) names[editingPin] = pinName.trim();
+      else delete names[editingPin];
+      preferences.pinnedDirectoryNames = names;
+      scheduleSave();
+    }
+    editingPin = null;
+    await tick();
+    if (renameRow.isConnected)
+      renameRow
+        .querySelector<HTMLButtonElement>('[title="Rename favorite"]')
+        ?.focus();
+    else input.focus();
+  }
   let menuId = $derived(`locations-${id}`);
   $effect(() => {
     value = displayPath(label);
@@ -42,7 +80,7 @@
   let filteredRoots = $derived(roots.filter((r) => matches(r.name, r.path)));
   let filteredPins = $derived(
     preferences.pinnedDirectories
-      .filter((p) => matches(p, p))
+      .filter((p) => matches(favoriteName(p), p))
       .sort((a, b) => a.localeCompare(b)),
   );
   let firstMatch = $derived(
@@ -184,23 +222,69 @@
         </button>
       {/each}
       <div class="location-heading">Pinned directories</div>
-      {#each filteredPins as pin, index}
-        <button
-          type="button"
-          class="location-option"
-          class:location-match={!filteredRoots.length &&
-            index === 0 &&
-            firstMatch === pin}
-          id={!filteredRoots.length && index === 0 && firstMatch === pin
-            ? `${menuId}-match`
-            : undefined}
-          onclick={() => void choose(pin)}
-        >
-          <span
-            ><Icon icon={icons.star} width="16" height="16" class="pin-star" />
-            {pin.split(/[\\/]/).filter(Boolean).pop() ?? pin}</span
-          ><small>{pin}</small>
-        </button>
+      {#each filteredPins as pin, index (pin)}
+        <div class="pin-row">
+          {#if editingPin === pin}
+            <div class="pin-editor">
+              <input
+                bind:this={nameInput}
+                bind:value={pinName}
+                aria-label="Favorite name"
+                onkeydown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === 'Enter' || event.key === 'Escape') {
+                    event.preventDefault();
+                    void finishRename(event.key === 'Enter');
+                  }
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Save favorite name"
+                title="Save favorite name"
+                onclick={() => void finishRename(true)}
+                ><Icon icon={icons.check} width="16" height="16" /></button
+              >
+              <button
+                type="button"
+                aria-label="Cancel rename"
+                title="Cancel rename"
+                onclick={() => void finishRename(false)}
+                ><Icon icon={icons.x} width="16" height="16" /></button
+              >
+              <small>{pin}</small>
+            </div>
+          {:else}
+            <button
+              type="button"
+              class="location-option"
+              class:location-match={!filteredRoots.length &&
+                index === 0 &&
+                firstMatch === pin}
+              id={!filteredRoots.length && index === 0 && firstMatch === pin
+                ? `${menuId}-match`
+                : undefined}
+              onclick={() => void choose(pin)}
+            >
+              <span
+                ><Icon
+                  icon={icons.star}
+                  width="16"
+                  height="16"
+                  class="pin-star"
+                />
+                {favoriteName(pin)}</span
+              ><small>{pin}</small>
+            </button>
+            <button
+              type="button"
+              aria-label={`Rename favorite ${favoriteName(pin)}`}
+              title="Rename favorite"
+              onclick={(event) => void startRename(pin, event.currentTarget)}
+              ><Icon icon={icons.pencil} width="16" height="16" /></button
+            >
+          {/if}
+        </div>
       {/each}
       {#if !filteredRoots.length && !filteredPins.length}
         <p class="location-empty">
@@ -242,5 +326,32 @@
     top: calc(100% + 7px);
     left: 0;
     right: 0;
+  }
+  .pin-row {
+    display: flex;
+    align-items: center;
+  }
+  .pin-row > .location-option {
+    flex: 1;
+    min-width: 0;
+  }
+  .pin-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+  }
+  .pin-editor input {
+    box-sizing: border-box;
+  }
+  .pin-editor small {
+    grid-column: 1 / -1;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #9ba9bd;
+    white-space: nowrap;
   }
 </style>

@@ -10,6 +10,7 @@ let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 let navigate = vi.fn(async (_path: string) => {});
 beforeEach(() => {
+  preferences.pinnedDirectoryNames = {};
   preferences.pinnedDirectories = [
     '/home/user/Projects',
     '/home/user/Downloads',
@@ -192,6 +193,93 @@ it('sorts pinned directories in the dropdown', () => {
     .filter((text) => text?.startsWith('/home'));
   expect(pins).toEqual(['/home/user/Downloads', '/home/user/Projects']);
 });
+
+async function editFavorite(name = 'Projects') {
+  target.querySelector<HTMLInputElement>('input')!.focus();
+  flushSync();
+  target
+    .querySelector<HTMLButtonElement>(`[aria-label="Rename favorite ${name}"]`)!
+    .click();
+  await vi.waitFor(() => {
+    flushSync();
+    expect(document.activeElement).toBe(
+      target.querySelector('[aria-label="Favorite name"]'),
+    );
+  });
+  return target.querySelector<HTMLInputElement>(
+    '[aria-label="Favorite name"]',
+  )!;
+}
+
+it('renames a favorite with Enter without navigating or changing its path', async () => {
+  const editor = await editFavorite();
+  expect(editor.value).toBe('Projects');
+  editor.value = ' Work projects ';
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  editor.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  flushSync();
+  expect(preferences.pinnedDirectoryNames['/home/user/Projects']).toBe(
+    'Work projects',
+  );
+  expect(preferences.pinnedDirectories).toContain('/home/user/Projects');
+  expect(navigate).not.toHaveBeenCalled();
+  expect(target.querySelector('.location-menu')).not.toBeNull();
+  expect(target.textContent).toContain('/home/user/Projects');
+});
+
+it('cancels with Escape and resets a name by saving empty text', async () => {
+  preferences.pinnedDirectoryNames = { '/home/user/Projects': 'Work' };
+  let editor = await editFavorite('Work');
+  editor.value = 'Discard';
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  editor.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  flushSync();
+  expect(preferences.pinnedDirectoryNames['/home/user/Projects']).toBe('Work');
+  expect(target.querySelector('.location-menu')).not.toBeNull();
+  editor = await editFavorite('Work');
+  editor.value = '  ';
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  target
+    .querySelector<HTMLButtonElement>('[aria-label="Save favorite name"]')!
+    .click();
+  flushSync();
+  expect(
+    preferences.pinnedDirectoryNames['/home/user/Projects'],
+  ).toBeUndefined();
+  expect(
+    target.querySelector('[aria-label="Rename favorite Projects"]'),
+  ).not.toBeNull();
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+it.each(['work', '/home/user/Projects'])(
+  'finds renamed favorites by name or path: %s',
+  (query) => {
+    preferences.pinnedDirectoryNames = { '/home/user/Projects': 'Work' };
+    const input = target.querySelector<HTMLInputElement>('input')!;
+    input.value = query;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    const options =
+      target.querySelectorAll<HTMLButtonElement>('.location-option');
+    expect(options).toHaveLength(1);
+    expect(options[0].textContent).toContain('Work');
+    options[0].click();
+    expect(navigate).toHaveBeenCalledWith('/home/user/Projects');
+  },
+);
 
 it('submits a typed path directly', () => {
   const input = target.querySelector('input')!;

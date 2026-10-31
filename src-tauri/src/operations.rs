@@ -19,6 +19,11 @@ use tauri::{AppHandle, Emitter};
 #[derive(Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Operation {
+    Compress {
+        sources: Vec<PathBuf>,
+        destination: PathBuf,
+        name: String,
+    },
     #[serde(rename_all = "camelCase")]
     DeleteArchive {
         archive_path: PathBuf,
@@ -562,6 +567,13 @@ impl Worker {
     }
     fn run(&mut self, op: Operation) -> Result<()> {
         match op {
+            Operation::Compress {
+                sources,
+                destination,
+                name,
+            } => {
+                self.compress(sources, destination, name)?;
+            }
             Operation::DeleteArchive {
                 archive_path,
                 directory,
@@ -656,6 +668,191 @@ impl Worker {
         }
         Ok(())
     }
+    fn compress(
+        &mut self,
+        sources: Vec<PathBuf>,
+        destination: PathBuf,
+        name: String,
+    ) -> Result<()> {
+        let name = zip_name(&name)?;
+        let destination = filesystem::absolute(&destination)?;
+        if !destination.is_dir() {
+            return Err(FsError::new(
+                "invalid_path",
+                "Destination must be a directory",
+            ));
+        }
+        let mut regular_sources = Vec::new();
+        for source in normalize_sources(sources)? {
+            self.check()?;
+            if !fs::symlink_metadata(&source)
+                .map_err(|e| FsError::io(e, &source))?
+                .is_symlink()
+            {
+                regular_sources.push(source);
+            }
+        }
+        let sources = regular_sources;
+        if sources.is_empty() {
+            return Ok(());
+        }
+        let mut names = std::collections::HashSet::new();
+        for source in &sources {
+            if !names.insert(zip_member_name(source)?) {
+                return Err(FsError::new(
+                    "invalid_path",
+                    "Selected items have duplicate names",
+                ));
+            }
+            if source.is_dir() && destination.starts_with(filesystem::absolute(source)?) {
+                return Err(FsError::new(
+                    "invalid_path",
+                    "Cannot create an archive inside a selected folder",
+                ));
+            }
+            let (bytes, items) = self.measure(source)?;
+            self.progress.total_bytes += bytes;
+            self.progress.total_items += items;
+        }
+        self.emit();
+        let mut target = destination.join(&name);
+        let mut temp = tempfile::NamedTempFile::new_in(&destination)
+            .map_err(|e| FsError::io(e, &destination))?;
+        self.write_zip(&sources, temp.as_file_mut())?;
+        temp.as_file()
+            .sync_all()
+            .map_err(|e| FsError::io(e, &target))?;
+        let mut overwrite = false;
+        loop {
+            self.check()?;
+            if sources
+                .iter()
+                .any(|source| same_file::is_same_file(source, &target).unwrap_or(false))
+            {
+                return Err(FsError::new(
+                    "invalid_path",
+                    "Archive cannot replace a source item",
+                ));
+            }
+            match fs::symlink_metadata(&target) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+                Err(e) => return Err(FsError::io(e, &target)),
+                Ok(_) => {}
+            }
+            let answer = self.ask(temp.path(), &target)?;
+            match answer.action.as_str() {
+                "skip" => return Ok(()),
+                "cancel" => return Err(FsError::new("cancelled", "Operation cancelled")),
+                "rename" => {
+                    if let Some(name) = answer.name {
+                        target = destination.join(zip_name(&name)?);
+                    } else {
+                        let mut n = 1;
+                        loop {
+                            self.check()?;
+                            target =
+                                destination.join(format!("{} ({n}).zip", &name[..name.len() - 4]));
+                            match fs::symlink_metadata(&target) {
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+                                Err(e) => return Err(FsError::io(e, &target)),
+                                Ok(_) => {}
+                            }
+                            n += 1;
+                        }
+                    }
+                }
+                "overwrite" => {
+                    let meta =
+                        fs::symlink_metadata(&target).map_err(|e| FsError::io(e, &target))?;
+                    if !meta.is_file() || meta.is_symlink() {
+                        return Err(FsError::new(
+                            "invalid_path",
+                            "Cannot replace a directory or symbolic link with a ZIP",
+                        ));
+                    }
+                    overwrite = true;
+                    break;
+                }
+                _ => return Err(FsError::new("invalid_path", "Unknown conflict action")),
+            }
+        }
+        self.check()?;
+        if overwrite {
+            temp.persist(&target)
+        } else {
+            temp.persist_noclobber(&target)
+        }
+        .map_err(|e| FsError::io(e.error, &target))?;
+        self.progress.result_path = Some(filesystem::text(&target));
+        Ok(())
+    }
+    fn write_zip(&mut self, sources: &[PathBuf], output: &mut fs::File) -> Result<()> {
+        let error = |e: zip::result::ZipError| FsError::new("archive_error", e.to_string());
+        let mut writer = zip::ZipWriter::new(output);
+        let mut buffer = vec![0; 1024 * 1024];
+        for source in sources {
+            let mut directories: Vec<(PathBuf, String, fs::ReadDir)> = Vec::new();
+            let mut next = Some((source.clone(), String::new()));
+            while let Some((path, prefix)) = next.take() {
+                self.check()?;
+                let meta = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
+                if !meta.is_symlink() {
+                    let name = format!("{prefix}{}", zip_member_name(&path)?);
+                    let options = zip::write::SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated)
+                        .large_file(meta.len() > u32::MAX as u64);
+                    if meta.is_dir() {
+                        writer
+                            .add_directory(format!("{name}/"), options)
+                            .map_err(error)?;
+                        directories.push((
+                            path.clone(),
+                            name,
+                            fs::read_dir(&path).map_err(|e| FsError::io(e, &path))?,
+                        ));
+                    } else if meta.is_file() {
+                        let mut input = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
+                        let snapshot = SourceSnapshot::new(&input, &path)?;
+                        if !unchanged_metadata(&meta, &snapshot.metadata) {
+                            return Err(source_changed(&path));
+                        }
+                        writer.start_file(name, options).map_err(error)?;
+                        loop {
+                            self.check()?;
+                            let size =
+                                input.read(&mut buffer).map_err(|e| FsError::io(e, &path))?;
+                            if size == 0 {
+                                break;
+                            }
+                            writer
+                                .write_all(&buffer[..size])
+                                .map_err(|e| FsError::new("archive_error", e.to_string()))?;
+                            self.tick(&path, size as u64, 0)?;
+                        }
+                        snapshot.verify(&input, &path)?;
+                    } else {
+                        return Err(FsError::new(
+                            "invalid_path",
+                            "ZIP compression does not support special filesystem objects",
+                        ));
+                    }
+                }
+                self.tick(&path, 0, 1)?;
+                while let Some((directory, prefix, entries)) = directories.last_mut() {
+                    self.check()?;
+                    if let Some(entry) = entries.next() {
+                        let path = entry.map_err(|e| FsError::io(e, directory))?.path();
+                        next = Some((path, format!("{prefix}/")));
+                        break;
+                    }
+                    directories.pop();
+                }
+            }
+        }
+        self.check()?;
+        writer.finish().map_err(error)?;
+        Ok(())
+    }
     fn transfer_sources(
         &mut self,
         sources: Vec<PathBuf>,
@@ -726,6 +923,26 @@ impl Worker {
         }
         Ok(())
     }
+}
+fn zip_name(name: &str) -> Result<String> {
+    filesystem::validate_name(name)?;
+    Ok(if name.to_lowercase().ends_with(".zip") {
+        name.to_owned()
+    } else {
+        format!("{name}.zip")
+    })
+}
+
+fn zip_member_name(path: &Path) -> Result<String> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| FsError::new("invalid_path", "ZIP member names must be valid UTF-8"))?;
+    filesystem::validate_name(name)?;
+    if name.contains([':', '\0']) {
+        return Err(FsError::new("invalid_path", "Unsafe ZIP member name"));
+    }
+    Ok(name.to_owned())
 }
 /// Atomic rename without replacing an entry created after conflict checking.
 fn rename_noreplace(source: &Path, destination: &Path) -> std::io::Result<()> {
@@ -948,6 +1165,349 @@ fn remove_leaf(p: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compress_preserves_folder_structure_empty_directories_and_file_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("My folder");
+        let destination = dir.path().join("out");
+        fs::create_dir_all(source.join("nested/empty")).unwrap();
+        fs::create_dir(&destination).unwrap();
+        fs::write(source.join("nested/hello.txt"), "hello").unwrap();
+        let loose = dir.path().join("loose.txt");
+        fs::write(&loose, "world").unwrap();
+        let mut w = worker("overwrite");
+        w.run(Operation::Compress {
+            sources: vec![source.clone(), source.join("nested"), loose],
+            destination: destination.clone(),
+            name: "Bundle".into(),
+        })
+        .unwrap();
+        let output = destination.join("Bundle.zip");
+        let mut zip = zip::ZipArchive::new(fs::File::open(&output).unwrap()).unwrap();
+        assert_eq!(zip.len(), 5);
+        assert!(zip.by_name("My folder/nested/empty/").unwrap().is_dir());
+        let mut contents = String::new();
+        zip.by_name("My folder/nested/hello.txt")
+            .unwrap()
+            .read_to_string(&mut contents)
+            .unwrap();
+        assert_eq!(contents, "hello");
+        assert_eq!(
+            zip.by_name("loose.txt").unwrap().compression(),
+            zip::CompressionMethod::Deflated
+        );
+        assert_eq!(w.progress.processed_bytes, 10);
+        assert_eq!(w.progress.total_bytes, 10);
+        assert_eq!(w.progress.processed_items, 5);
+        assert_eq!(w.progress.total_items, 5);
+        assert_eq!(w.progress.result_path, Some(filesystem::text(&output)));
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_to_string(source.join("nested/hello.txt")).unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn compress_conflicts_skip_rename_overwrite_and_cancel_without_partial_files() {
+        for action in ["skip", "rename", "overwrite", "cancel"] {
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("source.txt");
+            let destination = dir.path().join("out");
+            fs::create_dir(&destination).unwrap();
+            fs::write(&source, "payload").unwrap();
+            let target = destination.join("Backup.zip");
+            fs::write(&target, "keep").unwrap();
+            let mut w = worker(action);
+            let result = w.run(Operation::Compress {
+                sources: vec![source.clone()],
+                destination: destination.clone(),
+                name: "Backup.zip".into(),
+            });
+            if action == "cancel" {
+                assert_eq!(result.unwrap_err().code, "cancelled");
+            } else {
+                result.unwrap();
+            }
+            if action != "overwrite" {
+                assert_eq!(fs::read_to_string(&target).unwrap(), "keep");
+            }
+            if action == "overwrite" || action == "rename" {
+                let archive = if action == "rename" {
+                    destination.join("Backup (1).zip")
+                } else {
+                    target
+                };
+                let mut zip = zip::ZipArchive::new(fs::File::open(archive).unwrap()).unwrap();
+                let mut contents = String::new();
+                zip.by_name("source.txt")
+                    .unwrap()
+                    .read_to_string(&mut contents)
+                    .unwrap();
+                assert_eq!(contents, "payload");
+            }
+            assert_eq!(fs::read_to_string(source).unwrap(), "payload");
+            assert_eq!(
+                fs::read_dir(destination).unwrap().count(),
+                if action == "rename" { 2 } else { 1 }
+            );
+        }
+    }
+
+    #[test]
+    fn compress_rejects_unsafe_names_empty_sources_and_duplicate_member_names() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("a")).unwrap();
+        fs::create_dir(dir.path().join("b")).unwrap();
+        let a = dir.path().join("a/same.txt");
+        let b = dir.path().join("b/same.txt");
+        fs::write(&a, "a").unwrap();
+        fs::write(&b, "b").unwrap();
+        for (sources, name) in [
+            (vec![a.clone()], "../escape"),
+            (vec![a.clone()], ""),
+            (vec![], "Empty.zip"),
+            (vec![a, b], "Duplicate.zip"),
+        ] {
+            assert_eq!(
+                worker("overwrite")
+                    .run(Operation::Compress {
+                        sources,
+                        destination: dir.path().to_owned(),
+                        name: name.into()
+                    })
+                    .unwrap_err()
+                    .code,
+                "invalid_path"
+            );
+        }
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn compress_cannot_replace_a_source_or_write_inside_a_selected_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.zip");
+        fs::write(&source, "keep").unwrap();
+        assert_eq!(
+            worker("overwrite")
+                .run(Operation::Compress {
+                    sources: vec![source.clone()],
+                    destination: dir.path().to_owned(),
+                    name: "source.zip".into()
+                })
+                .unwrap_err()
+                .code,
+            "invalid_path"
+        );
+        assert_eq!(fs::read_to_string(&source).unwrap(), "keep");
+        let folder = dir.path().join("folder");
+        fs::create_dir_all(folder.join("nested")).unwrap();
+        assert_eq!(
+            worker("overwrite")
+                .run(Operation::Compress {
+                    sources: vec![folder.clone()],
+                    destination: folder.join("nested"),
+                    name: "Backup.zip".into()
+                })
+                .unwrap_err()
+                .code,
+            "invalid_path"
+        );
+        assert_eq!(fs::read_dir(folder.join("nested")).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn compress_cancellation_before_start_leaves_no_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        fs::write(&source, "keep").unwrap();
+        let mut w = worker("overwrite");
+        w.control.cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            w.run(Operation::Compress {
+                sources: vec![source],
+                destination: dir.path().to_owned(),
+                name: "Backup.zip".into()
+            })
+            .unwrap_err()
+            .code,
+            "cancelled"
+        );
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn compress_conflict_rename_keeps_zip_extension_and_cannot_replace_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.zip");
+        fs::write(&source, "payload").unwrap();
+        fs::write(dir.path().join("Backup.zip"), "keep").unwrap();
+        let operation = Operation::Compress {
+            sources: vec![source.clone()],
+            destination: dir.path().to_owned(),
+            name: "Backup.zip".into(),
+        };
+        let mut w = worker("rename");
+        w.policy.as_mut().unwrap().name = Some("Renamed".into());
+        w.run(operation.clone()).unwrap();
+        assert!(
+            zip::ZipArchive::new(fs::File::open(dir.path().join("Renamed.zip")).unwrap()).is_ok()
+        );
+        let mut w = worker("rename");
+        w.policy.as_mut().unwrap().name = Some("source.zip".into());
+        assert_eq!(w.run(operation).unwrap_err().code, "invalid_path");
+        assert_eq!(fs::read_to_string(source).unwrap(), "payload");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn compress_cannot_overwrite_an_existing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        fs::write(&source, "payload").unwrap();
+        let target = dir.path().join("Backup.zip");
+        fs::create_dir(&target).unwrap();
+        assert_eq!(
+            worker("overwrite")
+                .run(Operation::Compress {
+                    sources: vec![source],
+                    destination: dir.path().to_owned(),
+                    name: "Backup.zip".into()
+                })
+                .unwrap_err()
+                .code,
+            "invalid_path"
+        );
+        assert!(target.is_dir());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compress_skips_selected_symlinks_and_creates_no_archive_for_links_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("file.txt");
+        fs::write(&source, "payload").unwrap();
+        let link = dir.path().join("link");
+        let broken = dir.path().join("broken");
+        std::os::unix::fs::symlink(&source, &link).unwrap();
+        std::os::unix::fs::symlink("missing", &broken).unwrap();
+        let mut w = worker("overwrite");
+        w.run(Operation::Compress {
+            sources: vec![source, link.clone(), broken.clone()],
+            destination: dir.path().to_owned(),
+            name: "Mixed.zip".into(),
+        })
+        .unwrap();
+        let mut zip =
+            zip::ZipArchive::new(fs::File::open(dir.path().join("Mixed.zip")).unwrap()).unwrap();
+        assert_eq!(zip.len(), 1);
+        assert!(zip.by_name("file.txt").is_ok());
+        assert_eq!(w.progress.total_items, 1);
+        assert_eq!(w.progress.processed_items, 1);
+        let mut w = worker("overwrite");
+        w.run(Operation::Compress {
+            sources: vec![link, broken],
+            destination: dir.path().to_owned(),
+            name: "Links.zip".into(),
+        })
+        .unwrap();
+        assert!(!dir.path().join("Links.zip").exists());
+        assert!(w.progress.result_path.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compress_skips_nested_symlinks_but_rejects_destination_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("folder");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("file"), "payload").unwrap();
+        std::os::unix::fs::symlink(".", source.join("loop")).unwrap();
+        std::os::unix::fs::symlink("missing", source.join("broken:link")).unwrap();
+        std::os::unix::fs::symlink("file", source.join("file-link")).unwrap();
+        let operation = Operation::Compress {
+            sources: vec![source.clone()],
+            destination: dir.path().to_owned(),
+            name: "Backup.zip".into(),
+        };
+        let mut w = worker("overwrite");
+        w.run(operation.clone()).unwrap();
+        {
+            let mut zip =
+                zip::ZipArchive::new(fs::File::open(dir.path().join("Backup.zip")).unwrap())
+                    .unwrap();
+            assert_eq!(zip.len(), 2);
+            assert!(zip.by_name("folder/file").is_ok());
+        }
+        assert_eq!(w.progress.processed_items, w.progress.total_items);
+        assert_eq!(w.progress.processed_bytes, 7);
+        fs::remove_file(dir.path().join("Backup.zip")).unwrap();
+        let untouched = dir.path().join("untouched");
+        fs::write(&untouched, "keep").unwrap();
+        std::os::unix::fs::symlink(&untouched, dir.path().join("Backup.zip")).unwrap();
+        assert_eq!(
+            worker("overwrite").run(operation).unwrap_err().code,
+            "invalid_path"
+        );
+        assert_eq!(fs::read_to_string(untouched).unwrap(), "keep");
+        assert!(fs::symlink_metadata(dir.path().join("Backup.zip"))
+            .unwrap()
+            .is_symlink());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 3);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compress_failure_after_writing_does_not_replace_existing_archive_or_leave_staging_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("a.txt");
+        fs::write(&source, "payload").unwrap();
+        let folder = dir.path().join("z-folder");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("unsafe:name"), "not supported").unwrap();
+        let destination = dir.path().join("out");
+        fs::create_dir(&destination).unwrap();
+        let target = destination.join("Backup.zip");
+        fs::write(&target, "keep").unwrap();
+        let mut w = worker("overwrite");
+        assert_eq!(
+            w.run(Operation::Compress {
+                sources: vec![source, folder],
+                destination: destination.clone(),
+                name: "Backup.zip".into()
+            })
+            .unwrap_err()
+            .code,
+            "invalid_path"
+        );
+        assert_eq!(w.progress.processed_bytes, 7);
+        assert_eq!(fs::read_to_string(target).unwrap(), "keep");
+        assert_eq!(fs::read_dir(destination).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compress_auto_rename_does_not_loop_on_dangling_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        fs::write(&source, "payload").unwrap();
+        fs::write(dir.path().join("Backup.ZIP"), "keep").unwrap();
+        std::os::unix::fs::symlink("missing", dir.path().join("Backup (1).zip")).unwrap();
+        let mut w = worker("rename");
+        w.run(Operation::Compress {
+            sources: vec![source],
+            destination: dir.path().to_owned(),
+            name: "Backup.ZIP".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            w.progress.result_path,
+            Some(filesystem::text(&dir.path().join("Backup (2).zip")))
+        );
+    }
     #[test]
     fn create_file_is_empty_and_never_overwrites_existing_contents() {
         let directory = tempfile::tempdir().unwrap();

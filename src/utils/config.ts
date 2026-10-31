@@ -23,6 +23,7 @@ export interface AppConfig {
     boolean | { left?: boolean | null; right?: boolean | null } | null;
   showFunctionBar?: boolean | null;
   pinnedDirectories?: string[];
+  pinnedDirectoryNames?: Record<string, string>;
   editor?: string | null;
 }
 
@@ -34,6 +35,7 @@ export interface NormalizedConfig {
   showHidden: boolean;
   showFunctionBar: boolean;
   pinnedDirectories?: string[];
+  pinnedDirectoryNames?: Record<string, string>;
   editor?: string | null;
 }
 
@@ -81,6 +83,7 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     showHidden: config.showHidden === true,
     showFunctionBar: config.showFunctionBar !== false,
     pinnedDirectories: normalizePins(config.pinnedDirectories),
+    pinnedDirectoryNames: normalizePinNames(config.pinnedDirectoryNames),
     editor: normalizePath(config.editor),
   };
 }
@@ -90,6 +93,19 @@ export function normalizePins(value: unknown): string[] {
   return [
     ...new Set(value.map(normalizePath).filter((p): p is string => p !== null)),
   ];
+}
+
+function normalizePinNames(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        ([path, name]) =>
+          path.trim() && typeof name === 'string' && name.trim(),
+      )
+      .map(([path, name]) => [path, (name as string).trim()]),
+  );
 }
 
 function normalizeSharedColumns(value: unknown): number[] | null {
@@ -117,6 +133,7 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     showHidden: normalized.showHidden,
     showFunctionBar: normalized.showFunctionBar,
     pinnedDirectories: normalizePins(normalized.pinnedDirectories),
+    pinnedDirectoryNames: normalizePinNames(normalized.pinnedDirectoryNames),
     editor: normalizePath(normalized.editor),
   };
 }

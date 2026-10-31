@@ -10,6 +10,7 @@
     ['F4', 'Edit file in configured or system default application'],
     ['Shift+F4', 'Create a new file and edit it'],
     ['F5', 'Copy / extract from archive'],
+    ['Alt+F5', 'Compress selected items to ZIP in the opposite panel'],
     ['F6', 'Move'],
     ['F7', 'Create folder'],
     ['Alt+F7', 'Search file and folder names by glob'],

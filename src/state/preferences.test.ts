@@ -27,6 +27,8 @@ beforeEach(() => {
   preferences.showHidden = false;
   preferences.showFunctionBar = true;
   preferences.editor = null;
+  preferences.pinnedDirectories = [];
+  preferences.pinnedDirectoryNames = {};
   commander.left.path = '';
   commander.right.path = '';
   commander.left.showHidden = false;
@@ -36,6 +38,22 @@ beforeEach(() => {
 });
 
 describe('loadPreferences', () => {
+  it('loads and saves favorite names separately from paths', async () => {
+    loadConfig.mockResolvedValue({
+      version: 1,
+      pinnedDirectories: ['/tmp'],
+      pinnedDirectoryNames: { '/tmp': 'Temporary' },
+    });
+    await loadPreferences();
+    expect(preferences.pinnedDirectoryNames).toEqual({ '/tmp': 'Temporary' });
+    await persistPreferences();
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pinnedDirectories: ['/tmp'],
+        pinnedDirectoryNames: { '/tmp': 'Temporary' },
+      }),
+    );
+  });
   it('loads the configured editor and persists it', async () => {
     loadConfig.mockResolvedValue({
       version: 1,
@@ -116,6 +134,7 @@ describe('persistPreferences', () => {
     await persistPreferences();
     expect(saveConfig).toHaveBeenCalledWith({
       pinnedDirectories: [],
+      pinnedDirectoryNames: {},
       editor: null,
       version: 1,
       leftPath: 'C:\\Users\\root',

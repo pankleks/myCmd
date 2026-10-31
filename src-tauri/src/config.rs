@@ -157,6 +157,7 @@ pub struct AppConfig {
     #[serde(default = "default_true")]
     pub show_function_bar: bool,
     pub pinned_directories: Vec<String>,
+    pub pinned_directory_names: std::collections::BTreeMap<String, String>,
     pub editor: Option<String>,
     pub launch: LaunchConfig,
 }
@@ -172,6 +173,7 @@ impl Default for AppConfig {
             show_hidden: false,
             show_function_bar: true,
             pinned_directories: Vec::new(),
+            pinned_directory_names: Default::default(),
             editor: None,
             launch: LaunchConfig::default(),
         }
@@ -211,6 +213,16 @@ impl AppConfig {
             show_function_bar: self.show_function_bar,
             editor: sanitize_path(self.editor.clone()),
             launch: sanitize_launch(self.launch.clone()),
+            pinned_directory_names: self
+                .pinned_directory_names
+                .iter()
+                .filter_map(|(path, name)| {
+                    if path.trim().is_empty() {
+                        return None;
+                    }
+                    sanitize_path(Some(name.clone())).map(|name| (path.clone(), name))
+                })
+                .collect(),
             pinned_directories: {
                 let mut pins = Vec::new();
                 for path in &self.pinned_directories {
@@ -310,6 +322,7 @@ mod tests {
             show_hidden: true,
             show_function_bar: false,
             pinned_directories: vec!["/home/user/projects".into()],
+            pinned_directory_names: [("/home/user/projects".into(), "Work projects".into())].into(),
             editor: Some("/usr/bin/editor".into()),
             launch: LaunchConfig {
                 linux: Some(LaunchRules {
@@ -351,6 +364,11 @@ mod tests {
             show_hidden: true,
             show_function_bar: true,
             pinned_directories: Vec::new(),
+            pinned_directory_names: [
+                ("/tmp".into(), "  Temporary  ".into()),
+                ("/blank".into(), "  ".into()),
+            ]
+            .into(),
             editor: Some("   ".into()),
             launch: LaunchConfig::default(),
         };
@@ -364,6 +382,10 @@ mod tests {
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
         assert!(sanitized.show_hidden);
         assert!(sanitized.show_function_bar);
+        assert_eq!(
+            sanitized.pinned_directory_names,
+            [("/tmp".into(), "Temporary".into())].into()
+        );
     }
 
     #[test]

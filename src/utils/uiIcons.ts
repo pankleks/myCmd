@@ -9,6 +9,7 @@ export const icons = {
   'hard-drive': { ...lucide['hard-drive'], width: 24, height: 24 },
   check: { ...lucide.check, width: 24, height: 24 },
   star: { ...lucide.star, width: 24, height: 24 },
+  pencil: { ...lucide.pencil, width: 24, height: 24 },
   minus: { ...lucide.minus, width: 24, height: 24 },
   plus: { ...lucide.plus, width: 24, height: 24 },
   x: { ...lucide.x, width: 24, height: 24 },

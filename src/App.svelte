@@ -394,6 +394,17 @@
     const opposite =
       commander[commander.activePanel === 'left' ? 'right' : 'left'];
     if (
+      action === 'compress' &&
+      ((!isLocalPath(active.path) && !searchSession(active.path)) ||
+        !isLocalPath(searchSession(opposite.path)?.root ?? opposite.path) ||
+        entries.some((entry) => !isLocalPath(entry.path)))
+    ) {
+      showError(
+        'ZIP compression requires local source items and a local destination folder.',
+      );
+      return;
+    }
+    if (
       (!isLocalPath(active.path) &&
         !searchSession(active.path) &&
         action !== 'copy' &&
@@ -455,7 +466,14 @@
       operation.type === 'createFile'
         ? { editor: preferences.editor }
         : undefined;
-    await operations.start(operation, side);
+    await operations.start(
+      operation,
+      operation.type === 'compress'
+        ? side === 'left'
+          ? 'right'
+          : 'left'
+        : side,
+    );
   }
   async function resolve(resolution: Resolution) {
     if (!conflict) return;
@@ -715,6 +733,18 @@
         focusPanel();
         return;
       }
+      return;
+    }
+    if (
+      event.key === 'F5' &&
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      quickFindClose();
+      request('compress');
       return;
     }
     if (

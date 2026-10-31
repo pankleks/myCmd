@@ -15,6 +15,7 @@ myCmd is a keyboard-centric, two-panel file manager in the Norton / Total Comman
 - Search (Alt+F7) by file/folder name glob, optionally by file content (UTF-8/UTF-16, binaries skipped); browse results while the search is still running
 - Selection by glob (+/-), invert (\*), quick find by typing, directory-size calculation (Space)
 - Browse inside archives and extract from them (F5)
+- Compress selected files or folders to ZIP in the opposite panel (Alt+F5); symbolic links are skipped
 - Built-in command line for the active folder, plus opening a system terminal there (Ctrl+T)
 - Drive picker (Alt+F1 / Alt+F2), hidden-files toggle (Ctrl+H), file-list font sizing, resizable columns, Catppuccin file icons
 - Settings dialog (F9) and a shortcuts reference (F1)

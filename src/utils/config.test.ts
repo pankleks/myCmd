@@ -39,6 +39,19 @@ describe('normalizeColumnWeights', () => {
 });
 
 describe('normalizeConfig', () => {
+  it('validates and round-trips favorite names without changing paths', () => {
+    const config = normalizeConfig({
+      pinnedDirectories: ['/tmp'],
+      pinnedDirectoryNames: { '/tmp': ' Work ', '/blank': ' ', '/bad': 12 },
+    });
+    expect(config.pinnedDirectoryNames).toEqual({ '/tmp': 'Work' });
+    expect(normalizeConfig(buildSavePayload(config))).toEqual(config);
+    for (const value of [null, [], 'bad', 12]) {
+      expect(
+        normalizeConfig({ pinnedDirectoryNames: value }).pinnedDirectoryNames,
+      ).toEqual({});
+    }
+  });
   it('persists an editor executable and uses system defaults for blank settings', () => {
     const config = normalizeConfig({ editor: ' /opt/My Editor/bin/editor ' });
     expect(config.editor).toBe('/opt/My Editor/bin/editor');
@@ -71,6 +84,7 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: [175, 78, 113, 218],
       pinnedDirectories: [],
+      pinnedDirectoryNames: {},
       editor: null,
       fileFontSize: 20,
       showHidden: false,
@@ -114,6 +128,7 @@ describe('normalizeConfig', () => {
       rightPath: null,
       columns: null,
       pinnedDirectories: [],
+      pinnedDirectoryNames: {},
       editor: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
       showHidden: false,
@@ -134,6 +149,7 @@ describe('normalizeConfig', () => {
     });
     expect(buildSavePayload(normalized)).toEqual({
       pinnedDirectories: [],
+      pinnedDirectoryNames: {},
       editor: null,
       version: 1,
       leftPath: '/home/user',
