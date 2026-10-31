@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.11] - 2026-10-31
+
+- Add custom names for pinned directories, with inline renaming and search by name or path.
+- Add Alt+F5 ZIP compression to the opposite panel, with editable archive names, progress, cancellation, and overwrite confirmation. Symbolic links are skipped.
+- Improve Markdown preview width and Mermaid diagram label readability.
+
 ## [0.2.10] - 2026-10-25
 
 - Render fenced Mermaid diagrams in Markdown previews, with isolated SVG images that fit the available width and readable source fallbacks for invalid diagrams.
