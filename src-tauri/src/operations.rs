@@ -1200,7 +1200,10 @@ mod tests {
         assert_eq!(w.progress.total_bytes, 10);
         assert_eq!(w.progress.processed_items, 5);
         assert_eq!(w.progress.total_items, 5);
-        assert_eq!(w.progress.result_path, Some(filesystem::text(&output)));
+        assert_eq!(
+            w.progress.result_path,
+            Some(filesystem::text(&filesystem::absolute(&output).unwrap()))
+        );
         assert_eq!(fs::read_dir(&destination).unwrap().count(), 1);
         assert_eq!(
             fs::read_to_string(source.join("nested/hello.txt")).unwrap(),
@@ -1505,7 +1508,9 @@ mod tests {
         .unwrap();
         assert_eq!(
             w.progress.result_path,
-            Some(filesystem::text(&dir.path().join("Backup (2).zip")))
+            Some(filesystem::text(
+                &filesystem::absolute(&dir.path().join("Backup (2).zip")).unwrap()
+            ))
         );
     }
     #[test]
