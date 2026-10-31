@@ -29,6 +29,7 @@ beforeEach(() => {
   preferences.editor = null;
   preferences.pinnedDirectories = [];
   preferences.pinnedDirectoryNames = {};
+  preferences.compressionLevel = 6;
   commander.left.path = '';
   commander.right.path = '';
   commander.left.showHidden = false;
@@ -38,6 +39,16 @@ beforeEach(() => {
 });
 
 describe('loadPreferences', () => {
+  it('restores the compression level after saving and reloading preferences', async () => {
+    preferences.compressionLevel = 9;
+    await persistPreferences();
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.compressionLevel).toBe(9);
+    preferences.compressionLevel = 1;
+    loadConfig.mockResolvedValue(saved);
+    await loadPreferences();
+    expect(preferences.compressionLevel).toBe(9);
+  });
   it('loads and saves favorite names separately from paths', async () => {
     loadConfig.mockResolvedValue({
       version: 1,
@@ -135,6 +146,7 @@ describe('persistPreferences', () => {
     expect(saveConfig).toHaveBeenCalledWith({
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      compressionLevel: 6,
       editor: null,
       version: 1,
       leftPath: 'C:\\Users\\root',

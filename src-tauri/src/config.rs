@@ -135,6 +135,21 @@ fn default_true() -> bool {
     true
 }
 
+pub fn default_compression_level() -> u8 {
+    6
+}
+
+fn compression_level_or_default<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<u8, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value.as_u64() {
+        Some(1) => 1,
+        Some(9) => 9,
+        _ => default_compression_level(),
+    })
+}
+
 /// Older files stored a per-panel `{left, right}` object; only an explicit
 /// boolean true enables hidden files now, everything else means false.
 fn bool_or_legacy<'de, D: Deserializer<'de>>(
@@ -158,6 +173,8 @@ pub struct AppConfig {
     pub show_function_bar: bool,
     pub pinned_directories: Vec<String>,
     pub pinned_directory_names: std::collections::BTreeMap<String, String>,
+    #[serde(deserialize_with = "compression_level_or_default")]
+    pub compression_level: u8,
     pub editor: Option<String>,
     pub launch: LaunchConfig,
 }
@@ -174,6 +191,7 @@ impl Default for AppConfig {
             show_function_bar: true,
             pinned_directories: Vec::new(),
             pinned_directory_names: Default::default(),
+            compression_level: default_compression_level(),
             editor: None,
             launch: LaunchConfig::default(),
         }
@@ -211,6 +229,10 @@ impl AppConfig {
                 .map(|size| size.clamp(MIN_FILE_FONT_SIZE, MAX_FILE_FONT_SIZE)),
             show_hidden: self.show_hidden,
             show_function_bar: self.show_function_bar,
+            compression_level: match self.compression_level {
+                1 | 9 => self.compression_level,
+                _ => default_compression_level(),
+            },
             editor: sanitize_path(self.editor.clone()),
             launch: sanitize_launch(self.launch.clone()),
             pinned_directory_names: self
@@ -308,6 +330,37 @@ mod tests {
     }
 
     #[test]
+    fn compression_settings_default_safely_without_losing_other_preferences() {
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(256),
+            serde_json::json!(6.5),
+            serde_json::json!("fast"),
+            serde_json::json!({}),
+        ] {
+            let config: AppConfig = serde_json::from_value(
+                serde_json::json!({ "compressionLevel": value, "editor": "/usr/bin/editor" }),
+            )
+            .unwrap();
+            assert_eq!(config.compression_level, 6);
+            assert_eq!(config.editor.as_deref(), Some("/usr/bin/editor"));
+        }
+        let config: AppConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(config.compression_level, 6);
+        for level in [1, 6, 9] {
+            let config = AppConfig {
+                compression_level: level,
+                ..AppConfig::default()
+            };
+            let (_dir, path) = temp_path("config.json");
+            save_to(&path, &config).unwrap();
+            assert_eq!(load_from(&path).compression_level, level);
+        }
+    }
+
+    #[test]
     fn roundtrip_preserves_values() {
         let (_dir, path) = temp_path("config.json");
         let config = AppConfig {
@@ -323,6 +376,7 @@ mod tests {
             show_function_bar: false,
             pinned_directories: vec!["/home/user/projects".into()],
             pinned_directory_names: [("/home/user/projects".into(), "Work projects".into())].into(),
+            compression_level: 9,
             editor: Some("/usr/bin/editor".into()),
             launch: LaunchConfig {
                 linux: Some(LaunchRules {
@@ -364,6 +418,7 @@ mod tests {
             show_hidden: true,
             show_function_bar: true,
             pinned_directories: Vec::new(),
+            compression_level: 99,
             pinned_directory_names: [
                 ("/tmp".into(), "  Temporary  ".into()),
                 ("/blank".into(), "  ".into()),
@@ -382,6 +437,7 @@ mod tests {
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
         assert!(sanitized.show_hidden);
         assert!(sanitized.show_function_bar);
+        assert_eq!(sanitized.compression_level, 6);
         assert_eq!(
             sanitized.pinned_directory_names,
             [("/tmp".into(), "Temporary".into())].into()

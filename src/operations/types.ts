@@ -1,6 +1,12 @@
 import type { FileEntry } from '../filesystem/types';
 export type FileOperation =
-  | { type: 'compress'; sources: string[]; destination: string; name: string }
+  | {
+      type: 'compress';
+      sources: string[];
+      destination: string;
+      name: string;
+      compressionLevel?: number;
+    }
   | {
       type: 'deleteArchive';
       archivePath: string;

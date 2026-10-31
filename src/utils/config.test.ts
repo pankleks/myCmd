@@ -39,6 +39,26 @@ describe('normalizeColumnWeights', () => {
 });
 
 describe('normalizeConfig', () => {
+  it('validates compression levels and persists supported choices', () => {
+    for (const compressionLevel of [1, 6, 9]) {
+      const config = normalizeConfig({ compressionLevel });
+      expect(config.compressionLevel).toBe(compressionLevel);
+      expect(normalizeConfig(buildSavePayload(config))).toEqual(config);
+    }
+    for (const compressionLevel of [
+      undefined,
+      null,
+      0,
+      2,
+      10,
+      -1,
+      6.5,
+      '9',
+      {},
+    ]) {
+      expect(normalizeConfig({ compressionLevel }).compressionLevel).toBe(6);
+    }
+  });
   it('validates and round-trips favorite names without changing paths', () => {
     const config = normalizeConfig({
       pinnedDirectories: ['/tmp'],
@@ -85,6 +105,7 @@ describe('normalizeConfig', () => {
       columns: [175, 78, 113, 218],
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      compressionLevel: 6,
       editor: null,
       fileFontSize: 20,
       showHidden: false,
@@ -129,6 +150,7 @@ describe('normalizeConfig', () => {
       columns: null,
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      compressionLevel: 6,
       editor: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
       showHidden: false,
@@ -150,6 +172,7 @@ describe('normalizeConfig', () => {
     expect(buildSavePayload(normalized)).toEqual({
       pinnedDirectories: [],
       pinnedDirectoryNames: {},
+      compressionLevel: 6,
       editor: null,
       version: 1,
       leftPath: '/home/user',

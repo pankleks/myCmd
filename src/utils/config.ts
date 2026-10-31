@@ -1,5 +1,6 @@
 export const CONFIG_VERSION = 1;
 export const DEFAULT_FILE_FONT_SIZE = 18;
+export const DEFAULT_COMPRESSION_LEVEL = 6;
 export const MIN_FILE_FONT_SIZE = 12;
 export const MAX_FILE_FONT_SIZE = 24;
 export const COLUMN_COUNT = 4;
@@ -24,6 +25,7 @@ export interface AppConfig {
   showFunctionBar?: boolean | null;
   pinnedDirectories?: string[];
   pinnedDirectoryNames?: Record<string, string>;
+  compressionLevel?: number;
   editor?: string | null;
 }
 
@@ -36,6 +38,7 @@ export interface NormalizedConfig {
   showFunctionBar: boolean;
   pinnedDirectories?: string[];
   pinnedDirectoryNames?: Record<string, string>;
+  compressionLevel?: number;
   editor?: string | null;
 }
 
@@ -43,6 +46,10 @@ export function normalizeFontSize(value: unknown): number {
   const size = typeof value === 'number' ? Math.round(value) : NaN;
   if (!Number.isFinite(size)) return DEFAULT_FILE_FONT_SIZE;
   return Math.min(MAX_FILE_FONT_SIZE, Math.max(MIN_FILE_FONT_SIZE, size));
+}
+
+export function normalizeCompressionLevel(value: unknown): number {
+  return value === 1 || value === 9 ? value : DEFAULT_COMPRESSION_LEVEL;
 }
 
 export function normalizeColumnWeights(value: unknown): number[] | null {
@@ -84,6 +91,7 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     showFunctionBar: config.showFunctionBar !== false,
     pinnedDirectories: normalizePins(config.pinnedDirectories),
     pinnedDirectoryNames: normalizePinNames(config.pinnedDirectoryNames),
+    compressionLevel: normalizeCompressionLevel(config.compressionLevel),
     editor: normalizePath(config.editor),
   };
 }
@@ -134,6 +142,7 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     showFunctionBar: normalized.showFunctionBar,
     pinnedDirectories: normalizePins(normalized.pinnedDirectories),
     pinnedDirectoryNames: normalizePinNames(normalized.pinnedDirectoryNames),
+    compressionLevel: normalizeCompressionLevel(normalized.compressionLevel),
     editor: normalizePath(normalized.editor),
   };
 }

@@ -3,6 +3,7 @@ import { searchSession } from '../filesystem/providers';
 import {
   buildSavePayload,
   DEFAULT_FILE_FONT_SIZE,
+  DEFAULT_COMPRESSION_LEVEL,
   normalizeConfig,
 } from '../utils/config';
 import { displayPath } from '../utils/paths';
@@ -20,6 +21,7 @@ export const preferences = $state({
   showFunctionBar: true,
   pinnedDirectories: [] as string[],
   pinnedDirectoryNames: {} as Record<string, string>,
+  compressionLevel: DEFAULT_COMPRESSION_LEVEL,
   editor: null as string | null,
 });
 
@@ -54,6 +56,8 @@ export async function loadPreferences(): Promise<SavedPaths> {
   preferences.showFunctionBar = normalized.showFunctionBar;
   preferences.pinnedDirectories = normalized.pinnedDirectories ?? [];
   preferences.pinnedDirectoryNames = normalized.pinnedDirectoryNames ?? {};
+  preferences.compressionLevel =
+    normalized.compressionLevel ?? DEFAULT_COMPRESSION_LEVEL;
   preferences.editor = normalized.editor ?? null;
   setShowHidden(normalized.showHidden);
   return { leftPath: normalized.leftPath, rightPath: normalized.rightPath };
@@ -78,6 +82,7 @@ export async function persistPreferences(): Promise<void> {
     showFunctionBar: preferences.showFunctionBar,
     pinnedDirectories: preferences.pinnedDirectories,
     pinnedDirectoryNames: preferences.pinnedDirectoryNames,
+    compressionLevel: preferences.compressionLevel,
     editor: preferences.editor,
   });
   try {

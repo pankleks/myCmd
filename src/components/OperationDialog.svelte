@@ -3,6 +3,7 @@
   import type { FileEntry } from '../filesystem/types';
   import type { FileOperation } from '../operations/types';
   import { isLocalPath } from '../filesystem/providers';
+  import { preferences, scheduleSave } from '../state/preferences.svelte';
   import {
     countDeleteEntries,
     type DeleteCounts,
@@ -49,6 +50,7 @@
   );
   let value = $state('');
   let archiveName = $state('');
+  let compressionLevel = $state(preferences.compressionLevel);
   let dialog: HTMLDialogElement;
   let counts = $state<DeleteCounts>();
   let countFailed = $state(false);
@@ -63,7 +65,7 @@
             : '';
     archiveName = `${entries.length === 1 ? entries[0].name : 'Archive'}.zip`;
     dialog.showModal();
-    void tick().then(() => dialog.querySelector('input')?.select());
+    void tick().then(() => dialog?.querySelector('input')?.select());
     let disposed = false;
     if (action === 'delete') {
       void countDeleteEntries(entries, () => disposed)
@@ -87,6 +89,7 @@
             sources: paths,
             destination: value,
             name: archiveName,
+            compressionLevel,
           }
         : action === 'copy' || action === 'move'
           ? { type: action, sources: paths, destination: value }
@@ -95,6 +98,10 @@
             : action === 'createDirectory' || action === 'createFile'
               ? { type: action, parent, name: value }
               : { type: 'delete', sources: paths, permanent };
+    if (action === 'compress') {
+      preferences.compressionLevel = compressionLevel;
+      scheduleSave();
+    }
     onsubmit(operation);
   }
 </script>
@@ -169,6 +176,15 @@
             ? 'Destination folder'
             : 'Name'}<input bind:value required spellcheck="false" /></label
       >
+      {#if action === 'compress'}
+        <label
+          >Compression<select bind:value={compressionLevel}>
+            <option value={1}>Fast</option>
+            <option value={6}>Balanced</option>
+            <option value={9}>Smallest</option>
+          </select></label
+        >
+      {/if}
     {/if}
     <div class="dialog-actions">
       <button type="button" onclick={onclose}>Cancel</button><button

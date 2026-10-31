@@ -3,6 +3,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import OperationDialog, { type Action } from './OperationDialog.svelte';
 import type { FileEntry } from '../filesystem/types';
+import { preferences } from '../state/preferences.svelte';
+
+vi.mock('../filesystem/api', () => ({ api: { saveConfig: vi.fn() } }));
 
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
@@ -38,6 +41,7 @@ function show(entries: FileEntry[], action: Action = 'compress') {
 }
 
 beforeEach(() => {
+  preferences.compressionLevel = 6;
   vi.clearAllMocks();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     value: vi.fn(),
@@ -70,6 +74,7 @@ it.each([
     sources: (entries as FileEntry[]).map((e) => e.path),
     destination: '/target',
     name,
+    compressionLevel: 6,
   });
 });
 
@@ -86,6 +91,7 @@ it('submits an edited name and destination', () => {
     sources: ['/source/Folder'],
     destination: '/another target',
     name: 'Backup.zip',
+    compressionLevel: 6,
   });
 });
 
@@ -98,8 +104,46 @@ it('cancels without starting compression', () => {
   expect(submit).not.toHaveBeenCalled();
 });
 
+it.each([
+  ['1', 1],
+  ['6', 6],
+  ['9', 9],
+])(
+  'uses and remembers compression level %s on submission',
+  async (value, level) => {
+    show([entry('Folder')]);
+    const select = target.querySelector('select')!;
+    expect(select.value).toBe('6');
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(preferences.compressionLevel).toBe(6);
+    target.querySelector<HTMLButtonElement>('[type="submit"]')!.click();
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({ compressionLevel: level }),
+    );
+    expect(preferences.compressionLevel).toBe(level);
+    await unmount(component);
+    show([entry('Another folder')]);
+    expect(target.querySelector('select')!.value).toBe(value);
+  },
+);
+
+it('does not remember a compression change when the dialog is cancelled', () => {
+  preferences.compressionLevel = 1;
+  show([entry('Folder')]);
+  const select = target.querySelector('select')!;
+  expect(select.value).toBe('1');
+  select.value = '9';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  target.querySelector<HTMLButtonElement>('[type="button"]')!.click();
+  expect(close).toHaveBeenCalledOnce();
+  expect(submit).not.toHaveBeenCalled();
+  expect(preferences.compressionLevel).toBe(1);
+});
+
 it('keeps the existing copy dialog unchanged', () => {
   show([entry('Folder')], 'copy');
+  expect(target.querySelector('select')).toBeNull();
   expect(target.querySelectorAll('input')).toHaveLength(1);
   expect(target.querySelector('input')!.value).toBe('/target');
   target.querySelector<HTMLButtonElement>('[type="submit"]')!.click();

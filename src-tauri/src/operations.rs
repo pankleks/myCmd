@@ -19,10 +19,13 @@ use tauri::{AppHandle, Emitter};
 #[derive(Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Operation {
+    #[serde(rename_all = "camelCase")]
     Compress {
         sources: Vec<PathBuf>,
         destination: PathBuf,
         name: String,
+        #[serde(default = "crate::config::default_compression_level")]
+        compression_level: u8,
     },
     #[serde(rename_all = "camelCase")]
     DeleteArchive {
@@ -571,8 +574,9 @@ impl Worker {
                 sources,
                 destination,
                 name,
+                compression_level,
             } => {
-                self.compress(sources, destination, name)?;
+                self.compress(sources, destination, name, compression_level)?;
             }
             Operation::DeleteArchive {
                 archive_path,
@@ -673,7 +677,14 @@ impl Worker {
         sources: Vec<PathBuf>,
         destination: PathBuf,
         name: String,
+        compression_level: u8,
     ) -> Result<()> {
+        if !matches!(compression_level, 1 | 6 | 9) {
+            return Err(FsError::new(
+                "invalid_path",
+                "Compression level must be 1, 6, or 9",
+            ));
+        }
         let name = zip_name(&name)?;
         let destination = filesystem::absolute(&destination)?;
         if !destination.is_dir() {
@@ -718,7 +729,7 @@ impl Worker {
         let mut target = destination.join(&name);
         let mut temp = tempfile::NamedTempFile::new_in(&destination)
             .map_err(|e| FsError::io(e, &destination))?;
-        self.write_zip(&sources, temp.as_file_mut())?;
+        self.write_zip(&sources, temp.as_file_mut(), compression_level)?;
         temp.as_file()
             .sync_all()
             .map_err(|e| FsError::io(e, &target))?;
@@ -786,7 +797,12 @@ impl Worker {
         self.progress.result_path = Some(filesystem::text(&target));
         Ok(())
     }
-    fn write_zip(&mut self, sources: &[PathBuf], output: &mut fs::File) -> Result<()> {
+    fn write_zip(
+        &mut self,
+        sources: &[PathBuf],
+        output: &mut fs::File,
+        compression_level: u8,
+    ) -> Result<()> {
         let error = |e: zip::result::ZipError| FsError::new("archive_error", e.to_string());
         let mut writer = zip::ZipWriter::new(output);
         let mut buffer = vec![0; 1024 * 1024];
@@ -800,6 +816,7 @@ impl Worker {
                     let name = format!("{prefix}{}", zip_member_name(&path)?);
                     let options = zip::write::SimpleFileOptions::default()
                         .compression_method(zip::CompressionMethod::Deflated)
+                        .compression_level(Some(i64::from(compression_level)))
                         .large_file(meta.len() > u32::MAX as u64);
                     if meta.is_dir() {
                         writer
@@ -1166,6 +1183,63 @@ fn remove_leaf(p: &Path) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn compress_uses_each_level_and_preserves_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("file.txt");
+        let contents: String = (0..10_000)
+            .map(|n| {
+                format!(
+                    "Line {}: a repeated sentence to compress with ZIP.\n",
+                    n % 1000
+                )
+            })
+            .collect();
+        fs::write(&source, &contents).unwrap();
+        let mut sizes = Vec::new();
+        for compression_level in [1, 6, 9] {
+            let name = format!("level-{compression_level}.zip");
+            worker("overwrite")
+                .run(Operation::Compress {
+                    sources: vec![source.clone()],
+                    destination: dir.path().to_owned(),
+                    name: name.clone(),
+                    compression_level,
+                })
+                .unwrap();
+            let mut archive =
+                zip::ZipArchive::new(fs::File::open(dir.path().join(name)).unwrap()).unwrap();
+            let mut entry = archive.by_name("file.txt").unwrap();
+            sizes.push(entry.compressed_size());
+            let mut actual = String::new();
+            entry.read_to_string(&mut actual).unwrap();
+            assert_eq!(actual, contents);
+        }
+        assert!(sizes[0] > sizes[2]);
+    }
+
+    #[test]
+    fn compress_defaults_legacy_requests_and_rejects_invalid_levels_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("file.txt");
+        fs::write(&source, "payload").unwrap();
+        let operation: Operation = serde_json::from_value(serde_json::json!({"type": "compress", "sources": [source], "destination": dir.path(), "name": "Backup.zip"})).unwrap();
+        assert!(matches!(
+            operation,
+            Operation::Compress {
+                compression_level: 6,
+                ..
+            }
+        ));
+        for level in [0, 2, 10] {
+            let operation: Operation = serde_json::from_value(serde_json::json!({"type": "compress", "sources": [source], "destination": dir.path(), "name": "Backup.zip", "compressionLevel": level})).unwrap();
+            assert_eq!(
+                worker("overwrite").run(operation).unwrap_err().code,
+                "invalid_path"
+            );
+        }
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+    #[test]
     fn compress_preserves_folder_structure_empty_directories_and_file_contents() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("My folder");
@@ -1180,6 +1254,7 @@ mod tests {
             sources: vec![source.clone(), source.join("nested"), loose],
             destination: destination.clone(),
             name: "Bundle".into(),
+            compression_level: 6,
         })
         .unwrap();
         let output = destination.join("Bundle.zip");
@@ -1226,6 +1301,7 @@ mod tests {
                 sources: vec![source.clone()],
                 destination: destination.clone(),
                 name: "Backup.zip".into(),
+                compression_level: 6,
             });
             if action == "cancel" {
                 assert_eq!(result.unwrap_err().code, "cancelled");
@@ -1277,7 +1353,8 @@ mod tests {
                     .run(Operation::Compress {
                         sources,
                         destination: dir.path().to_owned(),
-                        name: name.into()
+                        name: name.into(),
+                        compression_level: 6
                     })
                     .unwrap_err()
                     .code,
@@ -1297,7 +1374,8 @@ mod tests {
                 .run(Operation::Compress {
                     sources: vec![source.clone()],
                     destination: dir.path().to_owned(),
-                    name: "source.zip".into()
+                    name: "source.zip".into(),
+                    compression_level: 6
                 })
                 .unwrap_err()
                 .code,
@@ -1311,7 +1389,8 @@ mod tests {
                 .run(Operation::Compress {
                     sources: vec![folder.clone()],
                     destination: folder.join("nested"),
-                    name: "Backup.zip".into()
+                    name: "Backup.zip".into(),
+                    compression_level: 6,
                 })
                 .unwrap_err()
                 .code,
@@ -1332,7 +1411,8 @@ mod tests {
             w.run(Operation::Compress {
                 sources: vec![source],
                 destination: dir.path().to_owned(),
-                name: "Backup.zip".into()
+                name: "Backup.zip".into(),
+                compression_level: 6,
             })
             .unwrap_err()
             .code,
@@ -1351,6 +1431,7 @@ mod tests {
             sources: vec![source.clone()],
             destination: dir.path().to_owned(),
             name: "Backup.zip".into(),
+            compression_level: 6,
         };
         let mut w = worker("rename");
         w.policy.as_mut().unwrap().name = Some("Renamed".into());
@@ -1377,7 +1458,8 @@ mod tests {
                 .run(Operation::Compress {
                     sources: vec![source],
                     destination: dir.path().to_owned(),
-                    name: "Backup.zip".into()
+                    name: "Backup.zip".into(),
+                    compression_level: 6,
                 })
                 .unwrap_err()
                 .code,
@@ -1402,6 +1484,7 @@ mod tests {
             sources: vec![source, link.clone(), broken.clone()],
             destination: dir.path().to_owned(),
             name: "Mixed.zip".into(),
+            compression_level: 6,
         })
         .unwrap();
         let mut zip =
@@ -1415,6 +1498,7 @@ mod tests {
             sources: vec![link, broken],
             destination: dir.path().to_owned(),
             name: "Links.zip".into(),
+            compression_level: 6,
         })
         .unwrap();
         assert!(!dir.path().join("Links.zip").exists());
@@ -1435,6 +1519,7 @@ mod tests {
             sources: vec![source.clone()],
             destination: dir.path().to_owned(),
             name: "Backup.zip".into(),
+            compression_level: 6,
         };
         let mut w = worker("overwrite");
         w.run(operation.clone()).unwrap();
@@ -1480,7 +1565,8 @@ mod tests {
             w.run(Operation::Compress {
                 sources: vec![source, folder],
                 destination: destination.clone(),
-                name: "Backup.zip".into()
+                name: "Backup.zip".into(),
+                compression_level: 6,
             })
             .unwrap_err()
             .code,
@@ -1504,6 +1590,7 @@ mod tests {
             sources: vec![source],
             destination: dir.path().to_owned(),
             name: "Backup.ZIP".into(),
+            compression_level: 6,
         })
         .unwrap();
         assert_eq!(
