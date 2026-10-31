@@ -2157,6 +2157,7 @@ dependencies = [
  "filetime",
  "gif",
  "glob",
+ "gtk",
  "imagesize",
  "libc",
  "notify",
@@ -2171,6 +2172,7 @@ dependencies = [
  "trash",
  "url",
  "uuid",
+ "windows 0.59.0",
  "xattr",
  "zip",
 ]

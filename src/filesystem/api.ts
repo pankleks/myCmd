@@ -24,6 +24,8 @@ export interface ClipboardFiles {
   cut: boolean;
 }
 export const api = {
+  systemActions: (path: string) =>
+    invoke<void>('show_system_actions', { path }),
   properties: (path: string) =>
     invoke<FileProperties>('get_file_properties', { path }),
   setPermissions: (

@@ -11,9 +11,14 @@ mod operations;
 mod properties;
 mod search;
 mod shell;
+mod system_actions;
 mod terminal;
 mod watcher;
 fn main() {
+    #[cfg(windows)]
+    if let Some(code) = system_actions::run_helper() {
+        std::process::exit(code);
+    }
     tauri::Builder::default()
         .manage(clipboard::FileClipboard::default())
         .manage(operations::Manager::default())
@@ -27,6 +32,7 @@ fn main() {
             commands::list_directory,
             properties::get_file_properties,
             properties::set_file_permissions,
+            system_actions::show_system_actions,
             clipboard_commands::copy_text_to_clipboard,
             search::search_files,
             search::cancel_search,

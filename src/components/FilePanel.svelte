@@ -23,7 +23,7 @@
   import { preferences } from '../state/preferences.svelte';
   import { errorMessage } from '../filesystem/api';
   let {
-    panel,
+    panel = $bindable(),
     side,
     roots,
     hidden = false,

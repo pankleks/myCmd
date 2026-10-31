@@ -127,6 +127,7 @@
     paste: boolean;
   }>();
   let contextRequest = 0;
+  let systemActionsRunning = $state(false);
   function showShortcuts() {
     quickFindClose();
     shortcutsOpen = true;
@@ -223,6 +224,18 @@
       await api.copyText(displayPath(entry.path));
     } catch (cause) {
       showError(errorMessage(cause), 'Unable to copy path');
+    }
+  }
+  async function showSystemActions(path: string) {
+    if (systemActionsRunning) return;
+    systemActionsRunning = true;
+    try {
+      await api.systemActions(path);
+      await Promise.all([load(commander.left), load(commander.right)]);
+    } catch (cause) {
+      showError(errorMessage(cause), 'System actions failed');
+    } finally {
+      systemActionsRunning = false;
     }
   }
   const contextItems = $derived.by((): MenuItem[] => {
@@ -365,6 +378,14 @@
         shortcut: 'Alt+Enter',
         disabled: !single,
         run: requestProperties,
+      },
+      {
+        label: systemActionsRunning
+          ? 'System actions running…'
+          : 'System actions…',
+        disabled: !single || systemActionsRunning,
+        separator: true,
+        run: () => void showSystemActions(entry.path),
       },
     );
     return items;
@@ -1265,7 +1286,7 @@
 <main style:--file-font-size={`${preferences.fileFontSize}px`}>
   <div class="panels">
     <FilePanel
-      panel={commander.left}
+      bind:panel={commander.left}
       side="left"
       roots={commander.roots}
       oncontext={showContextMenu}
@@ -1273,7 +1294,7 @@
     />
     {#if previewMode && previewSide === 'left'}{@render previewPane()}{/if}
     <FilePanel
-      panel={commander.right}
+      bind:panel={commander.right}
       side="right"
       roots={commander.roots}
       oncontext={showContextMenu}
