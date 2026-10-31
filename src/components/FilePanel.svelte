@@ -27,11 +27,13 @@
     side,
     roots,
     hidden = false,
+    oncontext,
   }: {
     panel: PanelState;
     side: Side;
     roots: Root[];
     hidden?: boolean;
+    oncontext?: (side: Side, x: number, y: number, item: boolean) => void;
   } = $props();
   let scroller: HTMLDivElement;
   let header: HTMLDivElement;
@@ -112,6 +114,30 @@
     else panel.selected = new Set();
     panel.cursor = index;
     scroller.focus();
+  }
+  function context(event: MouseEvent | KeyboardEvent) {
+    if (!oncontext) return;
+    event.preventDefault();
+    event.stopPropagation();
+    commander.activePanel = side;
+    const keyboard = event instanceof KeyboardEvent;
+    const row = keyboard
+      ? scroller.querySelector<HTMLElement>('.file-row.cursor')
+      : (event.target as HTMLElement).closest<HTMLElement>('.file-row');
+    const index = row ? Number(row.dataset.index) : -1;
+    const item = items[index];
+    if (item) {
+      if (!panel.selected.has(item.path)) panel.selected = new Set();
+      panel.cursor = index;
+    }
+    scroller.focus();
+    const rect = (row ?? scroller).getBoundingClientRect();
+    oncontext(
+      side,
+      keyboard ? rect.left + 24 : event.clientX,
+      keyboard ? rect.bottom : event.clientY,
+      !!item && !item.parentEntry,
+    );
   }
   const columns: { column: Column; label: string }[] = [
     { column: 'name', label: 'Name' },
@@ -268,6 +294,18 @@
     aria-busy={panel.loading}
     tabindex={active ? 0 : -1}
     onfocus={() => (commander.activePanel = side)}
+    oncontextmenu={context}
+    onkeydown={(event) => {
+      if (
+        event.key === 'ContextMenu' ||
+        (event.key === 'F10' &&
+          event.shiftKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey)
+      )
+        context(event);
+    }}
     aria-activedescendant={items[panel.cursor]
       ? `${side}-${panel.cursor}`
       : undefined}
@@ -277,6 +315,7 @@
       {@const index = start + offset}
       <div
         id={`${side}-${index}`}
+        data-index={index}
         role="option"
         aria-selected={panel.selected.has(entry.path)}
         tabindex="-1"

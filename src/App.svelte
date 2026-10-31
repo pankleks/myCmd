@@ -11,6 +11,7 @@
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
   import PropertiesDialog from './components/PropertiesDialog.svelte';
+  import ContextMenu, { type MenuItem } from './components/ContextMenu.svelte';
   import SearchDialog from './components/SearchDialog.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
   import { cdTarget } from './utils/cdCommand';
@@ -63,6 +64,7 @@
   import { bytes } from './utils/format';
   import { displayPath } from './utils/paths';
   import { isQuickFindTrigger } from './utils/keyboard';
+  import { fitFunctionBar } from './utils/fitFunctionBar';
   import { createOperationController } from './operations/controller.svelte';
   import { createCommandController } from './operations/commandController.svelte';
   import { createDirectoryRefresh } from './utils/directoryRefresh';
@@ -117,6 +119,14 @@
   let settingsOpen = $state(false);
   let propertiesDialog = $state<{ path: string; side: Side }>();
   let shortcutsOpen = $state(false);
+  let contextMenu = $state<{
+    side: Side;
+    x: number;
+    y: number;
+    item: boolean;
+    paste: boolean;
+  }>();
+  let contextRequest = 0;
   function showShortcuts() {
     quickFindClose();
     shortcutsOpen = true;
@@ -163,6 +173,201 @@
     start: (operation, side) => operations.start(operation, side),
     failed: (cause) =>
       showError(errorMessage(cause), 'Clipboard operation failed'),
+  });
+  function closeContextMenu(restoreFocus = true) {
+    contextRequest++;
+    contextMenu = undefined;
+    if (restoreFocus) focusPanel();
+  }
+  async function showContextMenu(
+    side: Side,
+    x: number,
+    y: number,
+    item: boolean,
+  ) {
+    if (
+      !ready ||
+      busy ||
+      commandRunning ||
+      dialog ||
+      selectionDialog ||
+      settingsOpen ||
+      propertiesDialog ||
+      searchDialog ||
+      viewer ||
+      conflict ||
+      commandError ||
+      error ||
+      shortcutsOpen ||
+      commander[side].loading
+    )
+      return;
+    commander.activePanel = side;
+    quickFindClose();
+    const menu = { side, x, y, item, paste: false };
+    const requestId = ++contextRequest;
+    contextMenu = menu;
+    if (!isLocalPath(commander[side].path)) return;
+    try {
+      const clipboard = await api.readFilesFromClipboard();
+      if (contextMenu && requestId === contextRequest)
+        contextMenu = { ...menu, paste: clipboard.paths.length > 0 };
+    } catch {
+      // Clipboard inspection must not prevent unrelated context-menu actions.
+    }
+  }
+  async function copyContextPath() {
+    const entry = rows(active)[active.cursor];
+    if (!entry) return;
+    try {
+      await api.copyText(displayPath(entry.path));
+    } catch (cause) {
+      showError(errorMessage(cause), 'Unable to copy path');
+    }
+  }
+  const contextItems = $derived.by((): MenuItem[] => {
+    if (!contextMenu) return [];
+    const panel = commander[contextMenu.side];
+    const localFolder = isLocalPath(panel.path);
+    const paste: MenuItem = {
+      label: 'Paste',
+      shortcut: 'Ctrl+V',
+      disabled: !contextMenu.paste || !localFolder,
+      run: () => void fileClipboard.run('paste'),
+    };
+    if (!contextMenu.item && !localFolder)
+      return [
+        { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
+      ];
+    if (!contextMenu.item)
+      return [
+        {
+          label: 'New folder…',
+          shortcut: 'F7',
+          disabled: !localFolder,
+          run: () => request('createDirectory'),
+        },
+        {
+          label: 'New file…',
+          shortcut: 'Shift+F4',
+          disabled: !localFolder,
+          run: () => request('createFile'),
+        },
+        { ...paste, separator: true },
+        {
+          label: 'Open terminal here',
+          shortcut: 'Ctrl+T',
+          disabled: !localFolder,
+          separator: true,
+          run: () => void openTerminal(panel.path),
+        },
+        { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
+      ];
+    const entry = rows(panel)[panel.cursor];
+    const entries = sources(panel);
+    const single = entries.length === 1;
+    const local =
+      entries.length > 0 && entries.every((entry) => isLocalPath(entry.path));
+    const opposite = commander[contextMenu.side === 'left' ? 'right' : 'left'];
+    const localTarget = isLocalPath(
+      searchSession(opposite.path)?.root ?? opposite.path,
+    );
+    const items: MenuItem[] = [
+      {
+        label: 'Open',
+        shortcut: 'Enter',
+        disabled: !single,
+        run: () => void open(panel, entry),
+      },
+    ];
+    if (
+      entry &&
+      isLocalPath(entry.path) &&
+      (entry.type === 'directory' || !entry.directoryTarget)
+    )
+      items.push({
+        label: 'View',
+        shortcut: 'F3',
+        disabled: !single,
+        run: viewCurrentFile,
+      });
+    if (
+      entry &&
+      isLocalPath(entry.path) &&
+      entry.type !== 'directory' &&
+      !entry.directoryTarget
+    )
+      items.push({
+        label: 'Edit',
+        shortcut: 'F4',
+        disabled: !single,
+        run: editCurrentFile,
+      });
+    if (!local)
+      return [
+        ...items,
+        {
+          label: 'Extract to opposite panel…',
+          shortcut: 'F5',
+          disabled: !localTarget,
+          separator: true,
+          run: () => request('copy'),
+        },
+        { label: 'Delete…', shortcut: 'F8', run: () => request('delete') },
+      ];
+    items.push(
+      {
+        label: 'Copy',
+        shortcut: 'Ctrl+C',
+        separator: true,
+        run: () => void fileClipboard.run('copy'),
+      },
+      {
+        label: 'Cut',
+        shortcut: 'Ctrl+X',
+        run: () => void fileClipboard.run('cut'),
+      },
+      paste,
+      {
+        label: 'Copy to opposite panel…',
+        shortcut: 'F5',
+        disabled: !localTarget,
+        separator: true,
+        run: () => request('copy'),
+      },
+      {
+        label: 'Move to opposite panel…',
+        shortcut: 'F6',
+        disabled: !localTarget,
+        run: () => request('move'),
+      },
+      {
+        label: 'Compress to ZIP…',
+        shortcut: 'Alt+F5',
+        disabled: !localTarget,
+        run: () => request('compress'),
+      },
+      {
+        label: 'Rename…',
+        shortcut: 'F2',
+        disabled: !single,
+        run: () => request('rename'),
+      },
+      { label: 'Delete…', shortcut: 'F8', run: () => request('delete') },
+      {
+        label: 'Copy path',
+        disabled: !single,
+        separator: true,
+        run: () => void copyContextPath(),
+      },
+      {
+        label: 'Properties…',
+        shortcut: 'Alt+Enter',
+        disabled: !single,
+        run: requestProperties,
+      },
+    );
+    return items;
   });
   let previewSide = $derived(
     commander.activePanel === 'left' ? 'right' : 'left',
@@ -638,6 +843,7 @@
     };
   });
   function previewShortcut(event: KeyboardEvent) {
+    if (contextMenu) return;
     if (shortcutsOpen) return;
     if (
       dialog ||
@@ -680,6 +886,7 @@
     }
   }
   function keydown(event: KeyboardEvent) {
+    if (contextMenu) return;
     if (shortcutsOpen) return;
     if (
       event.key === 'F1' &&
@@ -1061,6 +1268,7 @@
       panel={commander.left}
       side="left"
       roots={commander.roots}
+      oncontext={showContextMenu}
       hidden={previewMode && previewSide === 'left'}
     />
     {#if previewMode && previewSide === 'left'}{@render previewPane()}{/if}
@@ -1068,6 +1276,7 @@
       panel={commander.right}
       side="right"
       roots={commander.roots}
+      oncontext={showContextMenu}
       hidden={previewMode && previewSide === 'right'}
     />
     {#if previewMode && previewSide === 'right'}{@render previewPane()}{/if}
@@ -1191,41 +1400,56 @@
         !isLocalPath(active.path)}
     />
   </form>
-  {#if preferences.showFunctionBar}<footer>
-      <button onclick={showShortcuts}><kbd>F1</kbd>Help</button>
+  {#if preferences.showFunctionBar}<footer use:fitFunctionBar>
+      <button onclick={showShortcuts} title="F1 — Help"
+        ><kbd>F1</kbd><span>Help</span></button
+      >
       {#each actions as [key, action, label]}<button
           disabled={!ready || busy || commandRunning}
-          onclick={() => request(action)}><kbd>{key}</kbd>{label}</button
+          onclick={() => request(action)}
+          title={`${key} — ${label}`}
+          ><kbd>{key}</kbd><span>{label}</span></button
         >{#if key === 'F2'}<button
             disabled={!ready || busy || commandRunning}
-            onclick={viewCurrentFile}><kbd>F3</kbd>View</button
+            onclick={viewCurrentFile}
+            title="F3 — View"><kbd>F3</kbd><span>View</span></button
           ><button
             class:pressed={previewMode}
             aria-pressed={previewMode}
             disabled={!ready || busy || commandRunning}
             onclick={togglePreviewPane}
-            title="Toggle preview pane"><kbd>Shift+F3</kbd>Preview</button
+            title="Shift+F3 — Toggle preview pane"
+            ><kbd>Shift+F3</kbd><span>Preview</span></button
           ><button
             disabled={!ready || busy || commandRunning}
-            onclick={editCurrentFile}><kbd>F4</kbd>Edit</button
+            onclick={editCurrentFile}
+            title="F4 — Edit"><kbd>F4</kbd><span>Edit</span></button
           >{/if}{#if key === 'F7'}<button
             disabled={!ready || busy || commandRunning}
-            onclick={requestSearch}><kbd>Alt+F7</kbd>Search</button
+            onclick={requestSearch}
+            title="Alt+F7 — Search"><kbd>Alt+F7</kbd><span>Search</span></button
           >{/if}{/each}<button
         disabled={!ready || busy || commandRunning}
         onclick={() => {
           quickFindClose();
           settingsOpen = true;
-        }}><kbd>F9</kbd>Settings</button
+        }}
+        title="F9 — Settings"><kbd>F9</kbd><span>Settings</span></button
       >
       <button
         disabled={!ready || busy || commandRunning || active.loading}
         onclick={requestProperties}
-        title="Properties of the focused local file or folder"
-        ><kbd>Alt+Enter</kbd>Properties</button
+        title="Alt+Enter — Properties of the focused local file or folder"
+        ><kbd>Alt+Enter</kbd><span>Properties</span></button
       >
     </footer>{/if}
 </main>
+{#if contextMenu}<ContextMenu
+    x={contextMenu.x}
+    y={contextMenu.y}
+    items={contextItems}
+    onclose={closeContextMenu}
+  />{/if}
 {#if viewer}<FileViewerDialog {...viewer} onclose={closeViewer} />{/if}
 {#if propertiesDialog}<PropertiesDialog
     path={propertiesDialog.path}

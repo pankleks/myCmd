@@ -7,7 +7,9 @@ import { createFileClipboard } from './fileClipboard';
 vi.mock('../filesystem/api', () => ({
   api: {
     copyFilesToClipboard: vi.fn().mockResolvedValue(undefined),
-    readFilesFromClipboard: vi.fn().mockResolvedValue(['/external/a.txt']),
+    readFilesFromClipboard: vi
+      .fn()
+      .mockResolvedValue({ paths: ['/external/a.txt'], cut: false }),
   },
   errorMessage: String,
 }));
@@ -33,13 +35,16 @@ function setup() {
     if (target) Object.defineProperty(event, 'target', { value: target });
     return { handled: controller.handle(event), event };
   }
-  return { ...dependencies, press };
+  return { ...dependencies, press, controller };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.copyFilesToClipboard).mockResolvedValue(undefined);
-  vi.mocked(api.readFilesFromClipboard).mockResolvedValue(['/external/a.txt']);
+  vi.mocked(api.readFilesFromClipboard).mockResolvedValue({
+    paths: ['/external/a.txt'],
+    cut: false,
+  });
   commander.left = createPanel();
   commander.right = createPanel();
   commander.activePanel = 'left';
@@ -59,20 +64,65 @@ beforeEach(() => {
 });
 
 describe('system file clipboard shortcuts', () => {
+  it('cuts selected items using the system clipboard move marker', () => {
+    commander.left.selected = new Set(['/left/a.txt', '/left/folder']);
+    const { press } = setup();
+    expect(press('x').event.defaultPrevented).toBe(true);
+    expect(api.copyFilesToClipboard).toHaveBeenCalledWith(
+      ['/left/folder', '/left/a.txt'],
+      true,
+    );
+  });
+
+  it('moves external cut files when pasted without implementing deletion itself', async () => {
+    vi.mocked(api.readFilesFromClipboard).mockResolvedValue({
+      paths: ['/external/a.txt'],
+      cut: true,
+    });
+    const { press, start } = setup();
+    press('v');
+    await vi.waitFor(() =>
+      expect(start).toHaveBeenCalledExactlyOnceWith(
+        { type: 'move', sources: ['/external/a.txt'], destination: '/left' },
+        'left',
+      ),
+    );
+  });
+
+  it.each(['copy', 'cut', 'paste'] as const)(
+    'exposes %s for context-menu actions',
+    async (action) => {
+      const { controller, start } = setup();
+      await controller.run(action);
+      if (action === 'paste')
+        expect(start).toHaveBeenCalledWith(
+          { type: 'copy', sources: ['/external/a.txt'], destination: '/left' },
+          'left',
+        );
+      else
+        expect(api.copyFilesToClipboard).toHaveBeenCalledWith(
+          ['/left/folder'],
+          action === 'cut',
+        );
+    },
+  );
   it('copies all selected files and directories, not only the cursor item', async () => {
     commander.left.selected = new Set(['/left/folder', '/left/日本語 # %.txt']);
     const { press } = setup();
     expect(press('c').event.defaultPrevented).toBe(true);
-    expect(api.copyFilesToClipboard).toHaveBeenCalledWith([
-      '/left/folder',
-      '/left/日本語 # %.txt',
-    ]);
+    expect(api.copyFilesToClipboard).toHaveBeenCalledWith(
+      ['/left/folder', '/left/日本語 # %.txt'],
+      false,
+    );
   });
 
   it('falls back to the cursor and supports Command+C', () => {
     const { press } = setup();
     press('C', { ctrlKey: false, metaKey: true });
-    expect(api.copyFilesToClipboard).toHaveBeenCalledWith(['/left/folder']);
+    expect(api.copyFilesToClipboard).toHaveBeenCalledWith(
+      ['/left/folder'],
+      false,
+    );
   });
 
   it('does not copy the parent entry or an empty selection', () => {
@@ -99,7 +149,7 @@ describe('system file clipboard shortcuts', () => {
   });
 
   it('captures the destination before reading the clipboard and suppresses duplicate pastes', async () => {
-    let resolve!: (paths: string[]) => void;
+    let resolve!: (clipboard: { paths: string[]; cut: boolean }) => void;
     vi.mocked(api.readFilesFromClipboard).mockReturnValue(
       new Promise((done) => {
         resolve = done;
@@ -110,7 +160,7 @@ describe('system file clipboard shortcuts', () => {
     press('v');
     commander.activePanel = 'right';
     commander.left.path = '/changed';
-    resolve(['/external/a.txt']);
+    resolve({ paths: ['/external/a.txt'], cut: false });
     await vi.waitFor(() =>
       expect(start).toHaveBeenCalledWith(
         {
@@ -133,7 +183,7 @@ describe('system file clipboard shortcuts', () => {
       if (kind === 'editable') target.setAttribute('contenteditable', 'true');
       if (kind === 'editor') target.className = 'monaco-editor';
       const { press } = setup();
-      for (const key of ['c', 'v']) {
+      for (const key of ['c', 'x', 'v']) {
         const { handled, event } = press(key, {}, target);
         expect(handled).toBe(false);
         expect(event.defaultPrevented).toBe(false);
@@ -166,7 +216,10 @@ describe('system file clipboard shortcuts', () => {
   });
 
   it('does nothing when the clipboard contains no files', async () => {
-    vi.mocked(api.readFilesFromClipboard).mockResolvedValue([]);
+    vi.mocked(api.readFilesFromClipboard).mockResolvedValue({
+      paths: [],
+      cut: false,
+    });
     const { press, start, failed } = setup();
     press('v');
     await vi.waitFor(() =>

@@ -757,6 +757,122 @@ try {
       ),
     'properties closed and panel focus restored',
   );
+  // A separate Windows process publishes Explorer-compatible CF_HDROP and
+  // Preferred DropEffect formats, rather than trusting an internal clipboard round trip.
+  for (const cut of [false, true]) {
+    const name = cut ? 'clipboard-cut.txt' : 'clipboard-copy.txt';
+    const path = join(source, name);
+    await writeFile(path, 'clipboard payload');
+    const publish = spawnSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-STA',
+        '-Command',
+        `
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Windows.Forms
+      $files = New-Object System.Collections.Specialized.StringCollection
+      [void]$files.Add($env:MYCMD_SMOKE_CLIPBOARD_PATH)
+      $data = New-Object System.Windows.Forms.DataObject
+      $data.SetFileDropList($files)
+      $effect = New-Object System.IO.MemoryStream
+      $bytes = [BitConverter]::GetBytes([uint32]${cut ? 2 : 1})
+      $effect.Write($bytes, 0, $bytes.Length)
+      $effect.Position = 0
+      $data.SetData('Preferred DropEffect', $effect)
+      [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+    `,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 10000,
+        env: { ...process.env, MYCMD_SMOKE_CLIPBOARD_PATH: path },
+      },
+    );
+    assert.equal(publish.status, 0, publish.stderr);
+    const clipboard = await invoke('read_files_from_clipboard', {});
+    assert.equal(clipboard.cut, cut);
+    assert.equal(clipboard.paths.length, 1);
+    await evaluate(
+      `document.querySelector('#list-left').dispatchEvent(new MouseEvent('contextmenu', {bubbles:true,cancelable:true,clientX:100,clientY:100}))`,
+    );
+    await until(
+      () =>
+        evaluate(
+          `Array.from(document.querySelectorAll('[role="menuitem"]')).some(button => button.textContent.trim().startsWith('Paste') && !button.disabled)`,
+        ),
+      'context menu Paste enabled for external files',
+    );
+    await evaluate(
+      `Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.textContent.trim().startsWith('Paste')).click()`,
+    );
+    await until(
+      async () => {
+        try {
+          return (
+            (await readFile(join(destination, name), 'utf8')) ===
+            'clipboard payload'
+          );
+        } catch {
+          return false;
+        }
+      },
+      cut ? 'external cut pasted as move' : 'external copy pasted as copy',
+    );
+    await until(
+      () =>
+        evaluate(
+          `!document.querySelector('.operation-status') && !document.querySelector('dialog[open]')`,
+        ),
+      'clipboard paste finished',
+    );
+    if (cut) await assert.rejects(access(path));
+    else await access(path);
+    // Verify outbound file lists and copy/move markers using another process.
+    await invoke('copy_files_to_clipboard', {
+      paths: [join(destination, name)],
+      cut,
+    });
+    const inspect = spawnSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-STA',
+        '-Command',
+        `
+      $ErrorActionPreference = 'Stop'
+      Add-Type -AssemblyName System.Windows.Forms
+      $files = [System.Windows.Forms.Clipboard]::GetFileDropList()
+      if ($files.Count -ne 1 -or $files[0] -ne $env:MYCMD_SMOKE_CLIPBOARD_PATH) { throw 'File list mismatch' }
+      $data = [System.Windows.Forms.Clipboard]::GetData('Preferred DropEffect')
+      if ([BitConverter]::ToUInt32($data.ToArray(), 0) -ne ${cut ? 2 : 1}) { throw 'Drop effect mismatch' }
+    `,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 10000,
+        env: {
+          ...process.env,
+          MYCMD_SMOKE_CLIPBOARD_PATH: join(destination, name),
+        },
+      },
+    );
+    assert.equal(inspect.status, 0, inspect.stderr);
+  }
+  await invoke('copy_text_to_clipboard', { text: destination });
+  await evaluate(
+    `document.querySelector('#list-left').dispatchEvent(new MouseEvent('contextmenu', {bubbles:true,cancelable:true,clientX:100,clientY:100}))`,
+  );
+  assert.equal(
+    await evaluate(
+      `Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.textContent.trim().startsWith('Paste')).disabled`,
+    ),
+    true,
+  );
+  await evaluate(
+    `document.querySelector('[role="menu"]').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}))`,
+  );
   await operation({
     type: 'delete',
     sources: [
@@ -767,7 +883,7 @@ try {
   });
   await assert.rejects(access(join(destination, 'archive')));
   console.log(
-    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image/PDF previews, PDF navigation/zoom/keyboard scrolling and disabled scripts, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input, F7 keyboard flow and Alt+Enter properties with Windows read-only editing.',
+    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image/PDF previews, PDF navigation/zoom/keyboard scrolling and disabled scripts, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input, F7 keyboard flow, Alt+Enter properties with Windows read-only editing, context menus and external Windows clipboard copy/cut/paste.',
   );
 } catch (error) {
   await writeFile(join(diagnostics, 'error.txt'), error.stack ?? String(error));

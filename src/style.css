@@ -567,6 +567,14 @@ footer button {
 footer kbd {
   flex-shrink: 0;
 }
+footer button.hide-shortcut kbd {
+  display: none;
+}
+footer button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 footer button.pressed {
   background: #365b97;
 }

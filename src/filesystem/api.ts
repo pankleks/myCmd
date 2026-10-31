@@ -19,6 +19,10 @@ export interface PreviewImage {
   height: number;
   frames: number;
 }
+export interface ClipboardFiles {
+  paths: string[];
+  cut: boolean;
+}
 export const api = {
   properties: (path: string) =>
     invoke<FileProperties>('get_file_properties', { path }),
@@ -27,9 +31,10 @@ export const api = {
     permissions: { mode?: number; readOnly?: boolean },
   ) => invoke<FileProperties>('set_file_permissions', { path, permissions }),
   copyText: (text: string) => invoke<void>('copy_text_to_clipboard', { text }),
-  copyFilesToClipboard: (paths: string[]) =>
-    invoke<void>('copy_files_to_clipboard', { paths }),
-  readFilesFromClipboard: () => invoke<string[]>('read_files_from_clipboard'),
+  copyFilesToClipboard: (paths: string[], cut = false) =>
+    invoke<void>('copy_files_to_clipboard', { paths, cut }),
+  readFilesFromClipboard: () =>
+    invoke<ClipboardFiles>('read_files_from_clipboard'),
   list: (path: string) => invoke<Listing>('list_directory', { path }),
   readTextPreview: (path: string) =>
     invoke<string>('read_text_preview', { path }),

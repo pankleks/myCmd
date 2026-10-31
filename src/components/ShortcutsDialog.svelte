@@ -36,8 +36,13 @@
     ['Ctrl+A', 'Select all visible items'],
     ['Ctrl+C / Cmd+C', 'Copy selected files to the system clipboard'],
     [
+      'Ctrl+X / Cmd+X',
+      'Cut selected files for moving through the system clipboard',
+    ],
+    ['Shift+F10 / Menu key', 'Open the file context menu'],
+    [
       'Ctrl+V / Cmd+V',
-      'Paste files from the system clipboard into the active folder',
+      'Paste files into the active folder; move files marked as Cut',
     ],
     [
       'Esc',

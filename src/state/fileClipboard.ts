@@ -21,21 +21,21 @@ export function createFileClipboard(dependencies: {
     const panel = commander[side];
     const destination = panel.path;
     try {
-      if (key === 'c') {
+      if (key === 'c' || key === 'x') {
         const paths = sources(panel).map((entry) => entry.path);
         if (!paths.length) return;
         if (!paths.every(isLocalPath))
           throw new Error(
             'Only local files and folders can be copied to the clipboard.',
           );
-        await api.copyFilesToClipboard(paths);
+        await api.copyFilesToClipboard(paths, key === 'x');
       } else {
         if (!destination || !isLocalPath(destination))
           throw new Error('Paste is only available in a local folder.');
-        const paths = await api.readFilesFromClipboard();
+        const { paths, cut } = await api.readFilesFromClipboard();
         if (!paths.length || !dependencies.available()) return;
         await dependencies.start(
-          { type: 'copy', sources: paths, destination },
+          { type: cut ? 'move' : 'copy', sources: paths, destination },
           side,
         );
       }
@@ -47,13 +47,23 @@ export function createFileClipboard(dependencies: {
   }
 
   return {
+    async run(action: 'copy' | 'cut' | 'paste') {
+      if (
+        pending ||
+        !dependencies.available() ||
+        commander[commander.activePanel].loading
+      )
+        return;
+      quickFindClose();
+      await run({ copy: 'c', cut: 'x', paste: 'v' }[action]);
+    },
     handle(event: KeyboardEvent): boolean {
       const key = event.key.toLowerCase();
       if (
         !(event.ctrlKey || event.metaKey) ||
         event.altKey ||
         event.shiftKey ||
-        !['c', 'v'].includes(key) ||
+        !['c', 'x', 'v'].includes(key) ||
         event.defaultPrevented ||
         event.isComposing ||
         (event.target instanceof Element &&
