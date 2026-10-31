@@ -1,6 +1,15 @@
 # Changelog
 
+## [0.2.12] - 2026-10-31
+
+- Add custom names for pinned directories, with inline renaming and search by name or path.
+- Add Alt+F5 ZIP compression to the opposite panel, with editable archive names, progress, cancellation, and overwrite confirmation. Symbolic links are skipped.
+- Improve Markdown preview width and Mermaid diagram label readability.
+- Fix ZIP test path comparisons on Windows and macOS, which blocked the 0.2.11 release.
+
 ## [0.2.11] - 2026-10-31
+
+Not published because cross-platform ZIP tests failed.
 
 - Add custom names for pinned directories, with inline renaming and search by name or path.
 - Add Alt+F5 ZIP compression to the opposite panel, with editable archive names, progress, cancellation, and overwrite confirmation. Symbolic links are skipped.
