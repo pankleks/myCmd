@@ -54,6 +54,13 @@ pub fn directory_size(p: &Path) -> Result<u64> {
 
 pub fn directory_size_checked(p: &Path, check: impl Fn() -> Result<()>) -> Result<u64> {
     check()?;
+    let metadata = fs::symlink_metadata(p).map_err(|e| FsError::io(e, p))?;
+    if metadata.is_symlink() || !metadata.is_dir() {
+        return Err(FsError::new(
+            "invalid_path",
+            "Size calculation requires a directory, not a symbolic link",
+        ));
+    }
     let root = absolute(p)?;
     let mut total = 0u64;
     let mut stack = vec![root];

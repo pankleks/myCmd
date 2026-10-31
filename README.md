@@ -19,6 +19,7 @@ myCmd is a keyboard-centric, two-panel file manager in the Norton / Total Comman
 - Built-in command line for the active folder, plus opening a system terminal there (Ctrl+T)
 - Drive picker (Alt+F1 / Alt+F2), hidden-files toggle (Ctrl+H), file-list font sizing, resizable columns, Catppuccin file icons
 - Settings dialog (F9) and a shortcuts reference (F1)
+- File properties (Alt+Enter): copy the full path, calculate folder size, inspect symbolic links, and edit Unix permissions or the Windows read-only attribute without recursive changes
 
 ## Install
 

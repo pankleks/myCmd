@@ -5,6 +5,7 @@
   const shortcuts = [
     ['F1', 'Keyboard shortcuts'],
     ['F2', 'Rename selected item'],
+    ['Alt+Enter', 'Properties of the focused local file or folder'],
     ['F3', 'View file'],
     ['Shift+F3', 'Toggle preview pane'],
     ['F4', 'Edit file in configured or system default application'],

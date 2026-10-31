@@ -712,6 +712,51 @@ try {
     'new directory cursor',
   );
   await access(join(destination, 'via-keyboard'));
+  await evaluate(`(() => {
+    const list = document.querySelector('#list-left');
+    list.focus();
+    list.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',altKey:true,bubbles:true,cancelable:true}));
+  })()`);
+  await until(
+    () =>
+      evaluate(
+        `document.querySelector('dialog.properties-dialog[open]')?.textContent.includes('via-keyboard') && !!document.querySelector('dialog.properties-dialog input[type="checkbox"]')`,
+      ),
+    'Alt+Enter properties dialog',
+  );
+  for (const readOnly of [true, false]) {
+    await evaluate(`(() => {
+      const dialog = document.querySelector('dialog.properties-dialog');
+      dialog.querySelector('input[type="checkbox"]').click();
+    })()`);
+    await until(
+      () =>
+        evaluate(
+          `!Array.from(document.querySelectorAll('dialog.properties-dialog button')).find(button => button.textContent.trim() === 'Apply').disabled`,
+        ),
+      'properties permission change',
+    );
+    await evaluate(
+      `Array.from(document.querySelectorAll('dialog.properties-dialog button')).find(button => button.textContent.trim() === 'Apply').click()`,
+    );
+    await until(
+      () =>
+        evaluate(
+          `document.querySelector('dialog.properties-dialog')?.textContent.includes('Permissions updated.') && document.querySelector('dialog.properties-dialog input[type="checkbox"]').checked === ${readOnly} && Array.from(document.querySelectorAll('dialog.properties-dialog button')).find(button => button.textContent.trim() === 'Apply').disabled`,
+        ),
+      'Windows read-only attribute applied',
+    );
+  }
+  await evaluate(
+    `Array.from(document.querySelectorAll('dialog.properties-dialog button')).find(button => button.textContent.trim() === 'Close').click()`,
+  );
+  await until(
+    () =>
+      evaluate(
+        `!document.querySelector('dialog.properties-dialog') && document.activeElement.id === 'list-left'`,
+      ),
+    'properties closed and panel focus restored',
+  );
   await operation({
     type: 'delete',
     sources: [
@@ -722,7 +767,7 @@ try {
   });
   await assert.rejects(access(join(destination, 'archive')));
   console.log(
-    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image/PDF previews, PDF navigation/zoom/keyboard scrolling and disabled scripts, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input and F7 keyboard flow.',
+    'PASS: native startup, shell cancellation and recovery, F3 Markdown/image/PDF previews, PDF navigation/zoom/keyboard scrolling and disabled scripts, Shift+F3 cursor-following preview, directory listing, copy, conflict dialog, rename, mkdir, move, delete, progress events, path input, F7 keyboard flow and Alt+Enter properties with Windows read-only editing.',
   );
 } catch (error) {
   await writeFile(join(diagnostics, 'error.txt'), error.stack ?? String(error));

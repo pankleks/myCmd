@@ -51,6 +51,10 @@ fn local_path(value: &str) -> Result<String> {
 }
 
 impl FileClipboard {
+    pub fn copy_text(&self, text: String) -> Result<()> {
+        self.with(|context| context.set_text(text).map_err(clipboard_error))
+    }
+
     pub fn copy_files(&self, paths: Vec<String>) -> Result<()> {
         if paths.is_empty() {
             return Err(FsError::new("invalid_path", "No files selected"));

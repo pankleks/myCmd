@@ -10,6 +10,7 @@
   import ConflictDialog from './components/ConflictDialog.svelte';
   import GlobSelectionDialog from './components/GlobSelectionDialog.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
+  import PropertiesDialog from './components/PropertiesDialog.svelte';
   import SearchDialog from './components/SearchDialog.svelte';
   import ShortcutsDialog from './components/ShortcutsDialog.svelte';
   import { cdTarget } from './utils/cdCommand';
@@ -114,6 +115,7 @@
   let commandError = $state<{ command: string; output: string }>();
   let selectionDialog = $state<{ mode: SelectionMode }>();
   let settingsOpen = $state(false);
+  let propertiesDialog = $state<{ path: string; side: Side }>();
   let shortcutsOpen = $state(false);
   function showShortcuts() {
     quickFindClose();
@@ -151,6 +153,7 @@
       !dialog &&
       !selectionDialog &&
       !settingsOpen &&
+      !propertiesDialog &&
       !searchDialog &&
       !viewer &&
       !conflict &&
@@ -260,6 +263,7 @@
       dialog ||
       selectionDialog ||
       settingsOpen ||
+      propertiesDialog ||
       viewer ||
       error ||
       searchDialog
@@ -286,6 +290,43 @@
   function closeViewer() {
     viewer = undefined;
     void tick().then(focusPanel);
+  }
+  function requestProperties() {
+    if (propertiesDialog) return;
+    if (!ready || busy || commandRunning || active.loading) return;
+    const entry = rows(active)[active.cursor];
+    if (!entry || entry.parentEntry) return;
+    if (active.selected.size > 1) {
+      showError(
+        'Properties supports one item at a time. Clear the selection first.',
+      );
+      return;
+    }
+    if (!isLocalPath(entry.path)) {
+      showError('Properties is available for local files and folders only.');
+      return;
+    }
+    quickFindClose();
+    propertiesDialog = { path: entry.path, side: commander.activePanel };
+  }
+  function closeProperties() {
+    propertiesDialog = undefined;
+    void tick().then(focusPanel);
+  }
+  async function refreshProperties() {
+    const target = propertiesDialog!;
+    await Promise.all([
+      load(
+        commander.left,
+        undefined,
+        target.side === 'left' ? target.path : undefined,
+      ),
+      load(
+        commander.right,
+        undefined,
+        target.side === 'right' ? target.path : undefined,
+      ),
+    ]);
   }
   function viewCurrentFile() {
     if (!ready || busy || commandRunning) return;
@@ -377,6 +418,7 @@
       selectionDialog ||
       searchDialog ||
       settingsOpen ||
+      propertiesDialog ||
       viewer ||
       conflict ||
       commandError ||
@@ -601,6 +643,7 @@
       dialog ||
       selectionDialog ||
       settingsOpen ||
+      propertiesDialog ||
       viewer ||
       conflict ||
       commandError ||
@@ -647,6 +690,7 @@
       !dialog &&
       !searchDialog &&
       !settingsOpen &&
+      !propertiesDialog &&
       !viewer &&
       !conflict &&
       !error &&
@@ -661,6 +705,7 @@
       dialog ||
       selectionDialog ||
       settingsOpen ||
+      propertiesDialog ||
       searchDialog ||
       viewer ||
       conflict ||
@@ -745,6 +790,17 @@
       event.preventDefault();
       quickFindClose();
       request('compress');
+      return;
+    }
+    if (
+      event.key === 'Enter' &&
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      requestProperties();
       return;
     }
     if (
@@ -1162,9 +1218,20 @@
           settingsOpen = true;
         }}><kbd>F9</kbd>Settings</button
       >
+      <button
+        disabled={!ready || busy || commandRunning || active.loading}
+        onclick={requestProperties}
+        title="Properties of the focused local file or folder"
+        ><kbd>Alt+Enter</kbd>Properties</button
+      >
     </footer>{/if}
 </main>
 {#if viewer}<FileViewerDialog {...viewer} onclose={closeViewer} />{/if}
+{#if propertiesDialog}<PropertiesDialog
+    path={propertiesDialog.path}
+    onclose={closeProperties}
+    onapplied={refreshProperties}
+  />{/if}
 {#if shortcutsOpen}<ShortcutsDialog onclose={closeShortcuts} />{/if}
 {#if searchDialog}<SearchDialog
     folder={searchDialog.folder}

@@ -16,6 +16,14 @@ export interface Listing {
   skippedEntries?: number;
   warnings?: ListingWarning[];
 }
+export interface FileProperties extends FileEntry {
+  mode: number | null;
+  owner: string | null;
+  group: string | null;
+  readOnly: boolean;
+  linkTarget: string | null;
+  linkExists: boolean | null;
+}
 export interface ListingWarning {
   code: string;
   message: string;

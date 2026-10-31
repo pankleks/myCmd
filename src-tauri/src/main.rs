@@ -8,6 +8,7 @@ mod config;
 mod error;
 mod filesystem;
 mod operations;
+mod properties;
 mod search;
 mod shell;
 mod terminal;
@@ -24,6 +25,9 @@ fn main() {
             clipboard_commands::copy_files_to_clipboard,
             clipboard_commands::read_files_from_clipboard,
             commands::list_directory,
+            properties::get_file_properties,
+            properties::set_file_permissions,
+            clipboard_commands::copy_text_to_clipboard,
             search::search_files,
             search::cancel_search,
             commands::count_delete_entries,

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Listing, Root } from './types';
+import type { FileProperties, Listing, Root } from './types';
 import type { FileOperation, Resolution } from '../operations/types';
 import type { AppConfig } from '../utils/config';
 export interface CommandResult {
@@ -20,6 +20,13 @@ export interface PreviewImage {
   frames: number;
 }
 export const api = {
+  properties: (path: string) =>
+    invoke<FileProperties>('get_file_properties', { path }),
+  setPermissions: (
+    path: string,
+    permissions: { mode?: number; readOnly?: boolean },
+  ) => invoke<FileProperties>('set_file_permissions', { path, permissions }),
+  copyText: (text: string) => invoke<void>('copy_text_to_clipboard', { text }),
   copyFilesToClipboard: (paths: string[]) =>
     invoke<void>('copy_files_to_clipboard', { paths }),
   readFilesFromClipboard: () => invoke<string[]>('read_files_from_clipboard'),
