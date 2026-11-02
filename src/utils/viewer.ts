@@ -18,7 +18,7 @@ export function isMarkdownFile(extension: string): boolean {
 }
 
 export function isImageFile(extension: string): boolean {
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp'].includes(
+  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'svg'].includes(
     extension.toLowerCase().replace(/^\./, ''),
   );
 }

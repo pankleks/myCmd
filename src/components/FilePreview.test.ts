@@ -67,6 +67,23 @@ afterEach(async () => {
 });
 
 describe('FilePreview', () => {
+  it.each(['svg', '.SVG'])(
+    'previews %s as an isolated image',
+    async (extension) => {
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg"><text>✓ #1</text><script>alert(1)</script></svg>';
+      mocks.text.mockResolvedValue(svg);
+      preview(extension);
+      await settle(() =>
+        expect(target.querySelector('img')?.getAttribute('src')).toBe(
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+        ),
+      );
+      expect(target.querySelector('svg, script')).toBeNull();
+      expect(mocks.image).not.toHaveBeenCalled();
+      expect(mocks.editor).not.toHaveBeenCalled();
+    },
+  );
   it.each(['txt', 'ts', 'json', 'jsonc', 'rs', 'svelte'])(
     'opens Monaco search from the toolbar and keyboard for %s files',
     async (extension) => {

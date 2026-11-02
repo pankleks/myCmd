@@ -90,7 +90,7 @@ describe('isImageFile', () => {
       'bmp',
     ])
       expect(isImageFile(extension)).toBe(true);
-    expect(isImageFile('svg')).toBe(false);
+    expect(isImageFile('svg')).toBe(true);
     expect(isImageFile('txt')).toBe(false);
   });
 });

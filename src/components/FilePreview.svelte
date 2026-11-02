@@ -146,7 +146,11 @@
     try {
       if (isPdf) return;
       if (isImage) {
-        const dataUrl = await api.readImagePreview(path);
+        // Keep SVG in an image context: scripts and external resources are disabled.
+        const dataUrl =
+          extension.toLowerCase().replace(/^\./, '') === 'svg'
+            ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(await api.readTextPreview(path))}`
+            : await api.readImagePreview(path);
         if (!disposed) imagePreview = dataUrl;
         return;
       }
