@@ -1,6 +1,13 @@
 # Changelog
 
+## [0.2.14] - 2026-11-02
+
+- Fix a Windows-only Clippy warning that blocked the 0.2.13 release.
+- Include the SVG previews, SFTP previews, and remote favorites from 0.2.13.
+
 ## [0.2.13] - 2026-11-02
+
+Not published because Windows Clippy failed.
 
 - Add isolated SVG image previews.
 - Enable F3 View and the preview pane for SFTP files, including text, Markdown, images, PDFs, and directory summaries, with existing preview size limits.
