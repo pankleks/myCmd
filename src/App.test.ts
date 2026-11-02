@@ -42,6 +42,7 @@ vi.mock('./filesystem/api', () => ({
     cancel: vi.fn(async () => {}),
     resolve: vi.fn(async () => {}),
     readFilesFromClipboard: vi.fn(async () => ({ paths: [], cut: false })),
+    readImagePreview: vi.fn(async () => 'data:image/png;base64,cG5n'),
   },
   errorMessage: (error: Error) => error.message,
 }));
@@ -107,6 +108,27 @@ function press(key: string) {
     );
   flushSync();
 }
+it('opens the remote file viewer when F3 is pressed on an SFTP panel', async () => {
+  remotePanel('left');
+  const path = locationKey({ ...remoteLocation, path: '/data/remote.png' });
+  commander.left.entries = [
+    {
+      ...commander.left.entries[0],
+      name: 'remote.png',
+      path,
+      extension: 'png',
+    },
+  ];
+  flushSync();
+  press('F3');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(target.querySelector('dialog img')?.getAttribute('src')).toBe(
+      'data:image/png;base64,cG5n',
+    );
+  });
+  expect(api.readImagePreview).toHaveBeenCalledWith(path);
+});
 it('routes local-to-SFTP F5 to a remote upload without passing resource URIs to local copy', async () => {
   remotePanel('right');
   press('F5');

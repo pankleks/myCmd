@@ -121,7 +121,11 @@
   let selectionDialog = $state<{ mode: SelectionMode }>();
   let settingsOpen = $state(false);
   let propertiesDialog = $state<{ path: string; side: Side }>();
-  let connectionsDialog = $state<{ side: Side; initialId?: string }>();
+  let connectionsDialog = $state<{
+    side: Side;
+    initialId?: string;
+    target?: string;
+  }>();
   let shortcutsOpen = $state(false);
   let contextMenu = $state<{
     side: Side;
@@ -542,7 +546,7 @@
     settingsOpen = false;
     void tick().then(focusPanel);
   }
-  function requestConnections(side: Side) {
+  function requestConnections(side: Side, target?: string) {
     if (
       !ready ||
       busy ||
@@ -560,11 +564,12 @@
     )
       return;
     commander.activePanel = side;
-    const location = parseLocation(commander[side].path);
+    const location = parseLocation(target ?? commander[side].path);
     quickFindClose();
     connectionsDialog = {
       side,
       initialId: location.kind === 'sftp' ? location.connectionId : undefined,
+      target,
     };
   }
   function closeConnections() {
@@ -575,15 +580,20 @@
     connection: Extract<SftpConnectResult, { status: 'connected' }>,
   ) {
     const panel = commander[connectionsDialog!.side];
+    const target =
+      connectionsDialog!.initialId === connection.id
+        ? connectionsDialog!.target
+        : undefined;
     sftpNames.set(connection.id, connection.name);
     closeConnections();
     await load(
       panel,
-      locationKey({
-        kind: 'sftp',
-        connectionId: connection.id,
-        path: connection.path,
-      }),
+      target ??
+        locationKey({
+          kind: 'sftp',
+          connectionId: connection.id,
+          path: connection.path,
+        }),
     );
     focusPanel();
   }
@@ -677,7 +687,11 @@
   }
   function viewCurrentFile() {
     if (!ready || busy || commandRunning) return;
-    if (!isLocalPath(active.path) && !searchSession(active.path)) {
+    if (
+      !isLocalPath(active.path) &&
+      !searchSession(active.path) &&
+      parseLocation(active.path).kind !== 'sftp'
+    ) {
       showError('Previews are available for local files only.');
       return;
     }
@@ -703,12 +717,6 @@
   }
   function togglePreviewPane() {
     if (!ready || busy || commandRunning) return;
-    if (!previewMode && parseLocation(active.path).kind === 'sftp') {
-      showError(
-        'Download remote files to a local folder before previewing them.',
-      );
-      return;
-    }
     quickFindClose();
     previewMode = !previewMode;
     void tick().then(focusPanel);

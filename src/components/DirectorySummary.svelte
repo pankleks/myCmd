@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { api, errorMessage } from '../filesystem/api';
   import { summarizeDirectory } from '../utils/directorySummary';
+  import { parseLocation, providerFor } from '../filesystem/providers';
   import { bytes } from '../utils/format';
 
   let { path, name }: { path: string; name: string } = $props();
@@ -26,7 +27,12 @@
     try {
       const summary = await summarizeDirectory(
         path,
-        (dir) => api.list(dir),
+        (dir) => {
+          const location = parseLocation(dir);
+          return location.kind === 'sftp'
+            ? providerFor(location).list(location)
+            : api.list(dir);
+        },
         () => disposed,
       );
       if (disposed) return;

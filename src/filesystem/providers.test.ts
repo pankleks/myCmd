@@ -11,12 +11,41 @@ import {
   isLocalPath,
 } from './providers';
 import { invoke } from '@tauri-apps/api/core';
+import { api } from './api';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => vi.fn()),
 }));
 
 describe('panel providers', () => {
+  it('routes all preview formats through the selected SFTP connection', async () => {
+    const path = locationKey({
+      kind: 'sftp',
+      connectionId: 'connection',
+      path: '/a # 日本語.svg',
+    });
+    for (const [read, command] of [
+      [api.readTextPreview, 'read_text_preview'],
+      [api.readImagePreview, 'read_image_preview'],
+      [api.readPdfPreview, 'read_pdf_preview'],
+    ] as const) {
+      await read(path);
+      expect(invoke).toHaveBeenLastCalledWith(command, {
+        path: '/a # 日本語.svg',
+        connectionId: 'connection',
+      });
+    }
+    await api.readMarkdownImage(path, 'image.png');
+    expect(invoke).toHaveBeenLastCalledWith('read_markdown_image', {
+      markdownPath: '/a # 日本語.svg',
+      connectionId: 'connection',
+      source: 'image.png',
+    });
+    await api.readTextPreview('/local.txt');
+    expect(invoke).toHaveBeenLastCalledWith('read_text_preview', {
+      path: '/local.txt',
+    });
+  });
   it('round-trips remote paths without interpreting them as local files', () => {
     const location = {
       kind: 'sftp' as const,

@@ -81,6 +81,42 @@ it('interprets typed absolute paths in an SFTP panel as remote, not local roots 
     path: '/home',
   });
 });
+it('pins, opens, and unpins a remote folder without losing its connection', async () => {
+  await unmount(component);
+  const path = locationKey({
+    kind: 'sftp',
+    connectionId: 'work',
+    path: '/data/日本語',
+  });
+  component = mount(LocationPicker, {
+    target,
+    props: {
+      path,
+      label: 'SFTP · Work — /data/日本語',
+      side: 'left',
+      roots: [],
+      onnavigate: navigate,
+      onescape: vi.fn(),
+    },
+  });
+  flushSync();
+  const pin = target.querySelector<HTMLButtonElement>('.location-pin')!;
+  expect(pin.disabled).toBe(false);
+  pin.click();
+  flushSync();
+  expect(preferences.pinnedDirectories).toContain(path);
+  target.querySelector('input')!.focus();
+  flushSync();
+  const favorite = Array.from(
+    target.querySelectorAll<HTMLButtonElement>('.location-option'),
+  ).find((button) => button.textContent?.includes('日本語'))!;
+  expect(favorite.textContent).not.toContain('%');
+  favorite.click();
+  expect(navigate).toHaveBeenCalledWith(path);
+  pin.click();
+  flushSync();
+  expect(preferences.pinnedDirectories).not.toContain(path);
+});
 it('opens the full dropdown when the path input receives focus', () => {
   const input = target.querySelector<HTMLInputElement>('input')!;
   input.focus();

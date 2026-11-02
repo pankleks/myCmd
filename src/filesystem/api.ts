@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { parseLocation } from './providers';
 import type {
   FileProperties,
   Listing,
@@ -29,6 +30,12 @@ export interface ClipboardFiles {
   paths: string[];
   cut: boolean;
 }
+function previewArgs(path: string) {
+  const location = parseLocation(path);
+  return location.kind === 'sftp'
+    ? { path: location.path, connectionId: location.connectionId }
+    : { path };
+}
 export const api = {
   connectSftp: (request: SftpConnectRequest) =>
     invoke<SftpConnectResult>('connect_sftp', { request }),
@@ -50,13 +57,19 @@ export const api = {
     invoke<ClipboardFiles>('read_files_from_clipboard'),
   list: (path: string) => invoke<Listing>('list_directory', { path }),
   readTextPreview: (path: string) =>
-    invoke<string>('read_text_preview', { path }),
+    invoke<string>('read_text_preview', previewArgs(path)),
   readPdfPreview: (path: string) =>
-    invoke<ArrayBuffer>('read_pdf_preview', { path }),
+    invoke<ArrayBuffer>('read_pdf_preview', previewArgs(path)),
   readImagePreview: (path: string) =>
-    invoke<string>('read_image_preview', { path }),
-  readMarkdownImage: (markdownPath: string, source: string) =>
-    invoke<PreviewImage>('read_markdown_image', { markdownPath, source }),
+    invoke<string>('read_image_preview', previewArgs(path)),
+  readMarkdownImage: (markdownPath: string, source: string) => {
+    const { path, ...connection } = previewArgs(markdownPath);
+    return invoke<PreviewImage>('read_markdown_image', {
+      markdownPath: path,
+      ...connection,
+      source,
+    });
+  },
   roots: () => invoke<Root[]>('list_roots'),
   open: (path: string) => invoke<void>('open_file', { path }),
   edit: (path: string, editor: string | null) =>

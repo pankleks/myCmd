@@ -49,7 +49,12 @@ export function rows(panel: PanelState): Row[] {
 
 export function previewEntry(panel: PanelState): Row | undefined {
   const searching = !!searchSession(panel.path);
-  if ((panel.loading && !searching) || (!isLocalPath(panel.path) && !searching))
+  if (
+    (panel.loading && !searching) ||
+    (!isLocalPath(panel.path) &&
+      !searching &&
+      parseLocation(panel.path).kind !== 'sftp')
+  )
     return;
   const entry = rows(panel)[panel.cursor];
   return entry?.parentEntry ? undefined : entry;
@@ -130,6 +135,7 @@ export async function load(
     panel.cursor = index >= 0 ? index : 0;
   } catch (error) {
     if (revision === panel.revision) panel.error = errorMessage(error);
+    return error;
   } finally {
     if (revision === panel.revision) panel.loading = false;
   }

@@ -39,7 +39,7 @@
     roots: Root[];
     hidden?: boolean;
     oncontext?: (side: Side, x: number, y: number, item: boolean) => void;
-    onconnections?: (side: Side) => void;
+    onconnections?: (side: Side, target?: string) => void;
   } = $props();
   let scroller: HTMLDivElement;
   let header: HTMLDivElement;
@@ -236,7 +236,18 @@
     onconnections={onconnections ? () => onconnections?.(side) : undefined}
     onnavigate={async (path) => {
       commander.activePanel = side;
-      await load(panel, path);
+      const failure = await load(panel, path);
+      if (
+        parseLocation(path).kind === 'sftp' &&
+        failure &&
+        typeof failure === 'object' &&
+        'code' in failure &&
+        failure.code === 'sftp_disconnected'
+      ) {
+        panel.error = undefined;
+        onconnections?.(side, path);
+        return;
+      }
       if (!panel.error) scroller.focus();
     }}
     onescape={() => scroller.focus()}

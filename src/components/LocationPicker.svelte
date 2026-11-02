@@ -76,7 +76,8 @@
     class="location-pin"
     class:pinned
     aria-pressed={pinned}
-    disabled={!path || !isLocalPath(path)}
+    disabled={!path ||
+      (!isLocalPath(path) && parseLocation(path).kind !== 'sftp')}
     title={pinned ? 'Unpin current directory' : 'Pin current directory'}
     aria-label={pinned ? 'Unpin current directory' : 'Pin current directory'}
     onclick={togglePin}

@@ -3,11 +3,18 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import FilePanel from './FilePanel.svelte';
 import { commander, createPanel } from '../state/commander.svelte';
+import { api } from '../filesystem/api';
+import { preferences } from '../state/preferences.svelte';
+import { locationKey } from '../filesystem/providers';
 
-vi.mock('../filesystem/api', () => ({ api: {}, errorMessage: String }));
+vi.mock('../filesystem/api', () => ({
+  api: { listSftp: vi.fn() },
+  errorMessage: String,
+}));
 let component: ReturnType<typeof mount>;
 let target: HTMLDivElement;
 const oncontext = vi.fn();
+const onconnections = vi.fn();
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubGlobal(
@@ -36,7 +43,13 @@ beforeEach(async () => {
   document.body.append(target);
   component = mount(FilePanel, {
     target,
-    props: { panel: commander.left, side: 'left', roots: [], oncontext },
+    props: {
+      panel: commander.left,
+      side: 'left',
+      roots: [],
+      oncontext,
+      onconnections,
+    },
   });
   flushSync();
   await tick();
@@ -59,6 +72,29 @@ function rightClick(selector: string) {
   flushSync();
 }
 
+it('requests reconnection to the saved folder when a remote favorite is disconnected', async () => {
+  const path = locationKey({
+    kind: 'sftp',
+    connectionId: 'work',
+    path: '/saved',
+  });
+  preferences.pinnedDirectories = [path];
+  vi.mocked(api.listSftp).mockRejectedValue({
+    code: 'sftp_disconnected',
+    message: 'Disconnected',
+  });
+  target.querySelector('input')!.focus();
+  flushSync();
+  Array.from(target.querySelectorAll<HTMLButtonElement>('.location-option'))
+    .find((button) => button.textContent?.includes('/saved'))!
+    .click();
+  await vi.waitFor(() =>
+    expect(onconnections).toHaveBeenCalledWith('left', path),
+  );
+  expect(commander.left.path).toBe('/left');
+  expect(commander.left.error).toBeUndefined();
+  preferences.pinnedDirectories = [];
+});
 it('preserves selected items and activates the clicked panel', () => {
   commander.left.selected = new Set(['/left/a.txt', '/left/b.txt']);
   rightClick('#left-1 .filename');

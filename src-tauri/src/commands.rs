@@ -69,6 +69,57 @@ pub async fn count_delete_entries(paths: Vec<String>) -> Result<DeleteCounts> {
 mod tests {
     use super::*;
     #[test]
+    fn preview_routing_preserves_local_reads_and_reports_disconnected_sftp() {
+        let manager = crate::sftp::Manager::default();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "preview").unwrap();
+        assert_eq!(
+            with_preview_path(
+                &manager,
+                None,
+                file.path().to_str().unwrap(),
+                8,
+                filesystem::read_text_preview
+            )
+            .unwrap(),
+            "preview"
+        );
+        assert_eq!(
+            with_preview_path(
+                &manager,
+                Some("missing"),
+                "/remote.txt",
+                8,
+                filesystem::read_text_preview
+            )
+            .unwrap_err()
+            .code,
+            "sftp_disconnected"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "starts a private local OpenSSH server; requires /usr/sbin/sshd and ssh-keygen"]
+    fn remote_preview_reads_and_limits_files() {
+        let fixture = crate::sftp::tests::Fixture::new();
+        let manager = crate::sftp::Manager::default();
+        fixture.connect(&manager);
+        let path = fixture.dir.path().join("preview.svg");
+        std::fs::write(&path, "<svg/>").unwrap();
+        let read = |limit| {
+            with_preview_path(
+                &manager,
+                Some(&fixture.profile.id),
+                path.to_str().unwrap(),
+                limit,
+                filesystem::read_text_preview,
+            )
+        };
+        assert_eq!(read(8).unwrap(), "<svg/>");
+        assert_eq!(read(2).unwrap_err().code, "file_too_large");
+    }
+    #[test]
     fn editing_rejects_directories_before_launching_an_application() {
         let directory = tempfile::tempdir().unwrap();
         assert_eq!(
@@ -147,35 +198,145 @@ pub async fn list_directory(path: String) -> Result<filesystem::Listing> {
         .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
-pub async fn read_text_preview(path: String) -> Result<String> {
+pub async fn read_text_preview(
+    path: String,
+    connection_id: Option<String>,
+    state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
+) -> Result<String> {
+    let manager = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        filesystem::read_text_preview(std::path::Path::new(&path))
+        with_preview_path(
+            &manager,
+            connection_id.as_deref(),
+            &path,
+            8 * 1024 * 1024,
+            filesystem::read_text_preview,
+        )
     })
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
-pub async fn read_pdf_preview(path: String) -> Result<tauri::ipc::Response> {
+pub async fn read_pdf_preview(
+    path: String,
+    connection_id: Option<String>,
+    state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
+) -> Result<tauri::ipc::Response> {
+    let manager = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        filesystem::read_pdf_preview(std::path::Path::new(&path)).map(tauri::ipc::Response::new)
+        with_preview_path(
+            &manager,
+            connection_id.as_deref(),
+            &path,
+            64 * 1024 * 1024,
+            filesystem::read_pdf_preview,
+        )
+        .map(tauri::ipc::Response::new)
     })
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
-pub async fn read_image_preview(path: String) -> Result<String> {
+pub async fn read_image_preview(
+    path: String,
+    connection_id: Option<String>,
+    state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
+) -> Result<String> {
+    let manager = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        filesystem::read_image_preview(std::path::Path::new(&path))
+        with_preview_path(
+            &manager,
+            connection_id.as_deref(),
+            &path,
+            4 * 1024 * 1024,
+            filesystem::read_image_preview,
+        )
     })
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
+fn with_preview_path<T>(
+    manager: &crate::sftp::Manager,
+    connection_id: Option<&str>,
+    path: &str,
+    limit: u64,
+    read: impl FnOnce(&std::path::Path) -> Result<T>,
+) -> Result<T> {
+    use std::io::Read;
+    let Some(id) = connection_id else {
+        return read(std::path::Path::new(path));
+    };
+    crate::sftp::remote_path(path)?;
+    let connection = manager.get(id)?;
+    let connection = connection
+        .lock()
+        .map_err(|e| FsError::new("sftp_error", e.to_string()))?;
+    let mut file = connection
+        .sftp
+        .open(std::path::Path::new(path))
+        .map_err(crate::sftp::error)?;
+    let stat = file.stat().map_err(crate::sftp::error)?;
+    if !stat.is_file() {
+        return Err(FsError::new("not_a_file", "Only files can be previewed"));
+    }
+    if stat.size.is_some_and(|size| size > limit) {
+        return Err(FsError::new(
+            "file_too_large",
+            "File exceeds the preview size limit",
+        ));
+    }
+    let mut temporary = tempfile::Builder::new()
+        .suffix(&format!(
+            ".{}",
+            std::path::Path::new(path)
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+        ))
+        .tempfile()
+        .map_err(|e| FsError::new("io_error", e.to_string()))?;
+    let copied = std::io::copy(&mut file.take(limit + 1), &mut temporary)
+        .map_err(|e| FsError::new("sftp_error", e.to_string()))?;
+    if copied > limit {
+        return Err(FsError::new(
+            "file_too_large",
+            "File exceeds the preview size limit",
+        ));
+    }
+    drop(connection);
+    read(temporary.path())
 }
 #[tauri::command]
 pub async fn read_markdown_image(
     markdown_path: String,
     source: String,
+    connection_id: Option<String>,
+    state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
 ) -> Result<filesystem::PreviewImage> {
+    let manager = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(id) = connection_id {
+            let source = source.split(['?', '#']).next().unwrap_or_default().trim();
+            let source = filesystem::decode_uri_path(source)
+                .ok_or_else(|| FsError::new("invalid_image_path", "Invalid image path"))?;
+            if source.is_empty()
+                || source.starts_with('/')
+                || source.contains('\\')
+                || filesystem::has_uri_scheme(&source)
+            {
+                return Err(FsError::new(
+                    "invalid_image_path",
+                    "Only relative remote images can be previewed",
+                ));
+            }
+            let path = format!("{}/{}", crate::sftp::parent(&markdown_path), source);
+            return with_preview_path(&manager, Some(&id), &path, 4 * 1024 * 1024, |temporary| {
+                filesystem::read_markdown_image(
+                    temporary,
+                    temporary.file_name().unwrap().to_str().unwrap(),
+                )
+            });
+        }
         filesystem::read_markdown_image(std::path::Path::new(&markdown_path), &source)
     })
     .await

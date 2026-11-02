@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.13] - 2026-11-02
+
+- Add isolated SVG image previews.
+- Enable F3 View and the preview pane for SFTP files, including text, Markdown, images, PDFs, and directory summaries, with existing preview size limits.
+- Allow pinning SFTP folders as favorites and reconnecting saved connections when opening them.
+
 ## [0.2.12] - 2026-10-31
 
 - Add custom names for pinned directories, with inline renaming and search by name or path.

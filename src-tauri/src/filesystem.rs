@@ -449,7 +449,7 @@ fn validate_gif_frames(content: &[u8], canvas_pixels: usize) -> Result<usize> {
     Ok(frames)
 }
 
-fn decode_uri_path(source: &str) -> Option<String> {
+pub(crate) fn decode_uri_path(source: &str) -> Option<String> {
     let bytes = source.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -476,7 +476,7 @@ fn hex_value(value: u8) -> Option<u8> {
     }
 }
 
-fn has_uri_scheme(source: &str) -> bool {
+pub(crate) fn has_uri_scheme(source: &str) -> bool {
     let Some(colon) = source.find(':') else {
         return false;
     };

@@ -5,6 +5,7 @@
   import type { Root } from '../filesystem/types';
   import { preferences, scheduleSave } from '../state/preferences.svelte';
   import { displayPath } from '../utils/paths';
+  import { locationLabel } from '../filesystem/providers';
 
   let {
     path,
@@ -47,7 +48,9 @@
   function favoriteName(pin: string) {
     return (
       preferences.pinnedDirectoryNames[pin] ??
-      pin.split(/[\\/]/).filter(Boolean).pop() ??
+      (pin.startsWith('sftp:')
+        ? locationLabel(pin)
+        : pin.split(/[\\/]/).filter(Boolean).pop()) ??
       pin
     );
   }
@@ -84,7 +87,7 @@
   let filteredRoots = $derived(roots.filter((r) => matches(r.name, r.path)));
   let filteredPins = $derived(
     preferences.pinnedDirectories
-      .filter((p) => matches(favoriteName(p), p))
+      .filter((p) => matches(favoriteName(p), locationLabel(p)))
       .sort((a, b) => a.localeCompare(b)),
   );
   let firstMatch = $derived(
@@ -289,7 +292,7 @@
                   class="pin-star"
                 />
                 {favoriteName(pin)}</span
-              ><small>{pin}</small>
+              ><small>{locationLabel(pin)}</small>
             </button>
             <button
               type="button"
