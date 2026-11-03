@@ -265,3 +265,28 @@ it('reports helper failures without claiming that an action succeeded', async ()
     expect(target.textContent).toContain('Native helper failed');
   });
 });
+
+it('keeps Shift+Tab inside the search dialog instead of swapping panels', () => {
+  target.querySelector(`#list-${commander.activePanel}`)!.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'F7',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  flushSync();
+  const field = target.querySelector('dialog input')!;
+  expect(field).not.toBeNull();
+  const leftPath = commander.left.path;
+  const shiftTab = new KeyboardEvent('keydown', {
+    key: 'Tab',
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  field.dispatchEvent(shiftTab);
+  flushSync();
+  expect(commander.left.path).toBe(leftPath);
+  expect(shiftTab.defaultPrevented).toBe(false);
+});

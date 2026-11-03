@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isQuickFindTrigger } from './keyboard';
+import { isQuickFindTrigger, modifiers } from './keyboard';
 
 describe('isQuickFindTrigger', () => {
   it('accepts the left Alt with a letter', () => {
@@ -65,5 +65,22 @@ describe('isQuickFindTrigger', () => {
     expect(
       isQuickFindTrigger({ ...base, key: 'd', altKey: true, shiftKey: true }),
     ).toBe(false);
+  });
+});
+
+describe('modifiers', () => {
+  const key = (mods: Partial<KeyboardEvent>) =>
+    modifiers({
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      ...mods,
+    });
+  it('names held modifiers in a fixed order', () => {
+    expect(key({})).toBe('');
+    expect(key({ altKey: true })).toBe('alt');
+    expect(key({ shiftKey: true, ctrlKey: true })).toBe('ctrl+shift');
+    expect(key({ metaKey: true, altKey: true })).toBe('meta+alt');
   });
 });

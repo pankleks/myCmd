@@ -66,7 +66,7 @@
   } from './operations/types';
   import { bytes } from './utils/format';
   import { displayPath } from './utils/paths';
-  import { isQuickFindTrigger } from './utils/keyboard';
+  import { isQuickFindTrigger, modifiers } from './utils/keyboard';
   import { fitFunctionBar } from './utils/fitFunctionBar';
   import { createOperationController } from './operations/controller.svelte';
   import { createCommandController } from './operations/commandController.svelte';
@@ -171,23 +171,24 @@
     permanent: boolean;
   }>();
   let active = $derived(commander[commander.activePanel]);
+  let modalOpen = $derived(
+    !!(
+      dialog ||
+      selectionDialog ||
+      settingsOpen ||
+      propertiesDialog ||
+      connectionsDialog ||
+      searchDialog ||
+      viewer ||
+      conflict ||
+      commandError ||
+      error ||
+      shortcutsOpen
+    ),
+  );
   const fileClipboard = createFileClipboard({
     available: () =>
-      isTauri() &&
-      ready &&
-      !busy &&
-      !commandRunning &&
-      !dialog &&
-      !selectionDialog &&
-      !settingsOpen &&
-      !propertiesDialog &&
-      !connectionsDialog &&
-      !searchDialog &&
-      !viewer &&
-      !conflict &&
-      !commandError &&
-      !error &&
-      !shortcutsOpen,
+      isTauri() && ready && !busy && !commandRunning && !modalOpen,
     start: (operation, side) => operations.start(operation, side),
     failed: (cause) =>
       showError(errorMessage(cause), 'Clipboard operation failed'),
@@ -207,17 +208,7 @@
       !ready ||
       busy ||
       commandRunning ||
-      dialog ||
-      selectionDialog ||
-      settingsOpen ||
-      propertiesDialog ||
-      connectionsDialog ||
-      searchDialog ||
-      viewer ||
-      conflict ||
-      commandError ||
-      error ||
-      shortcutsOpen ||
+      modalOpen ||
       commander[side].loading
     )
       return;
@@ -382,22 +373,7 @@
     void tick().then(focusPanel);
   }
   function requestConnections(side: Side, target?: string) {
-    if (
-      !ready ||
-      busy ||
-      commandRunning ||
-      connectionsDialog ||
-      dialog ||
-      settingsOpen ||
-      propertiesDialog ||
-      viewer ||
-      searchDialog ||
-      error ||
-      conflict ||
-      selectionDialog ||
-      shortcutsOpen
-    )
-      return;
+    if (!ready || busy || commandRunning || modalOpen) return;
     commander.activePanel = side;
     const location = parseLocation(target ?? commander[side].path);
     quickFindClose();
@@ -443,20 +419,7 @@
     closeConnections();
   }
   function requestSearch() {
-    if (
-      !ready ||
-      busy ||
-      commandRunning ||
-      dialog ||
-      selectionDialog ||
-      settingsOpen ||
-      propertiesDialog ||
-      connectionsDialog ||
-      viewer ||
-      error ||
-      searchDialog
-    )
-      return;
+    if (!ready || busy || commandRunning || modalOpen) return;
     const location = parseLocation(active.path);
     if (location.kind === 'sftp') {
       showError('Recursive search is not available on SFTP connections.');
@@ -610,16 +573,7 @@
       !ready ||
       busy ||
       commandRunning ||
-      dialog ||
-      selectionDialog ||
-      searchDialog ||
-      settingsOpen ||
-      propertiesDialog ||
-      connectionsDialog ||
-      viewer ||
-      conflict ||
-      commandError ||
-      error ||
+      modalOpen ||
       active.loading ||
       !active.path
     )
@@ -854,28 +808,8 @@
     };
   });
   function previewShortcut(event: KeyboardEvent) {
-    if (connectionsDialog) return;
-    if (contextMenu) return;
-    if (shortcutsOpen) return;
-    if (
-      dialog ||
-      selectionDialog ||
-      settingsOpen ||
-      propertiesDialog ||
-      viewer ||
-      conflict ||
-      commandError ||
-      error ||
-      event.isComposing
-    )
-      return;
-    if (
-      event.key === 'Tab' &&
-      event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
+    if (contextMenu || modalOpen || event.isComposing) return;
+    if (event.key === 'Tab' && modifiers(event) === 'shift') {
       event.preventDefault();
       event.stopPropagation();
       if (!event.repeat && ready && !busy && !commandRunning) {
@@ -885,13 +819,7 @@
       }
       return;
     }
-    if (
-      event.key === 'F3' &&
-      event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
+    if (event.key === 'F3' && modifiers(event) === 'shift') {
       event.preventDefault();
       event.stopPropagation();
       if (!event.repeat) togglePreviewPane();
@@ -900,50 +828,17 @@
   function keydown(event: KeyboardEvent) {
     if (contextMenu) return;
     if (shortcutsOpen) return;
-    if (
-      event.key === 'F1' &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      !dialog &&
-      !searchDialog &&
-      !settingsOpen &&
-      !propertiesDialog &&
-      !connectionsDialog &&
-      !viewer &&
-      !conflict &&
-      !error &&
-      !commandError &&
-      !selectionDialog
-    ) {
+    if (event.key === 'F1' && modifiers(event) === '' && !modalOpen) {
       event.preventDefault();
       showShortcuts();
       return;
     }
-    if (
-      dialog ||
-      selectionDialog ||
-      settingsOpen ||
-      propertiesDialog ||
-      connectionsDialog ||
-      searchDialog ||
-      viewer ||
-      conflict ||
-      commandError ||
-      error ||
-      event.defaultPrevented ||
-      event.isComposing
-    )
-      return;
+    if (modalOpen || event.defaultPrevented || event.isComposing) return;
     const target = event.target as HTMLElement;
     if (fileClipboard.handle(event)) return;
     if (
       event.key === 'Enter' &&
-      event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      !event.shiftKey &&
+      modifiers(event) === 'ctrl' &&
       (!target.closest('input, select, textarea, dialog') ||
         target === commandInputElement)
     ) {
@@ -970,22 +865,13 @@
       });
       return;
     }
-    if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      event.key === 'F7'
-    ) {
+    if (modifiers(event) === 'alt' && event.key === 'F7') {
       event.preventDefault();
       requestSearch();
       return;
     }
     if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
+      modifiers(event) === 'alt' &&
       (event.key === 'F1' || event.key === 'F2')
     ) {
       event.preventDefault();
@@ -1001,25 +887,13 @@
       }
       return;
     }
-    if (
-      event.key === 'F5' &&
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey
-    ) {
+    if (event.key === 'F5' && modifiers(event) === 'alt') {
       event.preventDefault();
       quickFindClose();
       request('compress');
       return;
     }
-    if (
-      event.key === 'Enter' &&
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey
-    ) {
+    if (event.key === 'Enter' && modifiers(event) === 'alt') {
       event.preventDefault();
       requestProperties();
       return;
@@ -1076,13 +950,7 @@
       settingsOpen = true;
       return;
     }
-    if (
-      event.key === 'F3' &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      !event.shiftKey
-    ) {
+    if (event.key === 'F3' && modifiers(event) === '') {
       event.preventDefault();
       viewCurrentFile();
       return;
