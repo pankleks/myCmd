@@ -166,7 +166,11 @@ impl Worker {
                 ));
             }
             if stat.is_dir() {
-                for (child, _) in remote::directory(sftp, &source, || self.check())? {
+                let (children, invalid) = remote::directory(sftp, &source, || self.check())?;
+                if invalid > 0 {
+                    return Err(FsError::new("invalid_path", format!("{source} contains {invalid} item(s) with names myCmd cannot handle; nothing was changed")));
+                }
+                for (child, _) in children {
                     if nodes.len() + pending.len() >= 100_000 {
                         return Err(FsError::new(
                             "sftp_limit",
@@ -681,6 +685,26 @@ mod tests {
         fs::create_dir_all(source.join("nested/empty")).unwrap();
         fs::create_dir(&destination).unwrap();
         fs::create_dir(&download).unwrap();
+        let odd = fixture.dir.path().join("odd");
+        fs::create_dir(&odd).unwrap();
+        fs::write(odd.join("ok.txt"), "").unwrap();
+        fs::write(odd.join("back\\slash"), "").unwrap();
+        let (items, invalid) = remote::directory(sftp, &filesystem::text(&odd), || Ok(())).unwrap();
+        assert_eq!((items.len(), invalid), (1, 1));
+        let refused = worker("overwrite")
+            .run_sftp(
+                sftp,
+                SftpOperation::Delete {
+                    sources: vec![filesystem::text(&odd)],
+                },
+            )
+            .unwrap_err();
+        assert!(
+            refused.message.contains("cannot handle"),
+            "{}",
+            refused.message
+        );
+        assert!(odd.join("ok.txt").exists());
         fs::write(source.join("nested/日本語 # %.txt"), "payload").unwrap();
         fs::set_permissions(
             source.join("nested/日本語 # %.txt"),

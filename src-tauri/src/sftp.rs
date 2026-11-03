@@ -379,23 +379,27 @@ pub fn directory(
     sftp: &Sftp,
     path: &str,
     mut check: impl FnMut() -> Result<()>,
-) -> Result<Vec<(String, FileStat)>> {
+) -> Result<(Vec<(String, FileStat)>, usize)> {
     remote_path(path)?;
     let mut handle = sftp.opendir(Path::new(path)).map_err(error)?;
     let mut entries = Vec::new();
+    let mut invalid = 0;
     loop {
         check()?;
         let item = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle.readdir()))
             .map_err(|_| FsError::new("invalid_path", "Remote directory contains filenames that cannot be represented on this platform"))?;
         match item {
             Ok((path, stat)) => {
-                let name = path.to_str().ok_or_else(|| {
-                    FsError::new("invalid_path", "Remote filename is not Unicode")
-                })?;
-                if name == "." || name == ".." {
+                let Some(name) = path.to_str().filter(|name| remote_name(name).is_ok()) else {
+                    if path
+                        .to_str()
+                        .is_some_and(|name| name == "." || name == "..")
+                    {
+                        continue;
+                    }
+                    invalid += 1;
                     continue;
-                }
-                remote_name(name)?;
+                };
                 if entries.len() >= MAX_ENTRIES {
                     return Err(FsError::new(
                         "sftp_limit",
@@ -409,7 +413,7 @@ pub fn directory(
             Err(e) => return Err(error(e)),
         }
     }
-    Ok(entries)
+    Ok((entries, invalid))
 }
 
 pub fn entry(path: &str, stat: &FileStat) -> Result<Entry> {
@@ -480,7 +484,14 @@ pub async fn list_sftp(
     let connection = state.get(&id)?;
     tauri::async_runtime::spawn_blocking(move || {
         remote_path(&path)?;
-        let connection = connection.lock().map_err(lock_error)?;
+        // A transfer holds the connection for its whole run; fail fast instead of freezing the panel.
+        let connection = connection.try_lock().map_err(|e| match e {
+            std::sync::TryLockError::WouldBlock => FsError::new(
+                "sftp_busy",
+                "Connection is busy with a transfer. Refresh when it finishes.",
+            ),
+            std::sync::TryLockError::Poisoned(e) => lock_error(e),
+        })?;
         let sftp = &connection.sftp;
         let canonical = sftp.realpath(Path::new(&path)).map_err(error)?;
         let path = canonical
@@ -489,8 +500,9 @@ pub async fn list_sftp(
             .to_owned();
         remote_path(&path)?;
         let mut entries = Vec::new();
-        let mut skipped = 0;
-        for (name, stat) in directory(sftp, &path, || Ok(()))? {
+        // Names this app cannot address (non-Unicode, containing '\\') are hidden, not fatal.
+        let (items, mut skipped) = directory(sftp, &path, || Ok(()))?;
+        for (name, stat) in items {
             let full = join(&path, &name)?;
             match entry(&full, &stat) {
                 Ok(mut item) => {
