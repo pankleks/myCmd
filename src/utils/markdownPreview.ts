@@ -1,4 +1,4 @@
-import { marked } from 'marked';
+import { parseMarkdown } from './markdownParse';
 import DOMPurify from 'dompurify';
 import type { PreviewImage } from '../filesystem/api';
 
@@ -27,7 +27,7 @@ export async function renderMarkdownPreview(
   loadImage: (source: string) => Promise<PreviewImage>,
   isCancelled: () => boolean = () => false,
 ): Promise<string> {
-  const html = await marked.parse(content, { gfm: true });
+  const html = await parseMarkdown(content, isCancelled);
   if (isCancelled()) return '';
   const preview = new DOMParser().parseFromString(
     DOMPurify.sanitize(html, sanitizeOptions),

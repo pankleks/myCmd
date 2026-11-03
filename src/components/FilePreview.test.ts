@@ -70,6 +70,19 @@ afterEach(async () => {
 });
 
 describe('FilePreview', () => {
+  it('shows deeply nested Markdown as source text instead of freezing', async () => {
+    mocks.text.mockResolvedValue('>'.repeat(300) + ' deep');
+    preview('md');
+    await settle(() => expect(mocks.editor).toHaveBeenCalledOnce());
+    expect(target.textContent).toContain(
+      'Markdown is nested too deeply to preview. Showing source text.',
+    );
+    const toggle = [...target.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Preview',
+    )!;
+    expect(toggle.disabled).toBe(true);
+    expect(target.querySelector('.viewer-message')).toBeNull();
+  });
   it.each(['heic', '.HEIC', 'HEIF'])(
     'decodes %s for the shared viewer and releases its URL on close',
     async (extension) => {

@@ -40,6 +40,7 @@
   let openError = $state('');
   let opening = $state(false);
   let formatError = $state('');
+  let markdownNotice = $state('');
   let sourceContent = $state<string>();
   let previewHtml = $state('');
   let imagePreview = $state('');
@@ -169,12 +170,22 @@
         const { renderMarkdownPreview } =
           await import('../utils/markdownPreview');
         if (disposed) return;
-        const html = await renderMarkdownPreview(
-          sourceContent,
-          (source) => api.readMarkdownImage(path, source),
-          () => disposed,
-        );
-        if (!disposed) previewHtml = html;
+        try {
+          const html = await renderMarkdownPreview(
+            sourceContent,
+            (source) => api.readMarkdownImage(path, source),
+            () => disposed,
+          );
+          if (!disposed) previewHtml = html;
+        } catch (cause) {
+          const { MarkdownTooComplex } = await import('../utils/markdownParse');
+          if (!(cause instanceof MarkdownTooComplex) || disposed) throw cause;
+          markdownNotice = `${cause.message} Showing source text.`;
+          mode = 'source';
+          loading = false;
+          await tick();
+          await showSource();
+        }
       } else {
         mode = 'source';
         await showSource();
@@ -289,7 +300,7 @@
             type="button"
             class="viewer-toggle"
             aria-pressed={mode === 'source'}
-            disabled={loading || editorLoading}
+            disabled={loading || editorLoading || !!markdownNotice}
             onclick={toggleMarkdownMode}
             >{mode === 'preview' ? 'Source' : 'Preview'}</button
           >{/if}
@@ -355,6 +366,7 @@
       </div>
     {/if}
     {#if formatError}<div role="alert">{formatError}</div>{/if}
+    {#if markdownNotice}<div role="status">{markdownNotice}</div>{/if}
     {#if openError && !error && !editorError}<div role="alert">
         {openError}
       </div>{/if}
