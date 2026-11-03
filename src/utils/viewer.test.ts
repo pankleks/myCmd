@@ -88,6 +88,8 @@ describe('isImageFile', () => {
       'webp',
       'avif',
       'bmp',
+      'heic',
+      '.HEIF',
     ])
       expect(isImageFile(extension)).toBe(true);
     expect(isImageFile('svg')).toBe(true);

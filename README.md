@@ -14,6 +14,7 @@ myCmd is a keyboard-centric, two-panel file manager in the Norton / Total Comman
 - Right-click context menus for files and empty panel space, also available with Shift+F10 or the Menu key
 - System actions for one local item: the classic Explorer menu and shell extensions in an isolated helper on Windows; native Open With and file-manager reveal actions on Linux; Open With, Reveal in Finder, and Get Info on macOS. macOS may ask for permission to control Finder. Finder extensions, Services, and Linux file-manager extensions are not embedded.
 - View files (F3) and a toggleable preview pane (Shift+F3): rendered Markdown (including fenced `mermaid` diagrams), PDF with page navigation and zoom, syntax-highlighted code/text/JSON via Monaco, with search and match navigation
+- View HEIC/HEIF still images in F3 and the preview pane using a bundled offline decoder; the primary image is shown, with the same 4 MiB / 16-million-pixel preview limits as other images
 - Search (Alt+F7) by file/folder name glob, optionally by file content (UTF-8/UTF-16, binaries skipped); browse results while the search is still running
 - Selection by glob (+/-), invert (\*), quick find by typing, directory-size calculation (Space)
 - Browse inside archives and extract from them (F5)

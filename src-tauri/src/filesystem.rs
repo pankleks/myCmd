@@ -276,6 +276,8 @@ fn image_data_url(path: &Path) -> Result<PreviewImage> {
         Some("gif") => "image/gif",
         Some("webp") => "image/webp",
         Some("avif") => "image/avif",
+        Some("heic") => "image/heic",
+        Some("heif") => "image/heif",
         Some("bmp") => "image/bmp",
         _ => {
             return Err(FsError::new(
@@ -303,6 +305,17 @@ fn image_data_url(path: &Path) -> Result<PreviewImage> {
         ));
     }
 
+    if matches!(mime, "image/heic" | "image/heif")
+        && !matches!(
+            imagesize::image_type(&content),
+            Ok(imagesize::ImageType::Heif(imagesize::Compression::Hevc))
+        )
+    {
+        return Err(FsError::new(
+            "invalid_image",
+            "This file is not a supported HEIC/HEIF image",
+        ));
+    }
     let (size, frames) = validate_image_dimensions(&content)?;
     Ok(PreviewImage {
         data_url: format!("data:{mime};base64,{}", STANDARD.encode(content)),
@@ -353,6 +366,19 @@ fn validate_avif_brands(content: &[u8]) -> Result<()> {
         let brands = content
             .get(16..end)
             .ok_or_else(|| FsError::new("invalid_image", "Invalid AVIF brand box"))?;
+        if [b"msf1", b"hevc", b"hevx"].iter().any(|sequence| {
+            content.get(8..12) == Some(sequence.as_slice())
+                || brands
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|brand| brand == *sequence)
+        }) {
+            return Err(FsError::new(
+                "unsupported_image",
+                "HEIF image sequences cannot be previewed; open in the default app",
+            ));
+        }
         if content.get(8..12) == Some(b"avis")
             || brands
                 .as_chunks::<4>()
@@ -1329,6 +1355,55 @@ mod tests {
         assert_eq!(
             read_image_preview(&path).unwrap(),
             format!("data:image/jpeg;base64,{}", STANDARD.encode(jpeg_header()))
+        );
+    }
+
+    #[test]
+    fn heic_preview_reads_valid_hevc_images_and_preserves_safety_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.HEIC");
+        let content = STANDARD
+            .decode(include_str!("../../src/test/fixtures/heic.base64").trim())
+            .unwrap();
+        fs::write(&path, &content).unwrap();
+        assert_eq!(
+            read_image_preview(&path).unwrap(),
+            format!("data:image/heic;base64,{}", STANDARD.encode(&content))
+        );
+        let heif = dir.path().join("photo.heif");
+        fs::write(&heif, &content).unwrap();
+        assert!(read_image_preview(&heif)
+            .unwrap()
+            .starts_with("data:image/heif;base64,"));
+        let mut oversized = content.clone();
+        let ispe = oversized
+            .windows(4)
+            .position(|bytes| bytes == b"ispe")
+            .unwrap();
+        oversized[ispe + 8..ispe + 12].copy_from_slice(&16_385u32.to_be_bytes());
+        fs::write(&path, oversized).unwrap();
+        assert_eq!(
+            read_image_preview(&path).unwrap_err().code,
+            "image_too_large"
+        );
+        for offset in [8, 20] {
+            let mut sequence = content.clone();
+            sequence[offset..offset + 4].copy_from_slice(b"msf1");
+            fs::write(&path, sequence).unwrap();
+            assert_eq!(
+                read_image_preview(&path).unwrap_err().code,
+                "unsupported_image"
+            );
+        }
+        fs::write(&path, b"not an image").unwrap();
+        assert_eq!(read_image_preview(&path).unwrap_err().code, "invalid_image");
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_IMAGE_PREVIEW_BYTES + 1)
+            .unwrap();
+        assert_eq!(
+            read_image_preview(&path).unwrap_err().code,
+            "image_too_large"
         );
     }
 

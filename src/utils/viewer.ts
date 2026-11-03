@@ -18,9 +18,16 @@ export function isMarkdownFile(extension: string): boolean {
 }
 
 export function isImageFile(extension: string): boolean {
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'svg'].includes(
-    extension.toLowerCase().replace(/^\./, ''),
+  return (
+    isHeicFile(extension) ||
+    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'svg'].includes(
+      extension.toLowerCase().replace(/^\./, ''),
+    )
   );
+}
+
+export function isHeicFile(extension: string): boolean {
+  return ['heic', 'heif'].includes(extension.toLowerCase().replace(/^\./, ''));
 }
 
 export function viewerLanguage(extension: string): ViewerLanguage {

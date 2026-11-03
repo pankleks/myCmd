@@ -72,6 +72,7 @@ await writeFile(
 );
 for (const [name, fixtureName] of [
   ['preview.gif', 'animated-gif.base64'],
+  ['preview.heic', 'heic.base64'],
   ['rejected-animation.png', 'animated-png.base64'],
 ]) {
   const encoded = await readFile(
@@ -601,6 +602,22 @@ try {
         `!document.querySelector('dialog[open]') && document.activeElement.id === 'list-left'`,
       ),
     'unsupported animation preview closed',
+  );
+  await selectPreviewFile('preview.heic');
+  await previewKey();
+  await until(
+    () =>
+      evaluate(
+        `(() => { const image = document.querySelector('.file-viewer .image-preview img'); return !!image?.complete && image.naturalWidth === 1 && image.naturalHeight === 1; })()`,
+      ),
+    'F3 HEIC decoded through the bundled worker',
+  );
+  await evaluate(
+    `document.querySelector('dialog.file-viewer .viewer-close').click()`,
+  );
+  await until(
+    () => evaluate(`!document.querySelector('dialog[open]')`),
+    'HEIC viewer closed',
   );
   await selectPreviewFile('preview.md');
   await previewKey(true);

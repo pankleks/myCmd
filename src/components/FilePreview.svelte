@@ -3,7 +3,7 @@
   import { icons } from '../utils/uiIcons';
   import { onDestroy, onMount, tick, type Snippet } from 'svelte';
   import { api, errorMessage } from '../filesystem/api';
-  import { isImageFile, isMarkdownFile } from '../utils/viewer';
+  import { isImageFile, isMarkdownFile, isHeicFile } from '../utils/viewer';
   import { formatJsonPreview } from '../utils/jsonPreview';
   import { highlightPreviewMatches } from '../utils/previewSearch';
   import DirectorySummary from './DirectorySummary.svelte';
@@ -57,6 +57,7 @@
   let searchMatches = $state.raw<HTMLElement[]>([]);
   let searchIndex = $state(-1);
   let disposed = false;
+  const imageAbort = new AbortController();
   let editor = $state.raw<
     ReturnType<(typeof import('../monaco'))['createViewerEditor']> | undefined
   >();
@@ -67,6 +68,8 @@
 
   onDestroy(() => {
     disposed = true;
+    imageAbort.abort();
+    if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
     editor?.dispose();
   });
 
@@ -147,11 +150,17 @@
       if (isPdf) return;
       if (isImage) {
         // Keep SVG in an image context: scripts and external resources are disabled.
-        const dataUrl =
+        let dataUrl =
           extension.toLowerCase().replace(/^\./, '') === 'svg'
             ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(await api.readTextPreview(path))}`
             : await api.readImagePreview(path);
+        if (isHeicFile(extension)) {
+          if (disposed) return;
+          const { heicPreview } = await import('../utils/heicPreview');
+          dataUrl = await heicPreview(dataUrl, imageAbort.signal);
+        }
         if (!disposed) imagePreview = dataUrl;
+        else if (dataUrl.startsWith('blob:')) URL.revokeObjectURL(dataUrl);
         return;
       }
       sourceContent = await api.readTextPreview(path);

@@ -5,6 +5,7 @@ import FilePreview from './FilePreview.svelte';
 
 const mocks = vi.hoisted(() => ({
   image: vi.fn(),
+  heic: vi.fn(),
   text: vi.fn(),
   markdownImage: vi.fn(),
   open: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('../filesystem/api', () => ({
     cause instanceof Error ? cause.message : String(cause),
 }));
 vi.mock('../monaco', () => ({ createViewerEditor: mocks.editor }));
+vi.mock('../utils/heicPreview', () => ({ heicPreview: mocks.heic }));
 
 let component: ReturnType<typeof mount> | undefined;
 let target: HTMLDivElement;
@@ -64,9 +66,40 @@ afterEach(async () => {
   if (component) await unmount(component);
   component = undefined;
   target.remove();
+  vi.unstubAllGlobals();
 });
 
 describe('FilePreview', () => {
+  it.each(['heic', '.HEIC', 'HEIF'])(
+    'decodes %s for the shared viewer and releases its URL on close',
+    async (extension) => {
+      const revoke = vi.fn();
+      vi.stubGlobal(
+        'URL',
+        class extends URL {
+          static revokeObjectURL = revoke;
+        },
+      );
+      mocks.image.mockResolvedValue('data:image/heic;base64,AQ==');
+      mocks.heic.mockResolvedValue('blob:heic-preview');
+      preview(extension);
+      await settle(() =>
+        expect(target.querySelector('img')?.getAttribute('src')).toBe(
+          'blob:heic-preview',
+        ),
+      );
+      expect(mocks.heic).toHaveBeenCalledWith(
+        'data:image/heic;base64,AQ==',
+        expect.any(AbortSignal),
+      );
+      const signal = mocks.heic.mock.calls[0][1] as AbortSignal;
+      await unmount(component!);
+      component = undefined;
+      expect(signal.aborted).toBe(true);
+      expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:heic-preview');
+      expect(mocks.text).not.toHaveBeenCalled();
+    },
+  );
   it.each(['svg', '.SVG'])(
     'previews %s as an isolated image',
     async (extension) => {
