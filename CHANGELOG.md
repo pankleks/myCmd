@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.15] - 2026-11-03
+
+- Add offline HEIC and HEIF image previews in F3 View and the preview pane.
+- Keep file extensions when auto-renaming conflicting copies (`report (1).pdf`), locally and over SFTP.
+- SFTP: remote folders containing unusable file names (non-Unicode or containing `\`) stay browsable; copy and delete name those files instead of failing silently.
+- SFTP: refreshing a connection during a transfer reports "busy" instead of freezing the panel; reconnecting cannot replace a session mid-transfer.
+- SFTP: a slow server no longer delays connecting to other servers.
+- ZIP/7z extraction is no longer blocked by unsafe member names outside the selection.
+
 ## [0.2.14] - 2026-11-02
 
 - Fix a Windows-only Clippy warning that blocked the 0.2.13 release.
