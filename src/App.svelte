@@ -73,6 +73,7 @@
   import { createDirectoryRefresh } from './utils/directoryRefresh';
   import { sftpActionError, toSftpOperation } from './state/sftpRules';
   import { skippedLinksMessage } from './operations/skippedLinks';
+  import { contextMenuItems } from './state/contextMenu';
   let ready = $state(false);
   let rightAltDown = false;
   let previewMode = $state(false);
@@ -257,210 +258,37 @@
   }
   const contextItems = $derived.by((): MenuItem[] => {
     if (!contextMenu) return [];
-    const panel = commander[contextMenu.side];
-    const localFolder = isLocalPath(panel.path);
-    const remote = parseLocation(panel.path).kind === 'sftp';
-    const paste: MenuItem = {
-      label: 'Paste',
-      shortcut: 'Ctrl+V',
-      disabled: !contextMenu.paste || !localFolder,
-      run: () => void fileClipboard.run('paste'),
-    };
-    if (!contextMenu.item && remote)
-      return [
-        {
-          label: 'New folder…',
-          shortcut: 'F7',
-          run: () => request('createDirectory'),
-        },
-        {
-          label: 'Connections…',
-          run: () =>
-            requestConnections(contextMenu?.side ?? commander.activePanel),
-        },
-        { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
-      ];
-    if (!contextMenu.item && !localFolder)
-      return [
-        { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
-      ];
-    if (!contextMenu.item)
-      return [
-        {
-          label: 'New folder…',
-          shortcut: 'F7',
-          disabled: !localFolder,
-          run: () => request('createDirectory'),
-        },
-        {
-          label: 'New file…',
-          shortcut: 'Shift+F4',
-          disabled: !localFolder,
-          run: () => request('createFile'),
-        },
-        { ...paste, separator: true },
-        {
-          label: 'Open terminal here',
-          shortcut: 'Ctrl+T',
-          disabled: !localFolder,
-          separator: true,
-          run: () => void openTerminal(panel.path),
-        },
-        { label: 'Refresh', shortcut: 'Ctrl+R', run: () => void load(panel) },
-      ];
+    const side = contextMenu.side;
+    const panel = commander[side];
+    const opposite = commander[side === 'left' ? 'right' : 'left'];
     const entry = rows(panel)[panel.cursor];
-    const entries = sources(panel);
-    const single = entries.length === 1;
-    const local =
-      entries.length > 0 && entries.every((entry) => isLocalPath(entry.path));
-    const opposite = commander[contextMenu.side === 'left' ? 'right' : 'left'];
-    const localTarget = isLocalPath(
-      searchSession(opposite.path)?.root ?? opposite.path,
-    );
-    const sftpTarget = parseLocation(opposite.path).kind === 'sftp';
-    const items: MenuItem[] = [
+    return contextMenuItems(
       {
-        label: 'Open',
-        shortcut: 'Enter',
-        disabled: !single,
-        run: () => void open(panel, entry),
-      },
-    ];
-    if (remote)
-      return [
-        {
-          label: 'Open folder',
-          shortcut: 'Enter',
-          disabled: !single || !entry?.directoryTarget,
-          run: () => void open(panel, entry),
-        },
-        {
-          label: 'Download to opposite panel…',
-          shortcut: 'F5',
-          disabled: !localTarget,
-          separator: true,
-          run: () => request('copy'),
-        },
-        {
-          label: 'New folder…',
-          shortcut: 'F7',
-          run: () => request('createDirectory'),
-        },
-        {
-          label: 'Rename…',
-          shortcut: 'F2',
-          disabled: !single,
-          run: () => request('rename'),
-        },
-        {
-          label: 'Delete permanently…',
-          shortcut: 'F8',
-          run: () => request('delete', true),
-        },
-        {
-          label: 'Connections…',
-          separator: true,
-          run: () => requestConnections(commander.activePanel),
-        },
-      ];
-    if (
-      entry &&
-      isLocalPath(entry.path) &&
-      (entry.type === 'directory' || !entry.directoryTarget)
-    )
-      items.push({
-        label: 'View',
-        shortcut: 'F3',
-        disabled: !single,
-        run: viewCurrentFile,
-      });
-    if (
-      entry &&
-      isLocalPath(entry.path) &&
-      entry.type !== 'directory' &&
-      !entry.directoryTarget
-    )
-      items.push({
-        label: 'Edit',
-        shortcut: 'F4',
-        disabled: !single,
-        run: editCurrentFile,
-      });
-    if (!local)
-      return [
-        ...items,
-        {
-          label: 'Extract to opposite panel…',
-          shortcut: 'F5',
-          disabled: !localTarget,
-          separator: true,
-          run: () => request('copy'),
-        },
-        { label: 'Delete…', shortcut: 'F8', run: () => request('delete') },
-      ];
-    items.push(
-      {
-        label: 'Copy',
-        shortcut: 'Ctrl+C',
-        separator: true,
-        run: () => void fileClipboard.run('copy'),
+        panelPath: panel.path,
+        oppositePath: opposite.path,
+        oppositeRoot: searchSession(opposite.path)?.root ?? opposite.path,
+        item: contextMenu.item,
+        paste: contextMenu.paste,
+        entry,
+        entries: sources(panel),
+        systemActionsRunning,
       },
       {
-        label: 'Cut',
-        shortcut: 'Ctrl+X',
-        run: () => void fileClipboard.run('cut'),
-      },
-      paste,
-      {
-        label: sftpTarget
-          ? 'Upload to opposite panel…'
-          : 'Copy to opposite panel…',
-        shortcut: 'F5',
-        disabled: !localTarget && !sftpTarget,
-        separator: true,
-        run: () => request('copy'),
-      },
-      {
-        label: 'Move to opposite panel…',
-        shortcut: 'F6',
-        disabled: !localTarget,
-        run: () => request('move'),
-      },
-      {
-        label: 'Compress to ZIP…',
-        shortcut: 'Alt+F5',
-        disabled: !localTarget,
-        run: () => request('compress'),
-      },
-      {
-        label: 'Rename…',
-        shortcut: 'F2',
-        disabled: !single,
-        run: () => request('rename'),
-      },
-      { label: 'Delete…', shortcut: 'F8', run: () => request('delete') },
-      {
-        label: 'Copy path',
-        disabled: !single,
-        separator: true,
-        run: () => void copyContextPath(),
-      },
-      {
-        label: 'Properties…',
-        shortcut: 'Alt+Enter',
-        disabled: !single,
-        run: requestProperties,
-      },
-      {
-        label: systemActionsRunning
-          ? 'System actions running…'
-          : 'System actions…',
-        disabled: !single || systemActionsRunning,
-        separator: true,
-        run: () => void showSystemActions(entry.path),
+        request,
+        connections: () => requestConnections(side),
+        refresh: () => void load(panel),
+        open: () => void open(panel, entry),
+        openTerminal: () => void openTerminal(panel.path),
+        paste: () => void fileClipboard.run('paste'),
+        copy: () => void fileClipboard.run('copy'),
+        cut: () => void fileClipboard.run('cut'),
+        view: viewCurrentFile,
+        edit: editCurrentFile,
+        copyPath: () => void copyContextPath(),
+        properties: requestProperties,
+        systemActions: () => void showSystemActions(entry.path),
       },
     );
-    return items;
   });
   let previewSide = $derived(
     commander.activePanel === 'left' ? 'right' : 'left',
