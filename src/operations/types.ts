@@ -48,6 +48,7 @@ export interface Progress {
   totalItems: number;
   error?: { code: string; message: string; path?: string };
   resultPath?: string;
+  skippedLinks?: number;
 }
 export interface Conflict {
   operationId: string;

@@ -72,6 +72,7 @@
   import { createCommandController } from './operations/commandController.svelte';
   import { createDirectoryRefresh } from './utils/directoryRefresh';
   import { sftpActionError, toSftpOperation } from './state/sftpRules';
+  import { skippedLinksMessage } from './operations/skippedLinks';
   let ready = $state(false);
   let rightAltDown = false;
   let previewMode = $state(false);
@@ -102,6 +103,11 @@
         ),
       ]);
       commander[side].selected = new Set();
+      const linksMessage =
+        payload.state === 'completed'
+          ? skippedLinksMessage(payload.skippedLinks, payload.resultPath)
+          : undefined;
+      if (linksMessage) showError(linksMessage, 'Compression finished');
       if (editor && payload.state === 'completed' && payload.resultPath)
         await editFile(payload.resultPath, editor.editor);
     },

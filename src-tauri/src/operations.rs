@@ -84,6 +84,8 @@ pub struct Progress {
     pub total_items: u64,
     pub error: Option<FsError>,
     pub result_path: Option<String>,
+    /// Symbolic links left out of a ZIP, so the UI can say so.
+    pub skipped_links: u64,
 }
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,6 +137,7 @@ impl Manager {
                     total_items: 0,
                     error: None,
                     result_path: None,
+                    skipped_links: 0,
                 },
             };
             worker.emit();
@@ -726,10 +729,12 @@ impl Worker {
         let mut regular_sources = Vec::new();
         for source in normalize_sources(sources)? {
             self.check()?;
-            if !fs::symlink_metadata(&source)
+            if fs::symlink_metadata(&source)
                 .map_err(|e| FsError::io(e, &source))?
                 .is_symlink()
             {
+                self.progress.skipped_links += 1;
+            } else {
                 regular_sources.push(source);
             }
         }
@@ -842,7 +847,9 @@ impl Worker {
             while let Some((path, prefix)) = next.take() {
                 self.check()?;
                 let meta = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
-                if !meta.is_symlink() {
+                if meta.is_symlink() {
+                    self.progress.skipped_links += 1;
+                } else {
                     let name = format!("{prefix}{}", zip_member_name(&path)?);
                     let options = zip::write::SimpleFileOptions::default()
                         .compression_method(zip::CompressionMethod::Deflated)
@@ -1532,6 +1539,7 @@ mod tests {
         assert!(zip.by_name("file.txt").is_ok());
         assert_eq!(w.progress.total_items, 1);
         assert_eq!(w.progress.processed_items, 1);
+        assert_eq!(w.progress.skipped_links, 2);
         let mut w = worker("overwrite");
         w.run(Operation::Compress {
             sources: vec![link, broken],
@@ -1542,6 +1550,7 @@ mod tests {
         .unwrap();
         assert!(!dir.path().join("Links.zip").exists());
         assert!(w.progress.result_path.is_none());
+        assert_eq!(w.progress.skipped_links, 2);
     }
 
     #[cfg(unix)]
@@ -1562,6 +1571,7 @@ mod tests {
         };
         let mut w = worker("overwrite");
         w.run(operation.clone()).unwrap();
+        assert_eq!(w.progress.skipped_links, 3);
         {
             let mut zip =
                 zip::ZipArchive::new(fs::File::open(dir.path().join("Backup.zip")).unwrap())
@@ -2350,6 +2360,7 @@ mod tests {
                 total_items: 0,
                 error: None,
                 result_path: None,
+                skipped_links: 0,
             },
         }
     }
