@@ -71,6 +71,7 @@
   import { createOperationController } from './operations/controller.svelte';
   import { createCommandController } from './operations/commandController.svelte';
   import { createDirectoryRefresh } from './utils/directoryRefresh';
+  import { sftpActionError, toSftpOperation } from './state/sftpRules';
   let ready = $state(false);
   let rightAltDown = false;
   let previewMode = $state(false);
@@ -801,26 +802,14 @@
     const targetLocation = parseLocation(
       searchSession(opposite.path)?.root ?? opposite.path,
     );
-    if (
-      sourceLocation.kind === 'sftp' ||
-      ((action === 'copy' || action === 'move') &&
-        targetLocation.kind === 'sftp')
-    ) {
-      const copyAllowed =
-        action === 'copy' &&
-        ((sourceLocation.kind === 'sftp' && targetLocation.kind === 'local') ||
-          ((sourceLocation.kind === 'local' ||
-            sourceLocation.kind === 'search') &&
-            targetLocation.kind === 'sftp'));
-      const mutationAllowed =
-        sourceLocation.kind === 'sftp' &&
-        ['rename', 'delete', 'createDirectory'].includes(action);
-      if (!copyAllowed && !mutationAllowed) {
-        showError(
-          'SFTP supports upload/download with F5, rename, new folder, and permanent delete. Remote Move, ZIP, and remote-to-remote transfers are not supported.',
-        );
-        return;
-      }
+    const sftpError = sftpActionError(
+      action,
+      sourceLocation.kind,
+      targetLocation.kind,
+    );
+    if (sftpError) {
+      showError(sftpError);
+      return;
     }
     if (
       action === 'compress' &&
@@ -874,58 +863,12 @@
     const side = dialog!.side;
     const location = parseLocation(dialog!.parent);
     const target = parseLocation(dialog!.destination);
-    if (
-      operation.type === 'copy' &&
-      (location.kind === 'sftp' || target.kind === 'sftp')
-    ) {
-      const upload = target.kind === 'sftp';
-      const connectionId = upload
-        ? target.connectionId
-        : location.kind === 'sftp'
-          ? location.connectionId
-          : '';
-      const paths = operation.sources.map((path) => {
-        const resource = parseLocation(path);
-        return resource.kind === 'sftp' ? resource.path : path;
-      });
-      operation = {
-        type: 'sftp',
-        connectionId,
-        operation: {
-          type: 'copy',
-          sources: paths,
-          destination: operation.destination,
-          upload,
-        },
-      };
-    } else if (location.kind === 'sftp') {
-      const paths = dialog!.entries.map((entry) => {
-        const resource = parseLocation(entry.path);
-        return resource.kind === 'sftp' ? resource.path : entry.path;
-      });
-      if (operation.type === 'rename')
-        operation = {
-          type: 'sftp',
-          connectionId: location.connectionId,
-          operation: { type: 'rename', path: paths[0], name: operation.name },
-        };
-      else if (operation.type === 'createDirectory')
-        operation = {
-          type: 'sftp',
-          connectionId: location.connectionId,
-          operation: {
-            type: 'createDirectory',
-            parent: location.path,
-            name: operation.name,
-          },
-        };
-      else if (operation.type === 'delete')
-        operation = {
-          type: 'sftp',
-          connectionId: location.connectionId,
-          operation: { type: 'delete', sources: paths },
-        };
-    }
+    operation = toSftpOperation(
+      operation,
+      dialog!.parent,
+      dialog!.destination,
+      dialog!.entries.map((entry) => entry.path),
+    );
     if (operation.type === 'delete' && location.kind === 'archive') {
       operation = {
         type: 'deleteArchive',
