@@ -862,7 +862,6 @@
   async function submit(operation: FileOperation) {
     const side = dialog!.side;
     const location = parseLocation(dialog!.parent);
-    const target = parseLocation(dialog!.destination);
     operation = toSftpOperation(
       operation,
       dialog!.parent,
