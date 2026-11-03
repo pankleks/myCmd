@@ -167,8 +167,20 @@ impl Worker {
             }
             if stat.is_dir() {
                 let (children, invalid) = remote::directory(sftp, &source, || self.check())?;
-                if invalid > 0 {
-                    return Err(FsError::new("invalid_path", format!("{source} contains {invalid} item(s) with names myCmd cannot handle; nothing was changed")));
+                if !invalid.is_empty() {
+                    let shown = invalid
+                        .iter()
+                        .take(5)
+                        .map(|name| format!("\"{name}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let more = invalid.len().saturating_sub(5);
+                    let more = if more > 0 {
+                        format!(" and {more} more")
+                    } else {
+                        String::new()
+                    };
+                    return Err(FsError::new("invalid_path", format!("{source} contains names myCmd cannot handle: {shown}{more}. Rename them on the server; nothing was changed.")));
                 }
                 for (child, _) in children {
                     if nodes.len() + pending.len() >= 100_000 {
@@ -704,7 +716,7 @@ mod tests {
         fs::write(odd.join("ok.txt"), "").unwrap();
         fs::write(odd.join("back\\slash"), "").unwrap();
         let (items, invalid) = remote::directory(sftp, &filesystem::text(&odd), || Ok(())).unwrap();
-        assert_eq!((items.len(), invalid), (1, 1));
+        assert_eq!((items.len(), invalid), (1, vec!["back\\slash".to_owned()]));
         let refused = worker("overwrite")
             .run_sftp(
                 sftp,
@@ -714,7 +726,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(
-            refused.message.contains("cannot handle"),
+            refused.message.contains("\"back\\slash\"") && refused.message.contains("Rename them"),
             "{}",
             refused.message
         );

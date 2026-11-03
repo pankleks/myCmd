@@ -51,6 +51,14 @@ The opt-in SFTP integration test starts a private OpenSSH server on a random loo
 cargo test --manifest-path src-tauri/Cargo.toml --locked sftp_live_round_trip_and_failure_safety -- --ignored
 ```
 
+Run every Rust test, including the opt-in ones, with:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --locked -- --include-ignored
+```
+
+The cross-device move test uses `/dev/shm` as the second filesystem; set `MYCMD_TEST_TRANSFER_VOLUME` to a writable folder on another filesystem if `/dev/shm` is missing or on the same disk. The log preview test needs `MYCMD_LOG_TEST_DIR` (a folder of `.log` files). Each test prints `skipped:` and passes when its setup is unavailable.
+
 SFTP uses libssh2 through the `ssh2` crate. Windows and macOS builds use vendored OpenSSL; Windows also needs Perl available when building OpenSSL (the GitHub Windows runners provide it).
 
 ## Preparing a version

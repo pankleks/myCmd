@@ -1267,7 +1267,10 @@ mod tests {
     #[test]
     #[ignore = "Set MYCMD_LOG_TEST_DIR to validate external log fixtures"]
     fn read_text_preview_external_logs() {
-        let directory = std::env::var("MYCMD_LOG_TEST_DIR").expect("Set MYCMD_LOG_TEST_DIR");
+        let Ok(directory) = std::env::var("MYCMD_LOG_TEST_DIR") else {
+            eprintln!("skipped: set MYCMD_LOG_TEST_DIR to a folder of .log files");
+            return;
+        };
         let mut count = 0;
         for item in fs::read_dir(directory).unwrap() {
             let path = item.unwrap().path();

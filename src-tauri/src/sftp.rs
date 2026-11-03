@@ -390,15 +390,18 @@ pub fn name(path: &str) -> Result<&str> {
     Ok(name)
 }
 
+/// Names that cannot be addressed (non-Unicode or containing '\\'), lossily decoded for messages.
+pub type InvalidNames = Vec<String>;
+
 pub fn directory(
     sftp: &Sftp,
     path: &str,
     mut check: impl FnMut() -> Result<()>,
-) -> Result<(Vec<(String, FileStat)>, usize)> {
+) -> Result<(Vec<(String, FileStat)>, InvalidNames)> {
     remote_path(path)?;
     let mut handle = sftp.opendir(Path::new(path)).map_err(error)?;
     let mut entries = Vec::new();
-    let mut invalid = 0;
+    let mut invalid = Vec::new();
     loop {
         check()?;
         let item = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle.readdir()))
@@ -412,7 +415,7 @@ pub fn directory(
                     {
                         continue;
                     }
-                    invalid += 1;
+                    invalid.push(path.to_string_lossy().into_owned());
                     continue;
                 };
                 if entries.len() >= MAX_ENTRIES {
@@ -516,7 +519,8 @@ pub async fn list_sftp(
         remote_path(&path)?;
         let mut entries = Vec::new();
         // Names this app cannot address (non-Unicode, containing '\\') are hidden, not fatal.
-        let (items, mut skipped) = directory(sftp, &path, || Ok(()))?;
+        let (items, invalid) = directory(sftp, &path, || Ok(()))?;
+        let mut skipped = invalid.len();
         for (name, stat) in items {
             let full = join(&path, &name)?;
             match entry(&full, &stat) {

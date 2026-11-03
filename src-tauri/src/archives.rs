@@ -240,6 +240,9 @@ pub fn extract_selected(
         if count > MAX_ENTRIES {
             return Err(FsError::new("archive_limit", "Too many archive entries"));
         }
+        if !selected(name, directory, members) {
+            return Ok(());
+        }
         let Some(name) = safe_name(name) else {
             return Err(FsError::new("invalid_path", "Unsafe archive member path"));
         };
@@ -321,14 +324,8 @@ pub fn extract_selected(
             let name = raw.name().to_owned();
             let folder = raw.is_dir();
             drop(raw);
-            let Some(safe) = safe_name(&name) else {
-                return Err(archive_error("Unsafe archive member path".into()));
-            };
-            if !safe.strip_prefix(directory).is_some_and(|relative| {
-                members
-                    .iter()
-                    .any(|m| relative.split('/').next() == Some(m.as_str()))
-            }) {
+            // Unsafe names outside the selection are never extracted, so they need not block it.
+            if !selected(&name, directory, members) {
                 continue;
             }
             let mut entry = archive
@@ -401,6 +398,15 @@ pub fn extract_selected(
         ));
     }
     Ok(found.into_iter().map(|name| staging.join(name)).collect())
+}
+
+/// Whether a raw member name falls under one of the selected top-level members.
+fn selected(name: &str, directory: &str, members: &[String]) -> bool {
+    let name = name.replace('\\', "/");
+    name.strip_prefix(directory).is_some_and(|relative| {
+        let first = relative.split('/').next().unwrap_or_default();
+        members.iter().any(|member| member == first)
+    })
 }
 
 fn safe_name(name: &str) -> Option<String> {
@@ -568,6 +574,40 @@ mod tests {
             b"selected contents"
         );
     }
+    #[test]
+    fn unsafe_members_block_only_selections_that_contain_them() {
+        use std::io::Write;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("mixed.zip");
+        let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+        for name in [
+            "good.txt",
+            "../evil.txt",
+            "docs/../escape.txt",
+            "docs/ok.txt",
+        ] {
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(b"data").unwrap();
+        }
+        zip.finish().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        extract_selected(&path, "", &["good.txt".into()], target.path(), || Ok(())).unwrap();
+        assert_eq!(
+            std::fs::read(target.path().join("good.txt")).unwrap(),
+            b"data"
+        );
+        let blocked = tempfile::tempdir().unwrap();
+        assert_eq!(
+            extract_selected(&path, "", &["docs".into()], blocked.path(), || Ok(()))
+                .unwrap_err()
+                .message,
+            "Unsafe archive member path"
+        );
+        assert!(!temp.path().join("evil.txt").exists());
+        assert!(!blocked.path().join("escape.txt").exists());
+    }
+
     #[test]
     fn extracts_only_selected_files_and_rejects_unsafe_paths() {
         use std::io::Write;

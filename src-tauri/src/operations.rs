@@ -2245,12 +2245,22 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    #[ignore = "requires MYCMD_TEST_TRANSFER_VOLUME pointing to a different mounted filesystem"]
+    #[ignore = "uses a second filesystem: /dev/shm or MYCMD_TEST_TRANSFER_VOLUME"]
     fn cross_device_move_uses_real_copy_and_remove_fallback() {
         use std::os::unix::fs::MetadataExt;
-        let volume = std::env::var_os("MYCMD_TEST_TRANSFER_VOLUME")
-            .expect("Set MYCMD_TEST_TRANSFER_VOLUME to a writable mounted filesystem");
         let source_temp = tempfile::tempdir().unwrap();
+        // /dev/shm is a separate tmpfs on most Linux systems; override for other setups.
+        let volume = std::env::var_os("MYCMD_TEST_TRANSFER_VOLUME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/dev/shm"));
+        let different = fs::metadata(&volume)
+            .is_ok_and(|m| m.dev() != fs::metadata(source_temp.path()).unwrap().dev());
+        if !different {
+            eprintln!(
+                "skipped: set MYCMD_TEST_TRANSFER_VOLUME to a writable folder on a different filesystem"
+            );
+            return;
+        }
         let destination_temp = tempfile::tempdir_in(volume).unwrap();
         assert_ne!(
             fs::metadata(source_temp.path()).unwrap().dev(),
