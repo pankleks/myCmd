@@ -678,6 +678,13 @@ mod tests {
         fixture.connect(&manager);
         let connection = manager.get(&fixture.profile.id).unwrap();
         let connection = connection.lock().unwrap();
+        assert_eq!(
+            manager
+                .connect(fixture.request(None), &fixture.known, None)
+                .unwrap_err()
+                .code,
+            "sftp_busy"
+        );
         let sftp = &connection.sftp;
         let source = fixture.dir.path().join("local");
         let destination = fixture.dir.path().join("remote");

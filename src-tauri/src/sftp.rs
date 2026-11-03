@@ -175,8 +175,11 @@ impl Manager {
             .host_key()
             .ok_or_else(|| FsError::new("sftp_host_key", "Server did not provide a host key"))?;
         let key = key.to_vec();
-        let _host_guard = self.known_hosts_lock.lock().map_err(lock_error)?;
-        let trusted = verify_host(&session, profile, &key, known_path, user_known_path)?;
+        // Hold the file lock only for file access, not during network login.
+        let trusted = {
+            let _guard = self.known_hosts_lock.lock().map_err(lock_error)?;
+            verify_host(&session, profile, &key, known_path, user_known_path)?
+        };
         if !trusted && request.trust_fingerprint.as_deref() != Some(&fingerprint) {
             if request.trust_fingerprint.is_some() {
                 return Err(FsError::new(
@@ -231,9 +234,21 @@ impl Manager {
             ));
         }
         if !trusted {
+            let _guard = self.known_hosts_lock.lock().map_err(lock_error)?;
             save_host(&session, profile, &key, key_type, known_path)?;
         }
-        self.sessions.lock().map_err(lock_error)?.insert(
+        let mut sessions = self.sessions.lock().map_err(lock_error)?;
+        // Reconnecting replaces an idle (possibly dead) session, never one mid-transfer.
+        if sessions
+            .get(&profile.id)
+            .is_some_and(|old| matches!(old.try_lock(), Err(std::sync::TryLockError::WouldBlock)))
+        {
+            return Err(FsError::new(
+                "sftp_busy",
+                "This connection is busy with a transfer. Reconnect when it finishes.",
+            ));
+        }
+        sessions.insert(
             profile.id.clone(),
             Arc::new(Mutex::new(Connection {
                 sftp,
