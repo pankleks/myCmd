@@ -411,7 +411,8 @@ impl Worker {
                         let name = destination.file_name().unwrap().to_string_lossy();
                         let mut n = 1;
                         loop {
-                            target = destination.with_file_name(format!("{name} ({n})"));
+                            target =
+                                destination.with_file_name(numbered_name(&name, n, meta.is_dir()));
                             if fs::symlink_metadata(&target).is_err() {
                                 break;
                             }
@@ -1151,6 +1152,15 @@ fn preserve_directory_metadata(
     fs::set_permissions(destination, metadata.permissions())
 }
 
+/// "report.pdf" -> "report (2).pdf"; folders keep dots in their name.
+pub(crate) fn numbered_name(name: &str, n: u32, folder: bool) -> String {
+    let (stem, extension) = match name.rfind('.') {
+        Some(dot) if dot > 0 && !folder => name.split_at(dot),
+        _ => (name, ""),
+    };
+    format!("{stem} ({n}){extension}")
+}
+
 fn transfer_destination(sources: &[PathBuf], destination: PathBuf) -> Result<PathBuf> {
     if let [source] = sources {
         if destination != Path::new("~")
@@ -1664,6 +1674,15 @@ mod tests {
     }
 
     #[test]
+    fn numbered_names_keep_file_extensions() {
+        assert_eq!(numbered_name("report.pdf", 2, false), "report (2).pdf");
+        assert_eq!(numbered_name("a.tar.gz", 1, false), "a.tar (1).gz");
+        assert_eq!(numbered_name(".bashrc", 1, false), ".bashrc (1)");
+        assert_eq!(numbered_name("v1.2", 1, true), "v1.2 (1)");
+        assert_eq!(numbered_name("item", 1, false), "item (1)");
+    }
+
+    #[test]
     fn copy_single_file_to_new_name_in_same_directory() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source.txt");
@@ -1933,7 +1952,7 @@ mod tests {
             }
             if action == "rename" || action == "overwrite" {
                 let actual = if action == "rename" {
-                    dir.path().join("renamed.txt (1)")
+                    dir.path().join("renamed (1).txt")
                 } else {
                     target.clone()
                 };

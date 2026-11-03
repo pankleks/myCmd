@@ -341,8 +341,15 @@ impl Worker {
                             let mut n = 1;
                             loop {
                                 self.check()?;
-                                target =
-                                    target_path(target_parent, &format!("{base} ({n})"), upload)?;
+                                target = target_path(
+                                    target_parent,
+                                    &super::numbered_name(
+                                        base,
+                                        n,
+                                        node.entry.r#type == "directory",
+                                    ),
+                                    upload,
+                                )?;
                                 if destination_entry(sftp, &target, upload)?.is_none() {
                                     break;
                                 }
