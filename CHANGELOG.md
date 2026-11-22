@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.16] - 2026-11-22
+
+- Add a configurable file row spacing (0–20 px) in Settings → Appearance.
+- Tell the user when ZIP compression skips symbolic links.
+- Render Markdown previews in a time-limited worker so hostile files cannot freeze the app.
+
 ## [0.2.15] - 2026-11-03
 
 - Add offline HEIC and HEIF image previews in F3 View and the preview pane.
