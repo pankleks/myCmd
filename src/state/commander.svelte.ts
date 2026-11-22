@@ -1,6 +1,7 @@
 import { api, errorMessage } from '../filesystem/api';
 import type { Column, FileEntry, PanelState, Root } from '../filesystem/types';
 import { globToRegExp } from '../utils/glob';
+import { MAX_FOLDER_SORTS, type FolderSort } from '../utils/config';
 import {
   archiveLocation,
   locationKey,
@@ -36,6 +37,12 @@ export const commander = $state({
   roots: [] as Root[],
   quickFind: null as { side: Side; query: string; matched: boolean } | null,
 });
+/** Sort order chosen per folder; folders without an entry sort by name, ascending. */
+export const sortMemory = $state({ byPath: {} as Record<string, FolderSort> });
+function savedSort(path: string): FolderSort {
+  const saved = sortMemory.byPath[path];
+  return saved ? { ...saved } : { column: 'name', direction: 'asc' };
+}
 export interface Row extends FileEntry {
   parentEntry?: boolean;
 }
@@ -122,6 +129,7 @@ export async function load(
     const same = panel.path === result.path;
     panel.path = result.path;
     panel.parent = result.parent;
+    if (location.kind !== 'search') panel.sort = savedSort(result.path);
     panel.entries = result.entries;
     panel.skippedEntries = result.skippedEntries ?? 0;
     panel.warnings = result.warnings ?? [];
@@ -296,14 +304,35 @@ export async function leaveSearch(panel: PanelState) {
   if (session) await load(panel, session.returnPath, session.focusPath);
 }
 export function sort(panel: PanelState, column: Column) {
-  const current = rows(panel)[panel.cursor]?.path;
-  panel.sort = {
+  const next: FolderSort = {
     column,
     direction:
       panel.sort.column === column && panel.sort.direction === 'asc'
         ? 'desc'
         : 'asc',
   };
+  if (!panel.path || searchSession(panel.path)) {
+    applySort(panel, next);
+    return;
+  }
+  // Re-insert so the most recently sorted folders survive the size cap.
+  const { [panel.path]: _, ...rest } = sortMemory.byPath;
+  const byPath =
+    next.column === 'name' && next.direction === 'asc'
+      ? rest
+      : { ...rest, [panel.path]: next };
+  const keys = Object.keys(byPath);
+  for (const key of keys.slice(0, keys.length - MAX_FOLDER_SORTS))
+    delete byPath[key];
+  sortMemory.byPath = byPath;
+  applySort(panel, next);
+  for (const other of [commander.left, commander.right])
+    if (other !== panel && other.path === panel.path)
+      applySort(other, { ...next });
+}
+function applySort(panel: PanelState, next: FolderSort) {
+  const current = rows(panel)[panel.cursor]?.path;
+  panel.sort = next;
   panel.cursor = Math.max(
     0,
     rows(panel).findIndex((e) => e.path === current),

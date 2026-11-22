@@ -4,9 +4,41 @@ import {
   DEFAULT_FILE_FONT_SIZE,
   normalizeColumnWeights,
   normalizeConfig,
+  normalizeFolderSorts,
   normalizeFontSize,
   normalizeRowSpacing,
 } from './config';
+
+describe('normalizeFolderSorts', () => {
+  it('keeps valid non-default entries, newest last', () => {
+    expect(
+      normalizeFolderSorts([
+        { path: '/a', column: 'size', direction: 'desc' },
+        { path: '/b', column: 'name', direction: 'asc' },
+        { path: '/c', column: 'owner', direction: 'asc' },
+        { path: '/d', column: 'modified', direction: 'up' },
+        { path: '  ', column: 'size', direction: 'asc' },
+        null,
+        { path: '/f', column: 'extension', direction: 'asc', extra: 1 },
+        { path: '/a', column: 'modified', direction: 'asc' },
+      ]),
+    ).toEqual({
+      '/f': { column: 'extension', direction: 'asc' },
+      '/a': { column: 'modified', direction: 'asc' },
+    });
+    expect(
+      Object.keys(
+        normalizeFolderSorts([
+          { path: '/x', column: 'size', direction: 'asc' },
+          { path: '/y', column: 'size', direction: 'asc' },
+          { path: '/x', column: 'size', direction: 'desc' },
+        ]),
+      ),
+    ).toEqual(['/y', '/x']);
+    expect(normalizeFolderSorts(null)).toEqual({});
+    expect(normalizeFolderSorts('oops')).toEqual({});
+  });
+});
 
 describe('normalizeRowSpacing', () => {
   it('clamps to the supported range and defaults to 0', () => {
@@ -143,6 +175,7 @@ describe('normalizeConfig', () => {
       sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
+      folderSorts: {},
       fileFontSize: 20,
       fileRowSpacing: 6,
       showHidden: false,
@@ -190,6 +223,7 @@ describe('normalizeConfig', () => {
       sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
+      folderSorts: {},
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
       fileRowSpacing: 0,
       showHidden: false,
@@ -208,6 +242,7 @@ describe('normalizeConfig', () => {
       fileRowSpacing: 3,
       showHidden: true,
       showFunctionBar: false,
+      folderSorts: [{ path: '/tmp', column: 'size', direction: 'desc' }],
     });
     expect(buildSavePayload(normalized)).toEqual({
       pinnedDirectories: [],
@@ -215,6 +250,7 @@ describe('normalizeConfig', () => {
       sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
+      folderSorts: [{ path: '/tmp', column: 'size', direction: 'desc' }],
       version: 1,
       leftPath: '/home/user',
       rightPath: '/tmp',

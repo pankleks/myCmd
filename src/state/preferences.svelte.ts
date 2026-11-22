@@ -9,7 +9,7 @@ import {
   normalizeConfig,
 } from '../utils/config';
 import { displayPath } from '../utils/paths';
-import { commander, rows } from './commander.svelte';
+import { commander, rows, sortMemory } from './commander.svelte';
 
 export interface SavedPaths {
   leftPath: string | null;
@@ -66,6 +66,7 @@ export async function loadPreferences(): Promise<SavedPaths> {
     normalized.compressionLevel ?? DEFAULT_COMPRESSION_LEVEL;
   preferences.editor = normalized.editor ?? null;
   preferences.sftpProfiles = normalized.sftpProfiles ?? [];
+  sortMemory.byPath = normalized.folderSorts ?? {};
   for (const profile of preferences.sftpProfiles)
     sftpNames.set(profile.id, profile.name);
   setShowHidden(normalized.showHidden);
@@ -95,6 +96,7 @@ export async function persistPreferences(): Promise<void> {
     compressionLevel: preferences.compressionLevel,
     sftpProfiles: preferences.sftpProfiles,
     editor: preferences.editor,
+    folderSorts: sortMemory.byPath,
   });
   try {
     await api.saveConfig(payload);

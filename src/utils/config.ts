@@ -1,4 +1,15 @@
-import type { SftpProfile } from '../filesystem/types';
+import type { Column, SftpProfile } from '../filesystem/types';
+export interface FolderSort {
+  column: Column;
+  direction: 'asc' | 'desc';
+}
+export const MAX_FOLDER_SORTS = 1000;
+const SORT_COLUMNS: readonly Column[] = [
+  'name',
+  'extension',
+  'size',
+  'modified',
+];
 export const CONFIG_VERSION = 1;
 export const DEFAULT_FILE_FONT_SIZE = 18;
 export const DEFAULT_COMPRESSION_LEVEL = 6;
@@ -33,6 +44,8 @@ export interface AppConfig {
   compressionLevel?: number;
   sftpProfiles?: SftpProfile[];
   editor?: string | null;
+  // An array, oldest first, so the backend keeps the order.
+  folderSorts?: (FolderSort & { path: string })[];
 }
 
 export interface NormalizedConfig {
@@ -48,6 +61,37 @@ export interface NormalizedConfig {
   compressionLevel?: number;
   sftpProfiles?: SftpProfile[];
   editor?: string | null;
+  folderSorts?: Record<string, FolderSort>;
+}
+
+/**
+ * Accepts the saved array (oldest first) or the in-memory map and returns a
+ * map of valid, non-default entries; the newest MAX_FOLDER_SORTS win.
+ */
+export function normalizeFolderSorts(
+  value: unknown,
+): Record<string, FolderSort> {
+  if (typeof value !== 'object' || value === null) return {};
+  const items: unknown[] = Array.isArray(value)
+    ? value
+    : Object.entries(value).map(([path, sort]) => ({ ...sort, path }));
+  const sorts = new Map<string, FolderSort>();
+  for (const item of items) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { path, column, direction } = item as Record<string, unknown>;
+    if (
+      typeof path !== 'string' ||
+      !path.trim() ||
+      !SORT_COLUMNS.includes(column as Column) ||
+      (direction !== 'asc' && direction !== 'desc')
+    )
+      continue;
+    // A later entry for the same folder is the newer choice.
+    sorts.delete(path);
+    if (column !== 'name' || direction !== 'asc')
+      sorts.set(path, { column: column as Column, direction });
+  }
+  return Object.fromEntries([...sorts].slice(-MAX_FOLDER_SORTS));
 }
 
 export function normalizeFontSize(value: unknown): number {
@@ -112,6 +156,7 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     compressionLevel: normalizeCompressionLevel(config.compressionLevel),
     sftpProfiles: normalizeSftpProfiles(config.sftpProfiles),
     editor: normalizePath(config.editor),
+    folderSorts: normalizeFolderSorts(config.folderSorts),
   };
 }
 
@@ -202,5 +247,8 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
     compressionLevel: normalizeCompressionLevel(normalized.compressionLevel),
     sftpProfiles: normalizeSftpProfiles(normalized.sftpProfiles),
     editor: normalizePath(normalized.editor),
+    folderSorts: Object.entries(
+      normalizeFolderSorts(normalized.folderSorts),
+    ).map(([path, sort]) => ({ path, ...sort })),
   };
 }

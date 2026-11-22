@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileEntry, Listing, PanelState } from '../filesystem/types';
 import { api } from '../filesystem/api';
-import { searchProvider, searchSession } from '../filesystem/providers';
+import {
+  locationKey,
+  searchProvider,
+  searchSession,
+  searchSessions,
+} from '../filesystem/providers';
 import { inReactiveRoot } from '../test/reactivity.svelte';
 import {
   commander,
@@ -24,7 +29,9 @@ import {
   startSearch,
   previewEntry,
   leaveSearch,
+  sortMemory,
 } from './commander.svelte';
+import { MAX_FOLDER_SORTS } from '../utils/config';
 
 vi.mock('../filesystem/api', () => ({
   api: {
@@ -74,6 +81,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   commander.left = panel();
   commander.right = panel();
+  sortMemory.byPath = {};
 });
 
 describe('search result navigation', () => {
@@ -258,7 +266,71 @@ describe('sorting and selection', () => {
     p.showHidden = true;
     expect(rows(p).map((e) => e.name)).toEqual(['.secret']);
   });
+  it('remembers the sort order per folder', async () => {
+    const p = panel();
+    const listing = (path: string) =>
+      vi.mocked(api.list).mockResolvedValueOnce({
+        path,
+        parent: '/',
+        entries: [],
+      });
+    sort(p, 'size');
+    sort(p, 'size');
+    expect(sortMemory.byPath).toEqual({
+      '/home': { column: 'size', direction: 'desc' },
+    });
+    listing('/tmp');
+    await load(p, '/tmp');
+    expect(p.sort).toEqual({ column: 'name', direction: 'asc' });
+    listing('/home');
+    await load(p, '/home');
+    expect(p.sort).toEqual({ column: 'size', direction: 'desc' });
+  });
+  it('forgets a folder sorted back to the default order', () => {
+    const p = panel();
+    p.sort = { column: 'name', direction: 'desc' };
+    sortMemory.byPath = { '/home': { column: 'name', direction: 'desc' } };
+    sort(p, 'name');
+    expect(p.sort).toEqual({ column: 'name', direction: 'asc' });
+    expect(sortMemory.byPath).toEqual({});
+  });
+  it('keeps only the most recently sorted folders', () => {
+    sortMemory.byPath = Object.fromEntries(
+      Array.from({ length: MAX_FOLDER_SORTS }, (_, i) => [
+        `/f${i}`,
+        { column: 'size', direction: 'asc' } as const,
+      ]),
+    );
+    sort(panel(), 'modified');
+    const keys = Object.keys(sortMemory.byPath);
+    expect(keys).toHaveLength(MAX_FOLDER_SORTS);
+    expect(keys[0]).toBe('/f1');
+    expect(keys.at(-1)).toBe('/home');
+  });
+  it('does not remember sort orders for search results', () => {
+    const p = panel();
+    searchSessions.set('sort-test', {
+      root: '/home',
+      pattern: '*',
+      returnPath: '/home',
+    });
+    p.path = locationKey({ kind: 'search', sessionId: 'sort-test' });
+    try {
+      sort(p, 'size');
+      expect(p.sort.column).toBe('size');
+      expect(sortMemory.byPath).toEqual({});
+    } finally {
+      searchSessions.delete('sort-test');
+    }
+  });
+  it('applies a new folder order to the other panel in the same folder', () => {
+    commander.left.entries = [entry('a')];
+    commander.right.entries = [entry('a')];
+    sort(commander.left, 'size');
+    expect(commander.right.sort.column).toBe('size');
+  });
   it('keeps panel state independent', () => {
+    commander.right.path = '/tmp';
     commander.left.entries = [entry('a')];
     commander.right.entries = [entry('a')];
     toggle(commander.left, rows(commander.left)[1]);

@@ -10,6 +10,8 @@ pub const CONFIG_FILE_NAME: &str = "config.json";
 pub const CONFIG_ENV_OVERRIDE: &str = "MYCMD_CONFIG_DIR";
 pub const MIN_FILE_FONT_SIZE: u32 = 12;
 pub const MAX_FILE_FONT_SIZE: u32 = 24;
+pub const MAX_FILE_ROW_SPACING: u32 = 20;
+pub const MAX_FOLDER_SORTS: usize = 1000;
 pub const MIN_COLUMN_WEIGHT: f64 = 20.0;
 pub const MAX_COLUMN_WEIGHT: f64 = 2000.0;
 pub const COLUMN_COUNT: usize = 4;
@@ -171,6 +173,73 @@ fn compression_level_or_default<'de, D: Deserializer<'de>>(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SortColumn {
+    Name,
+    Extension,
+    Size,
+    Modified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+/// Sort order the user picked for one folder; stored oldest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderSort {
+    pub path: String,
+    pub column: SortColumn,
+    pub direction: SortDirection,
+}
+
+fn sanitize_folder_sorts(sorts: &[FolderSort]) -> Vec<FolderSort> {
+    let mut kept: Vec<FolderSort> = Vec::new();
+    for sort in sorts {
+        if sort.path.trim().is_empty() {
+            continue;
+        }
+        // A later entry for the same folder is the newer choice.
+        kept.retain(|existing| existing.path != sort.path);
+        if (sort.column, sort.direction) != (SortColumn::Name, SortDirection::Asc) {
+            kept.push(sort.clone());
+        }
+    }
+    let excess = kept.len().saturating_sub(MAX_FOLDER_SORTS);
+    kept.drain(..excess);
+    kept
+}
+
+/// Skips malformed entries instead of failing the whole config.
+fn folder_sorts_or_default<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<FolderSort>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let sorts: Vec<FolderSort> = value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| serde_json::from_value(item.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(sanitize_folder_sorts(&sorts))
+}
+
+fn row_spacing_or_default<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<u32>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_u64()
+        .map(|spacing| spacing.min(u64::from(MAX_FILE_ROW_SPACING)) as u32))
+}
+
 /// Older files stored a per-panel `{left, right}` object; only an explicit
 /// boolean true enables hidden files now, everything else means false.
 fn bool_or_legacy<'de, D: Deserializer<'de>>(
@@ -188,6 +257,8 @@ pub struct AppConfig {
     pub right_path: Option<String>,
     pub column_weights: ColumnWeights,
     pub file_font_size: Option<u32>,
+    #[serde(deserialize_with = "row_spacing_or_default")]
+    pub file_row_spacing: Option<u32>,
     #[serde(deserialize_with = "bool_or_legacy")]
     pub show_hidden: bool,
     #[serde(default = "default_true")]
@@ -199,6 +270,8 @@ pub struct AppConfig {
     #[serde(deserialize_with = "sftp_profiles_or_default")]
     pub sftp_profiles: Vec<crate::sftp::Profile>,
     pub editor: Option<String>,
+    #[serde(deserialize_with = "folder_sorts_or_default")]
+    pub folder_sorts: Vec<FolderSort>,
     pub launch: LaunchConfig,
 }
 
@@ -210,6 +283,7 @@ impl Default for AppConfig {
             right_path: None,
             column_weights: ColumnWeights::default(),
             file_font_size: None,
+            file_row_spacing: None,
             show_hidden: false,
             show_function_bar: true,
             pinned_directories: Vec::new(),
@@ -217,6 +291,7 @@ impl Default for AppConfig {
             compression_level: default_compression_level(),
             sftp_profiles: Vec::new(),
             editor: None,
+            folder_sorts: Vec::new(),
             launch: LaunchConfig::default(),
         }
     }
@@ -251,6 +326,10 @@ impl AppConfig {
             file_font_size: self
                 .file_font_size
                 .map(|size| size.clamp(MIN_FILE_FONT_SIZE, MAX_FILE_FONT_SIZE)),
+            file_row_spacing: self
+                .file_row_spacing
+                .map(|spacing| spacing.min(MAX_FILE_ROW_SPACING)),
+            folder_sorts: sanitize_folder_sorts(&self.folder_sorts),
             show_hidden: self.show_hidden,
             show_function_bar: self.show_function_bar,
             compression_level: match self.compression_level {
@@ -422,6 +501,7 @@ mod tests {
                 right: None,
             },
             file_font_size: Some(20),
+            file_row_spacing: Some(4),
             show_hidden: true,
             show_function_bar: false,
             pinned_directories: vec!["/home/user/projects".into()],
@@ -429,6 +509,11 @@ mod tests {
             compression_level: 9,
             sftp_profiles: Vec::new(),
             editor: Some("/usr/bin/editor".into()),
+            folder_sorts: vec![FolderSort {
+                path: "/home/user".into(),
+                column: SortColumn::Size,
+                direction: SortDirection::Desc,
+            }],
             launch: LaunchConfig {
                 linux: Some(LaunchRules {
                     run_in_terminal: vec!["sh".into()],
@@ -440,6 +525,44 @@ mod tests {
         };
         save_to(&path, &config).expect("save");
         assert_eq!(load_from(&path), config.sanitized());
+    }
+
+    #[test]
+    fn folder_sorts_skip_bad_entries_and_keep_newest() {
+        let config: AppConfig = serde_json::from_value(serde_json::json!({
+            "editor": "/editor",
+            "fileRowSpacing": "wide",
+            "folderSorts": [
+                {"path": "/a", "column": "size", "direction": "asc"},
+                {"path": "/b", "column": "owner", "direction": "asc"},
+                {"path": "/c", "column": "name", "direction": "asc"},
+                {"path": "  ", "column": "size", "direction": "asc"},
+                {"path": "/d", "column": "modified", "direction": "desc"},
+                {"path": "/a", "column": "extension", "direction": "desc"},
+                "broken"
+            ]
+        }))
+        .unwrap();
+        assert_eq!(config.editor.as_deref(), Some("/editor"));
+        assert_eq!(config.file_row_spacing, None);
+        let paths: Vec<_> = config
+            .folder_sorts
+            .iter()
+            .map(|s| s.path.as_str())
+            .collect();
+        assert_eq!(paths, ["/d", "/a"]);
+        assert_eq!(config.folder_sorts[1].column, SortColumn::Extension);
+
+        let many: Vec<_> = (0..MAX_FOLDER_SORTS + 5)
+            .map(|i| FolderSort {
+                path: format!("/f{i}"),
+                column: SortColumn::Size,
+                direction: SortDirection::Asc,
+            })
+            .collect();
+        let kept = sanitize_folder_sorts(&many);
+        assert_eq!(kept.len(), MAX_FOLDER_SORTS);
+        assert_eq!(kept[0].path, "/f5");
     }
 
     #[test]
@@ -466,6 +589,7 @@ mod tests {
                 right: Some([f64::NAN, 78.0, 113.0, 218.0]),
             },
             file_font_size: Some(99),
+            file_row_spacing: Some(99),
             show_hidden: true,
             show_function_bar: true,
             pinned_directories: Vec::new(),
@@ -477,6 +601,7 @@ mod tests {
             ]
             .into(),
             editor: Some("   ".into()),
+            folder_sorts: Vec::new(),
             launch: LaunchConfig::default(),
         };
         let sanitized = config.sanitized();
@@ -487,6 +612,7 @@ mod tests {
         assert_eq!(sanitized.column_weights.left, None);
         assert_eq!(sanitized.column_weights.right, None);
         assert_eq!(sanitized.file_font_size, Some(MAX_FILE_FONT_SIZE));
+        assert_eq!(sanitized.file_row_spacing, Some(MAX_FILE_ROW_SPACING));
         assert!(sanitized.show_hidden);
         assert!(sanitized.show_function_bar);
         assert_eq!(sanitized.compression_level, 6);

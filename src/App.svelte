@@ -36,6 +36,7 @@
     cancelDirectorySizing,
     startSearch,
     leaveSearch,
+    sortMemory,
     type Side,
     type SelectionMode,
   } from './state/commander.svelte';
@@ -333,6 +334,7 @@
     preferences.showFunctionBar;
     preferences.pinnedDirectories;
     preferences.editor;
+    sortMemory.byPath;
     scheduleSave();
   });
   const actions: [string, Action, string][] = [

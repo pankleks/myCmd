@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../filesystem/api';
 import type { FileEntry } from '../filesystem/types';
 import { DEFAULT_FILE_FONT_SIZE } from '../utils/config';
-import { commander, createPanel, rows } from './commander.svelte';
+import { commander, createPanel, rows, sortMemory } from './commander.svelte';
 import {
   loadPreferences,
   persistPreferences,
@@ -32,6 +32,7 @@ beforeEach(() => {
   preferences.pinnedDirectoryNames = {};
   preferences.compressionLevel = 6;
   preferences.sftpProfiles = [];
+  sortMemory.byPath = {};
   commander.left.path = '';
   commander.right.path = '';
   commander.left.showHidden = false;
@@ -64,6 +65,22 @@ describe('loadPreferences', () => {
       expect.objectContaining({
         pinnedDirectories: ['/tmp'],
         pinnedDirectoryNames: { '/tmp': 'Temporary' },
+      }),
+    );
+  });
+  it('loads and persists per-folder sort orders', async () => {
+    loadConfig.mockResolvedValue({
+      version: 1,
+      folderSorts: [{ path: '/tmp', column: 'modified', direction: 'desc' }],
+    });
+    await loadPreferences();
+    expect(sortMemory.byPath).toEqual({
+      '/tmp': { column: 'modified', direction: 'desc' },
+    });
+    await persistPreferences();
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folderSorts: [{ path: '/tmp', column: 'modified', direction: 'desc' }],
       }),
     );
   });
@@ -154,6 +171,7 @@ describe('persistPreferences', () => {
       sftpProfiles: [],
       compressionLevel: 6,
       editor: null,
+      folderSorts: [],
       version: 1,
       leftPath: 'C:\\Users\\root',
       rightPath: 'D:\\Backup',
