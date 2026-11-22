@@ -4,6 +4,7 @@ import type { SftpProfile } from '../filesystem/types';
 import {
   buildSavePayload,
   DEFAULT_FILE_FONT_SIZE,
+  DEFAULT_FILE_ROW_SPACING,
   DEFAULT_COMPRESSION_LEVEL,
   normalizeConfig,
 } from '../utils/config';
@@ -17,6 +18,7 @@ export interface SavedPaths {
 
 export const preferences = $state({
   fileFontSize: DEFAULT_FILE_FONT_SIZE,
+  fileRowSpacing: DEFAULT_FILE_ROW_SPACING,
   columnWidths: null as number[] | null,
   showHidden: false,
   showFunctionBar: true,
@@ -54,6 +56,8 @@ export async function loadPreferences(): Promise<SavedPaths> {
   }
   const normalized = normalizeConfig(raw);
   preferences.fileFontSize = normalized.fileFontSize;
+  preferences.fileRowSpacing =
+    normalized.fileRowSpacing ?? DEFAULT_FILE_ROW_SPACING;
   preferences.columnWidths = normalized.columns;
   preferences.showFunctionBar = normalized.showFunctionBar;
   preferences.pinnedDirectories = normalized.pinnedDirectories ?? [];
@@ -83,6 +87,7 @@ export async function persistPreferences(): Promise<void> {
       : null,
     columns: preferences.columnWidths,
     fileFontSize: preferences.fileFontSize,
+    fileRowSpacing: preferences.fileRowSpacing,
     showHidden: preferences.showHidden,
     showFunctionBar: preferences.showFunctionBar,
     pinnedDirectories: preferences.pinnedDirectories,

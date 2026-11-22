@@ -4,6 +4,9 @@ export const DEFAULT_FILE_FONT_SIZE = 18;
 export const DEFAULT_COMPRESSION_LEVEL = 6;
 export const MIN_FILE_FONT_SIZE = 12;
 export const MAX_FILE_FONT_SIZE = 24;
+export const DEFAULT_FILE_ROW_SPACING = 0;
+export const MIN_FILE_ROW_SPACING = 0;
+export const MAX_FILE_ROW_SPACING = 20;
 export const COLUMN_COUNT = 4;
 export const MIN_COLUMN_WEIGHT = 20;
 export const MAX_COLUMN_WEIGHT = 2000;
@@ -20,6 +23,7 @@ export interface AppConfig {
     | number[]
     | null;
   fileFontSize?: number | null;
+  fileRowSpacing?: number | null;
   // Legacy files stored a per-panel object; only boolean true enables it now.
   showHidden?:
     boolean | { left?: boolean | null; right?: boolean | null } | null;
@@ -36,6 +40,7 @@ export interface NormalizedConfig {
   rightPath: string | null;
   columns: number[] | null;
   fileFontSize: number;
+  fileRowSpacing?: number;
   showHidden: boolean;
   showFunctionBar: boolean;
   pinnedDirectories?: string[];
@@ -49,6 +54,15 @@ export function normalizeFontSize(value: unknown): number {
   const size = typeof value === 'number' ? Math.round(value) : NaN;
   if (!Number.isFinite(size)) return DEFAULT_FILE_FONT_SIZE;
   return Math.min(MAX_FILE_FONT_SIZE, Math.max(MIN_FILE_FONT_SIZE, size));
+}
+
+export function normalizeRowSpacing(value: unknown): number {
+  const spacing = typeof value === 'number' ? Math.round(value) : NaN;
+  if (!Number.isFinite(spacing)) return DEFAULT_FILE_ROW_SPACING;
+  return Math.min(
+    MAX_FILE_ROW_SPACING,
+    Math.max(MIN_FILE_ROW_SPACING, spacing),
+  );
 }
 
 export function normalizeCompressionLevel(value: unknown): number {
@@ -88,6 +102,7 @@ export function normalizeConfig(raw: unknown): NormalizedConfig {
     rightPath: normalizePath(config.rightPath),
     columns: normalizeSharedColumns(config.columnWeights),
     fileFontSize: normalizeFontSize(config.fileFontSize),
+    fileRowSpacing: normalizeRowSpacing(config.fileRowSpacing),
     // Legacy files stored a per-panel {left, right} object; only an explicit
     // boolean true enables hidden files now.
     showHidden: config.showHidden === true,
@@ -179,6 +194,7 @@ export function buildSavePayload(normalized: NormalizedConfig): AppConfig {
       right: normalized.columns,
     },
     fileFontSize: normalized.fileFontSize,
+    fileRowSpacing: normalizeRowSpacing(normalized.fileRowSpacing),
     showHidden: normalized.showHidden,
     showFunctionBar: normalized.showFunctionBar,
     pinnedDirectories: normalizePins(normalized.pinnedDirectories),

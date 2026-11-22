@@ -1,10 +1,16 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { version } from '../../package.json';
-  import { MAX_FILE_FONT_SIZE, MIN_FILE_FONT_SIZE } from '../utils/config';
+  import {
+    MAX_FILE_FONT_SIZE,
+    MAX_FILE_ROW_SPACING,
+    MIN_FILE_FONT_SIZE,
+    MIN_FILE_ROW_SPACING,
+  } from '../utils/config';
 
   let {
     fileFontSize,
+    fileRowSpacing,
     showHidden,
     showFunctionBar,
     editor,
@@ -12,11 +18,13 @@
     onclose,
   }: {
     fileFontSize: number;
+    fileRowSpacing: number;
     showHidden: boolean;
     showFunctionBar: boolean;
     editor: string | null;
     onsubmit: (settings: {
       fileFontSize: number;
+      fileRowSpacing: number;
       showHidden: boolean;
       showFunctionBar: boolean;
       editor: string | null;
@@ -25,6 +33,7 @@
   } = $props();
 
   let fontSize = $state(MIN_FILE_FONT_SIZE);
+  let rowSpacing = $state(MIN_FILE_ROW_SPACING);
   let hidden = $state(false);
   let functionBar = $state(true);
   let editorPath = $state('');
@@ -32,6 +41,7 @@
 
   onMount(() => {
     fontSize = fileFontSize;
+    rowSpacing = fileRowSpacing;
     hidden = showHidden;
     functionBar = showFunctionBar;
     editorPath = editor ?? '';
@@ -57,10 +67,17 @@
     onsubmit={(event) => {
       event.preventDefault();
       const size = Math.round(Number(fontSize));
+      const spacing = Math.round(Number(rowSpacing));
       onsubmit({
         fileFontSize: Number.isFinite(size)
           ? Math.min(MAX_FILE_FONT_SIZE, Math.max(MIN_FILE_FONT_SIZE, size))
           : fileFontSize,
+        fileRowSpacing: Number.isFinite(spacing)
+          ? Math.min(
+              MAX_FILE_ROW_SPACING,
+              Math.max(MIN_FILE_ROW_SPACING, spacing),
+            )
+          : fileRowSpacing,
         showHidden: hidden,
         showFunctionBar: functionBar,
         editor: editorPath.trim() || null,
@@ -80,6 +97,20 @@
           required
           min={MIN_FILE_FONT_SIZE}
           max={MAX_FILE_FONT_SIZE}
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div class="settings-row">
+        <label for="settings-row-spacing"
+          >File row spacing <span class="muted">px</span></label
+        ><input
+          id="settings-row-spacing"
+          type="number"
+          bind:value={rowSpacing}
+          required
+          min={MIN_FILE_ROW_SPACING}
+          max={MAX_FILE_ROW_SPACING}
           autocomplete="off"
           spellcheck="false"
         />

@@ -59,7 +59,7 @@
       ?.map((width, i) => `minmax(${minimumColumnWidths[i]}px, ${width}fr)`)
       .join(' '),
   );
-  const rowHeight = 26;
+  let rowHeight = $derived(26 + preferences.fileRowSpacing);
   let items = $derived(rows(panel));
   let start = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - 8));
   let end = $derived(
@@ -338,6 +338,7 @@
         aria-selected={panel.selected.has(entry.path)}
         tabindex="-1"
         class="file-row"
+        style:height={`${rowHeight}px`}
         class:cursor={panel.cursor === index}
         class:selected={panel.selected.has(entry.path)}
         class:directory={entry.type === 'directory'}

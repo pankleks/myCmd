@@ -23,6 +23,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.useRealTimers();
   preferences.fileFontSize = DEFAULT_FILE_FONT_SIZE;
+  preferences.fileRowSpacing = 0;
   preferences.columnWidths = null;
   preferences.showHidden = false;
   preferences.showFunctionBar = true;
@@ -87,6 +88,7 @@ describe('loadPreferences', () => {
       rightPath: '/tmp',
       columnWeights: { left: [175, 78, 113, 218], right: null },
       fileFontSize: 20,
+      fileRowSpacing: 4,
       showHidden: true,
       showFunctionBar: false,
     });
@@ -96,6 +98,7 @@ describe('loadPreferences', () => {
       rightPath: '/tmp',
     });
     expect(preferences.fileFontSize).toBe(20);
+    expect(preferences.fileRowSpacing).toBe(4);
     expect(preferences.columnWidths).toEqual([175, 78, 113, 218]);
     expect(preferences.showHidden).toBe(true);
     expect(preferences.showFunctionBar).toBe(false);
@@ -142,6 +145,7 @@ describe('persistPreferences', () => {
     preferences.showHidden = true;
     preferences.showFunctionBar = false;
     preferences.fileFontSize = 16;
+    preferences.fileRowSpacing = 2;
     preferences.columnWidths = [200, 80, 100, 220];
     await persistPreferences();
     expect(saveConfig).toHaveBeenCalledWith({
@@ -155,6 +159,7 @@ describe('persistPreferences', () => {
       rightPath: 'D:\\Backup',
       columnWeights: { left: [200, 80, 100, 220], right: [200, 80, 100, 220] },
       fileFontSize: 16,
+      fileRowSpacing: 2,
       showHidden: true,
       showFunctionBar: false,
     });

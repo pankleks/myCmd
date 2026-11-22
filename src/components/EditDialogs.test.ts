@@ -34,6 +34,7 @@ it.each([
     target,
     props: {
       fileFontSize: 18,
+      fileRowSpacing: 4,
       showHidden: false,
       showFunctionBar: true,
       editor: '/usr/bin/editor',
@@ -59,6 +60,7 @@ it.each([
     .dispatchEvent(new Event('submit', { cancelable: true }));
   expect(onsubmit).toHaveBeenCalledWith({
     fileFontSize: 18,
+    fileRowSpacing: 4,
     showHidden: false,
     showFunctionBar: true,
     editor,

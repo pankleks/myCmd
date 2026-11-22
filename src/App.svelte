@@ -327,6 +327,7 @@
     commander.left.path;
     commander.right.path;
     preferences.fileFontSize;
+    preferences.fileRowSpacing;
     preferences.columnWidths;
     preferences.showHidden;
     preferences.showFunctionBar;
@@ -543,11 +544,13 @@
   }
   function applySettings(settings: {
     fileFontSize: number;
+    fileRowSpacing: number;
     showHidden: boolean;
     showFunctionBar: boolean;
     editor: string | null;
   }) {
     preferences.fileFontSize = settings.fileFontSize;
+    preferences.fileRowSpacing = settings.fileRowSpacing;
     preferences.showFunctionBar = settings.showFunctionBar;
     preferences.editor = settings.editor;
     setShowHidden(settings.showHidden);
@@ -1366,6 +1369,7 @@
   />{/if}
 {#if settingsOpen}<SettingsDialog
     fileFontSize={preferences.fileFontSize}
+    fileRowSpacing={preferences.fileRowSpacing}
     showHidden={preferences.showHidden}
     showFunctionBar={preferences.showFunctionBar}
     editor={preferences.editor}

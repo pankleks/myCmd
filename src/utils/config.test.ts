@@ -5,7 +5,19 @@ import {
   normalizeColumnWeights,
   normalizeConfig,
   normalizeFontSize,
+  normalizeRowSpacing,
 } from './config';
+
+describe('normalizeRowSpacing', () => {
+  it('clamps to the supported range and defaults to 0', () => {
+    expect(normalizeRowSpacing(4)).toBe(4);
+    expect(normalizeRowSpacing(4.6)).toBe(5);
+    expect(normalizeRowSpacing(99)).toBe(20);
+    expect(normalizeRowSpacing(-3)).toBe(0);
+    expect(normalizeRowSpacing(undefined)).toBe(0);
+    expect(normalizeRowSpacing('wide')).toBe(0);
+  });
+});
 
 describe('normalizeFontSize', () => {
   it('clamps to the supported range', () => {
@@ -120,6 +132,7 @@ describe('normalizeConfig', () => {
         rightPath: '',
         columnWeights: { left: [175, 78, 113, 218], right: [1, 2, 3] },
         fileFontSize: 20,
+        fileRowSpacing: 6,
       }),
     ).toEqual({
       leftPath: 'C:\\Users\\root',
@@ -131,6 +144,7 @@ describe('normalizeConfig', () => {
       compressionLevel: 6,
       editor: null,
       fileFontSize: 20,
+      fileRowSpacing: 6,
       showHidden: false,
       showFunctionBar: true,
     });
@@ -177,6 +191,7 @@ describe('normalizeConfig', () => {
       compressionLevel: 6,
       editor: null,
       fileFontSize: DEFAULT_FILE_FONT_SIZE,
+      fileRowSpacing: 0,
       showHidden: false,
       showFunctionBar: true,
     });
@@ -190,6 +205,7 @@ describe('normalizeConfig', () => {
       rightPath: '/tmp',
       columnWeights: { left: null, right: null },
       fileFontSize: 16,
+      fileRowSpacing: 3,
       showHidden: true,
       showFunctionBar: false,
     });
@@ -204,6 +220,7 @@ describe('normalizeConfig', () => {
       rightPath: '/tmp',
       columnWeights: { left: null, right: null },
       fileFontSize: 16,
+      fileRowSpacing: 3,
       showHidden: true,
       showFunctionBar: false,
     });
