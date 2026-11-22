@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.17] - 2026-11-22
+
+- Remember the sort order per folder, including after a restart.
+- Fix the file row spacing setting resetting to 0 after a restart.
+
 ## [0.2.16] - 2026-11-22
 
 - Add a configurable file row spacing (0–20 px) in Settings → Appearance.
