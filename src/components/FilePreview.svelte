@@ -3,7 +3,8 @@
   import { icons } from '../utils/uiIcons';
   import { onDestroy, onMount, tick, type Snippet } from 'svelte';
   import { api, errorMessage } from '../filesystem/api';
-  import { isImageFile, isMarkdownFile, isHeicFile } from '../utils/viewer';
+  import { isImageFile, isMarkdownFile } from '../utils/viewer';
+  import { loadImagePreview } from '../utils/imagePreview';
   import { formatJsonPreview } from '../utils/jsonPreview';
   import { highlightPreviewMatches } from '../utils/previewSearch';
   import DirectorySummary from './DirectorySummary.svelte';
@@ -150,16 +151,11 @@
     try {
       if (isPdf) return;
       if (isImage) {
-        // Keep SVG in an image context: scripts and external resources are disabled.
-        let dataUrl =
-          extension.toLowerCase().replace(/^\./, '') === 'svg'
-            ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(await api.readTextPreview(path))}`
-            : await api.readImagePreview(path);
-        if (isHeicFile(extension)) {
-          if (disposed) return;
-          const { heicPreview } = await import('../utils/heicPreview');
-          dataUrl = await heicPreview(dataUrl, imageAbort.signal);
-        }
+        const dataUrl = await loadImagePreview(
+          path,
+          extension,
+          imageAbort.signal,
+        );
         if (!disposed) imagePreview = dataUrl;
         else if (dataUrl.startsWith('blob:')) URL.revokeObjectURL(dataUrl);
         return;

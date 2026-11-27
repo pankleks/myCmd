@@ -75,6 +75,8 @@
   import { sftpActionError, toSftpOperation } from './state/sftpRules';
   import { skippedLinksMessage } from './operations/skippedLinks';
   import { contextMenuItems } from './state/contextMenu';
+  import { galleryImages, type GalleryImage } from './utils/imageGallery';
+  import { isImageFile } from './utils/viewer';
   let ready = $state(false);
   let rightAltDown = false;
   let previewMode = $state(false);
@@ -159,6 +161,9 @@
     name: string;
     extension: string;
     isDirectory?: boolean;
+    side: Side;
+    images?: GalleryImage[];
+    index?: number;
   }>();
   let commandInputElement: HTMLInputElement;
   let progress = $derived(operations.state.progress);
@@ -449,6 +454,22 @@
     viewer = undefined;
     void tick().then(focusPanel);
   }
+  function navigateViewer(index: number) {
+    const current = viewer;
+    const image = current?.images?.[index];
+    if (!current || !image) return;
+    viewer = {
+      ...current,
+      path: image.path,
+      name: image.name,
+      extension: image.extension,
+      index,
+    };
+    // Esc then leaves the cursor on the last image shown.
+    const panel = commander[current.side];
+    const row = rows(panel).findIndex((entry) => entry.path === image.path);
+    if (row >= 0) panel.cursor = row;
+  }
   function requestProperties() {
     if (propertiesDialog) return;
     if (!ready || busy || commandRunning || active.loading) return;
@@ -507,13 +528,20 @@
         name: entry.name,
         extension: entry.extension,
         isDirectory: true,
+        side: commander.activePanel,
       };
       return;
     }
+    const images = isImageFile(entry.extension)
+      ? galleryImages(rows(active))
+      : [];
+    const index = images.findIndex((image) => image.path === entry.path);
     viewer = {
       path: entry.path,
       name: entry.name,
       extension: entry.extension,
+      side: commander.activePanel,
+      ...(index >= 0 ? { images, index } : {}),
     };
   }
   function togglePreviewPane() {
@@ -1339,7 +1367,16 @@
     items={contextItems}
     onclose={closeContextMenu}
   />{/if}
-{#if viewer}<FileViewerDialog {...viewer} onclose={closeViewer} />{/if}
+{#if viewer}<FileViewerDialog
+    path={viewer.path}
+    name={viewer.name}
+    extension={viewer.extension}
+    isDirectory={viewer.isDirectory}
+    images={viewer.images}
+    index={viewer.index}
+    onnavigate={navigateViewer}
+    onclose={closeViewer}
+  />{/if}
 {#if propertiesDialog}<PropertiesDialog
     path={propertiesDialog.path}
     onclose={closeProperties}

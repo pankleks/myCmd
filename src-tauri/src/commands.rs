@@ -255,6 +255,26 @@ pub async fn read_image_preview(
     .await
     .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
+#[tauri::command]
+pub async fn read_image_thumbnail(
+    path: String,
+    max_side: u32,
+    connection_id: Option<String>,
+    state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
+) -> Result<String> {
+    let manager = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        with_preview_path(
+            &manager,
+            connection_id.as_deref(),
+            &path,
+            crate::thumbnails::MAX_THUMBNAIL_SOURCE_BYTES,
+            |path| crate::thumbnails::read_image_thumbnail(path, max_side),
+        )
+    })
+    .await
+    .map_err(|e| FsError::new("io_error", e.to_string()))?
+}
 fn with_preview_path<T>(
     manager: &crate::sftp::Manager,
     connection_id: Option<&str>,

@@ -41,6 +41,12 @@ describe('panel providers', () => {
       connectionId: 'connection',
       source: 'image.png',
     });
+    await api.readImageThumbnail(path, 192);
+    expect(invoke).toHaveBeenLastCalledWith('read_image_thumbnail', {
+      path: '/a # 日本語.svg',
+      connectionId: 'connection',
+      maxSide: 192,
+    });
     await api.readTextPreview('/local.txt');
     expect(invoke).toHaveBeenLastCalledWith('read_text_preview', {
       path: '/local.txt',

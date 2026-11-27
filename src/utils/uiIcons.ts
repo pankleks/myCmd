@@ -13,4 +13,6 @@ export const icons = {
   minus: { ...lucide.minus, width: 24, height: 24 },
   plus: { ...lucide.plus, width: 24, height: 24 },
   x: { ...lucide.x, width: 24, height: 24 },
+  'layout-grid': { ...lucide['layout-grid'], width: 24, height: 24 },
+  'image-off': { ...lucide['image-off'], width: 24, height: 24 },
 };

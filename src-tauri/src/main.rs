@@ -14,6 +14,7 @@ mod sftp;
 mod shell;
 mod system_actions;
 mod terminal;
+mod thumbnails;
 mod watcher;
 fn main() {
     #[cfg(windows)]
@@ -46,6 +47,7 @@ fn main() {
             commands::read_text_preview,
             commands::read_pdf_preview,
             commands::read_image_preview,
+            commands::read_image_thumbnail,
             commands::read_markdown_image,
             commands::list_roots,
             commands::open_file,

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import App from './App.svelte';
 import { api } from './filesystem/api';
-import { commander, createPanel } from './state/commander.svelte';
+import { commander, createPanel, rows } from './state/commander.svelte';
 import { locationKey } from './filesystem/providers';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -43,6 +43,9 @@ vi.mock('./filesystem/api', () => ({
     resolve: vi.fn(async () => {}),
     readFilesFromClipboard: vi.fn(async () => ({ paths: [], cut: false })),
     readImagePreview: vi.fn(async () => 'data:image/png;base64,cG5n'),
+    readImageThumbnail: vi.fn(
+      async (path: string) => `data:image/jpeg;base64,${btoa(path)}`,
+    ),
   },
   errorMessage: (error: Error) => error.message,
 }));
@@ -128,6 +131,100 @@ it('opens the remote file viewer when F3 is pressed on an SFTP panel', async () 
     );
   });
   expect(api.readImagePreview).toHaveBeenCalledWith(path);
+});
+it('steps through the images of the folder and shows them as thumbnails with F3', async () => {
+  const file = (name: string, extension: string) => ({
+    name,
+    path: `/left/${name}`,
+    type: 'file' as const,
+    extension,
+    size: 5,
+    hidden: false,
+    directoryTarget: false,
+  });
+  commander.left.entries = [
+    file('a.png', 'png'),
+    file('b.txt', 'txt'),
+    file('c.jpg', 'jpg'),
+    file('d.gif', 'gif'),
+  ];
+  flushSync();
+  const cursorOn = (name: string) =>
+    rows(commander.left).findIndex((row) => row.name === name);
+  commander.left.cursor = cursorOn('a.png');
+  flushSync();
+  press('F3');
+  const dialog = () => target.querySelector('dialog.file-viewer')!;
+  const key = (key: string) => {
+    (document.activeElement && dialog().contains(document.activeElement)
+      ? document.activeElement
+      : dialog()
+    ).dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+    );
+    flushSync();
+  };
+  const shown = async (path: string) =>
+    vi.waitFor(() => {
+      flushSync();
+      expect(api.readImagePreview).toHaveBeenLastCalledWith(path);
+      expect(dialog().querySelector('img')).not.toBeNull();
+    });
+  await shown('/left/a.png');
+  expect(dialog().querySelector('.viewer-position')?.textContent).toBe('1 / 3');
+
+  key('ArrowDown');
+  await shown('/left/c.jpg');
+  expect(commander.left.cursor).toBe(cursorOn('c.jpg'));
+  key('ArrowDown');
+  key('ArrowDown');
+  await shown('/left/d.gif');
+  expect(dialog().querySelector('.viewer-position')?.textContent).toBe('3 / 3');
+  key('ArrowUp');
+  await shown('/left/c.jpg');
+
+  key('F3');
+  const tiles = () => [...dialog().querySelectorAll('.image-tile')];
+  expect(tiles().map((tile) => tile.textContent?.trim())).toEqual([
+    'a.png',
+    'c.jpg',
+    'd.gif',
+  ]);
+  expect(document.activeElement?.classList.contains('image-grid')).toBe(true);
+  expect(tiles()[1].getAttribute('aria-selected')).toBe('true');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(dialog().querySelectorAll('.image-thumbnail img')).toHaveLength(3);
+  });
+  expect(api.readImageThumbnail).toHaveBeenCalledWith('/left/a.png', 320);
+
+  key('ArrowLeft');
+  expect(tiles()[0].getAttribute('aria-selected')).toBe('true');
+  expect(commander.left.cursor).toBe(cursorOn('a.png'));
+  key('End');
+  key('Enter');
+  await shown('/left/d.gif');
+  expect(dialog().querySelector('.image-grid')).toBeNull();
+
+  key('Escape');
+  expect(target.querySelector('dialog.file-viewer')).toBeNull();
+  expect(commander.left.cursor).toBe(cursorOn('d.gif'));
+});
+it('keeps arrow keys for scrolling when viewing a file that is not an image', async () => {
+  commander.left.cursor = rows(commander.left).findIndex(
+    (row) => row.name === 'one.txt',
+  );
+  flushSync();
+  press('F3');
+  const dialog = target.querySelector('dialog.file-viewer')!;
+  const event = new KeyboardEvent('keydown', {
+    key: 'ArrowDown',
+    bubbles: true,
+    cancelable: true,
+  });
+  dialog.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(false);
+  expect(dialog.querySelector('.viewer-position')).toBeNull();
 });
 it('routes local-to-SFTP F5 to a remote upload without passing resource URIs to local copy', async () => {
   remotePanel('right');

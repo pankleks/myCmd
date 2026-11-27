@@ -62,6 +62,8 @@ export const api = {
     invoke<ArrayBuffer>('read_pdf_preview', previewArgs(path)),
   readImagePreview: (path: string) =>
     invoke<string>('read_image_preview', previewArgs(path)),
+  readImageThumbnail: (path: string, maxSide: number) =>
+    invoke<string>('read_image_thumbnail', { ...previewArgs(path), maxSide }),
   readMarkdownImage: (markdownPath: string, source: string) => {
     const { path, ...connection } = previewArgs(markdownPath);
     return invoke<PreviewImage>('read_markdown_image', {

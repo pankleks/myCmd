@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- F3 View on an image: Up/Down (also Left/Right, Home/End) shows the previous or next image in the folder, and the panel cursor follows. Press F3 again for a thumbnail grid of all images in the folder; Enter opens the selected one.
+
 ## [0.2.17] - 2026-11-22
 
 - Remember the sort order per folder, including after a restart.
