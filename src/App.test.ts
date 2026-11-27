@@ -172,6 +172,12 @@ it('steps through the images of the folder and shows them as thumbnails with F3'
     });
   await shown('/left/a.png');
   expect(dialog().querySelector('.viewer-position')?.textContent).toBe('1 / 3');
+  // The desktop smoke test closes viewers through the first .viewer-close.
+  expect(
+    [...dialog().querySelectorAll('.viewer-close')].map((button) =>
+      button.getAttribute('aria-label'),
+    ),
+  ).toEqual(['Close viewer']);
 
   key('ArrowDown');
   await shown('/left/c.jpg');

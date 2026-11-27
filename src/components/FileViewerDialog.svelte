@@ -94,7 +94,7 @@
     >
     <button
       type="button"
-      class="viewer-close"
+      class="viewer-icon"
       onclick={toggleGrid}
       aria-label="Show thumbnails"
       title="Show thumbnails (F3)"
@@ -129,7 +129,7 @@
           >
           <button
             type="button"
-            class="viewer-close"
+            class="viewer-icon"
             onclick={toggleGrid}
             aria-label="Show image"
             title="Show image (F3)"

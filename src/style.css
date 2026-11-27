@@ -133,7 +133,8 @@ main {
   fill: currentColor;
 }
 .location-pin,
-.viewer-close {
+.viewer-close,
+.viewer-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
