@@ -15,6 +15,7 @@ mod shell;
 mod system_actions;
 mod terminal;
 mod thumbnails;
+mod updates;
 mod watcher;
 fn main() {
     #[cfg(windows)]
@@ -27,6 +28,7 @@ fn main() {
         .manage(shell::ShellManager::default())
         .manage(search::SearchManager::default())
         .manage(std::sync::Arc::new(sftp::Manager::default()))
+        .manage(std::sync::Arc::new(updates::Updates::default()))
         .manage(commands::DirectorySizing::default())
         .manage(watcher::DirectoryWatchers::default())
         .invoke_handler(tauri::generate_handler![
@@ -48,6 +50,8 @@ fn main() {
             commands::read_pdf_preview,
             commands::read_image_preview,
             commands::read_image_thumbnail,
+            updates::check_for_update,
+            updates::open_release_page,
             commands::read_markdown_image,
             commands::list_roots,
             commands::open_file,

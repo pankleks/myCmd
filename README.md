@@ -49,6 +49,10 @@ xattr -cr /Applications/myCmd.app
 codesign --force --deep --sign - /Applications/myCmd.app
 ```
 
+### Updates
+
+**Settings (F9) → Updates** shows the installed version and asks GitHub for the latest published release (once when Settings opens, cached for an hour; **Check now** asks again). When a newer version exists, **View…** shows its release notes and a command to copy for this installation: DEB (`apt`), AppImage (replaces the running file), Windows installer (PowerShell) or macOS (DMG, including the `xattr`/`codesign` steps above). Nothing is downloaded or installed automatically. Development builds check only on **Check now**.
+
 ## Run from source
 
 Requirements: Node.js 22.13+ and a stable Rust toolchain (see [docs/RELEASING.md](docs/RELEASING.md) for OS dependencies).

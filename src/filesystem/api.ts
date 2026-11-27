@@ -26,6 +26,26 @@ export interface PreviewImage {
   height: number;
   frames: number;
 }
+/** How to update this installation (see src-tauri/src/updates.rs). */
+export interface UpdateInstruction {
+  target: string;
+  label: string;
+  note: string;
+  command: string;
+}
+export interface AvailableUpdate {
+  version: string;
+  name: string;
+  publishedAt: string;
+  notes: string;
+  notesTruncated: boolean;
+  instructions: UpdateInstruction[];
+}
+export interface UpdateCheck {
+  current: string;
+  /** Null when this is the newest release. */
+  update: AvailableUpdate | null;
+}
 export interface ClipboardFiles {
   paths: string[];
   cut: boolean;
@@ -92,6 +112,10 @@ export const api = {
     invoke<CommandResult>('run_system_command', { command, cwd, commandId }),
   cancelCommand: (commandId: string) =>
     invoke<void>('cancel_system_command', { commandId }),
+  checkForUpdate: (force: boolean) =>
+    invoke<UpdateCheck>('check_for_update', { force }),
+  /** Opens the release found by the last check; the URL never leaves Rust. */
+  openReleasePage: () => invoke<void>('open_release_page'),
   loadConfig: () => invoke<AppConfig>('load_config'),
   saveConfig: (config: AppConfig) => invoke<void>('save_config', { config }),
 };

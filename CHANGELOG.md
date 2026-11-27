@@ -3,6 +3,7 @@
 ## Unreleased
 
 - F3 View on an image: Up/Down (also Left/Right, Home/End) shows the previous or next image in the folder, and the panel cursor follows. Press F3 again for a thumbnail grid of all images in the folder; Enter opens the selected one.
+- Settings → Updates shows the installed version and asks GitHub for a newer release. **View…** shows the release notes and a ready-to-copy update command for this installation (DEB, AppImage, Windows installer, macOS). Nothing is downloaded or installed automatically.
 
 ## [0.2.17] - 2026-11-22
 

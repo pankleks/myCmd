@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { version } from '../../package.json';
+  import UpdateStatus from './UpdateStatus.svelte';
   import {
     MAX_FILE_FONT_SIZE,
     MAX_FILE_ROW_SPACING,
@@ -148,8 +148,11 @@
         executable name or full path, without arguments.
       </p>
     </section>
+    <section aria-labelledby="settings-updates-title">
+      <h3 id="settings-updates-title">Updates</h3>
+      <UpdateStatus />
+    </section>
     <footer>
-      <span class="version">myCmd · v{version}</span>
       <div class="actions">
         <button type="button" onclick={onclose}>Cancel</button><button
           class="primary"
@@ -239,15 +242,11 @@
   footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 16px;
     background: #1d2531;
     border-top: 1px solid #364153;
     padding: 16px 28px;
-  }
-  .version {
-    font-size: 12px;
-    color: #94a3b8;
   }
   .actions {
     display: flex;

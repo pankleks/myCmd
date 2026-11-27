@@ -43,13 +43,13 @@ it.each([
     },
   });
   flushSync();
-  expect(target.querySelector('footer')?.textContent).toContain(
-    `myCmd · v${version}`,
+  expect(target.querySelector('.update-text strong')?.textContent).toBe(
+    `myCmd ${version}`,
   );
   expect(target.textContent).not.toContain('Customize your file manager.');
   expect(
     [...target.querySelectorAll('h3')].map((heading) => heading.textContent),
-  ).toEqual(['Appearance', 'Editor']);
+  ).toEqual(['Appearance', 'Editor', 'Updates']);
   const input = target.querySelector<HTMLInputElement>('input[placeholder]')!;
   expect(input.value).toBe('/usr/bin/editor');
   input.value = value as string;
