@@ -402,7 +402,7 @@ impl Worker {
                                 .map_or(0o755, |metadata| metadata.permissions().mode() & 0o777)
                         };
                         #[cfg(not(unix))]
-                        let mode = 0o755;
+                        let mode: u32 = 0o755;
                         sftp.mkdir(Path::new(&target), (mode | 0o700) as i32)
                             .map_err(error)?;
                     } else {
