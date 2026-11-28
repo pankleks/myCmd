@@ -402,10 +402,15 @@
     <div
       style:height={`${Math.max(0, items.length - end) * rowHeight}px`}
     ></div>
-    {#if !items.length && !panel.loading}<div class="empty">
-        {panel.skippedEntries
-          ? 'No readable items in this folder'
-          : 'This folder is empty'}
+    <!-- The '..' row alone still means the folder has no items. -->
+    {#if !panel.loading && !items.some((entry) => !entry.parentEntry)}<div
+        class="empty"
+      >
+        {searchResults
+          ? 'No matches found'
+          : panel.skippedEntries
+            ? 'No readable items in this folder'
+            : 'This folder is empty'}
       </div>{/if}
   </div>
   {#if panel.error}<div class="panel-error" role="alert">

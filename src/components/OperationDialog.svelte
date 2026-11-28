@@ -22,6 +22,8 @@
     parent,
     destination,
     permanent,
+    value: initialValue,
+    error,
     onsubmit,
     onclose,
   }: {
@@ -30,6 +32,9 @@
     parent: string;
     destination: string;
     permanent: boolean;
+    /** The name typed before a failed attempt. */
+    value?: string;
+    error?: string;
     onsubmit: (operation: FileOperation) => void;
     onclose: () => void;
   } = $props();
@@ -56,20 +61,29 @@
   let countFailed = $state(false);
   onMount(() => {
     value =
-      action === 'copy' || action === 'move' || action === 'compress'
+      initialValue ??
+      (action === 'copy' || action === 'move' || action === 'compress'
         ? destination
         : action === 'rename'
           ? entries[0].name
           : action === 'createDirectory' && entries[0]?.type === 'directory'
             ? entries[0].name
-            : '';
+            : '');
     archiveName = `${entries.length === 1 ? entries[0].name : 'Archive'}.zip`;
     if (action === 'copy') {
       const target = parseLocation(destination);
       if (target.kind === 'sftp') value = target.path;
     }
     dialog.showModal();
-    void tick().then(() => dialog?.querySelector('input')?.select());
+    void tick().then(() => {
+      const input = dialog?.querySelector('input');
+      if (!input) return;
+      // Rename selects the base name only, as file managers do.
+      const dot = value.lastIndexOf('.');
+      if (action === 'rename' && entries[0]?.type !== 'directory' && dot > 0)
+        input.setSelectionRange(0, dot);
+      else input.select();
+    });
     let disposed = false;
     if (action === 'delete') {
       void countDeleteEntries(entries, () => disposed)
@@ -194,6 +208,7 @@
         >
       {/if}
     {/if}
+    {#if error}<p class="danger-text" role="alert">{error}</p>{/if}
     <div class="dialog-actions">
       <button type="button" onclick={onclose}>Cancel</button><button
         class:danger={action === 'delete' && permanent}

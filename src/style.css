@@ -1,4 +1,16 @@
 :root {
+  /* Shared control and dialog colors; the file panel palette is under .panel. */
+  --surface: #252d3b;
+  --control: #2f3a4d;
+  --control-border: #6b7a91;
+  --divider: #3c4658;
+  --accent: #365b97;
+  --accent-hover: #426cb0;
+  --danger: #923d48;
+  --danger-hover: #a64652;
+  --focus: #80aaff;
+  --text-muted: #9ba9bd;
+  --font-mono: Consolas, ui-monospace, monospace;
   font-family:
     Segoe UI,
     Inter,
@@ -33,7 +45,8 @@ select {
 button {
   cursor: pointer;
 }
-button:hover {
+/* :where keeps the specificity of button:hover, so .primary and .danger win. */
+button:hover:where(:not(:disabled)) {
   background: #344056;
 }
 button:disabled {
@@ -51,7 +64,7 @@ input {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 2px solid #80aaff;
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 main {
@@ -220,7 +233,8 @@ main {
   font-size: 14px;
   color: #f0f0f0;
 }
-dialog label + label {
+/* Fields stack with one gap, also after a row of fields (Host + Port). */
+dialog :where(label, .field-row) + :where(label, .field-row) {
   margin-top: 14px;
 }
 .columns {
@@ -518,18 +532,13 @@ dialog label + label {
 .command-line input {
   flex: 1;
   height: 32px;
-  font-family: Consolas, monospace;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  box-shadow: none;
+  font-family: var(--font-mono);
 }
 .command-line:last-child {
   margin-bottom: 0;
 }
 .command-line input:focus-visible {
-  outline: none;
-  background: #252d3b;
+  background: var(--surface);
 }
 .error-command {
   font-family: Consolas, monospace;
@@ -548,13 +557,13 @@ dialog label + label {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-footer {
+.function-bar {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
 }
-footer button {
+.function-bar button {
   height: 38px;
   min-width: 0;
   padding: 0 4px;
@@ -565,19 +574,19 @@ footer button {
   gap: 6px;
   align-items: center;
 }
-footer kbd {
+.function-bar kbd {
   flex-shrink: 0;
 }
-footer button.hide-shortcut kbd {
+.function-bar button.hide-shortcut kbd {
   display: none;
 }
-footer button span {
+.function-bar button span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-footer button.pressed {
-  background: #365b97;
+.function-bar button.pressed {
+  background: var(--accent);
 }
 kbd {
   font-family: inherit;
@@ -588,10 +597,68 @@ kbd {
 dialog {
   width: 480px;
   max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
   border: 0;
-  background: #252d3b;
+  background: var(--surface);
   color: #e1e7f1;
   padding: 22px;
+}
+/* Controls and the dialog surface are close in color: give controls a
+   visible edge. Low specificity, so .primary, .danger and hover still win. */
+dialog:where(:not(.file-viewer))
+  :is(button, select):where(:not(.location-option)) {
+  background: var(--control);
+  border: 1px solid var(--control-border);
+}
+dialog:where(:not(.file-viewer)) input:where(:not([type='checkbox'])) {
+  border: 1px solid var(--control-border);
+}
+dialog:where(:not(.file-viewer)) button:focus-visible {
+  outline-offset: 2px;
+}
+/* Long dialogs (Settings, Update): header, sections and a sticky action bar. */
+dialog.sectioned {
+  padding: 0;
+}
+.sectioned header {
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--divider);
+}
+.sectioned header h2 {
+  margin: 0;
+}
+.sectioned section {
+  padding: 16px 24px;
+}
+.sectioned section + section {
+  border-top: 1px solid var(--divider);
+}
+.sectioned h3 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.sectioned footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: #1c222b;
+  border-top: 1px solid var(--divider);
+}
+.sectioned footer .dialog-actions {
+  margin: 0 0 0 auto;
+}
+.hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 8px 0 0;
 }
 dialog::backdrop {
   background: #090e188c;
@@ -657,10 +724,18 @@ dialog input:not([type='checkbox']) {
   padding: 7px 12px;
 }
 .primary {
-  background: #365b97;
+  background: var(--accent);
+  border-color: var(--accent-hover);
+}
+.primary:hover:where(:not(:disabled)) {
+  background: var(--accent-hover);
 }
 .danger {
-  background: #923d48;
+  background: var(--danger);
+  border-color: var(--danger-hover);
+}
+.danger:hover:where(:not(:disabled)) {
+  background: var(--danger-hover);
 }
 .danger-text {
   color: #ffb7bd !important;
@@ -1067,8 +1142,12 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 input[type='checkbox']:focus-visible {
-  outline: 1px solid #8290a3;
-  outline-offset: -1px;
+  outline-offset: 2px;
+}
+.shortcuts-list:focus-visible,
+.error-output:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 dl {
   font-size: 14px;

@@ -12,20 +12,28 @@
     onclose: () => void;
   } = $props();
   let dialog: HTMLDialogElement;
-  onMount(() => dialog.showModal());
+  let close: HTMLButtonElement;
+  onMount(() => {
+    dialog.showModal();
+    close.focus(); // Enter closes; the output itself is the next Tab stop.
+  });
 </script>
 
 <dialog
+  aria-labelledby="error-title"
   bind:this={dialog}
   oncancel={(event) => {
     event.preventDefault();
     onclose();
   }}
 >
-  <h2>{title}</h2>
+  <h2 id="error-title">{title}</h2>
   {#if command}<p class="error-command">{command}</p>{/if}
-  <pre class="error-output">{output}</pre>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (long output scrolls with the keyboard) -->
+  <pre class="error-output" tabindex="0">{output}</pre>
   <div class="dialog-actions">
-    <button type="button" class="primary" onclick={onclose}>Close (Esc)</button>
+    <button type="button" class="primary" bind:this={close} onclick={onclose}
+      >Close</button
+    >
   </div>
 </dialog>

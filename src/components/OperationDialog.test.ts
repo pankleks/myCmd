@@ -168,3 +168,10 @@ it('keeps the existing copy dialog unchanged', () => {
     destination: '/target',
   });
 });
+
+it('selects only the base name when renaming a file', async () => {
+  show([entry('notes.tar.gz', 'file')], 'rename');
+  await tick();
+  const input = target.querySelector('input')!;
+  expect([input.selectionStart, input.selectionEnd]).toEqual([0, 9]);
+});

@@ -262,7 +262,7 @@
 </script>
 
 {#if isDirectory}
-  <DirectorySummary {path} {name} />
+  <DirectorySummary {path} {name} {headerActions} />
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions (delegates search shortcuts from focused preview controls) -->
   <div

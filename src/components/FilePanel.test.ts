@@ -131,3 +131,13 @@ it.each([{ key: 'F10', shiftKey: true }, { key: 'ContextMenu' }])(
     expect(oncontext).toHaveBeenCalledWith('left', 24, 0, true);
   },
 );
+
+it('says the folder is empty even with a parent row', () => {
+  expect(target.querySelector('.empty')).toBeNull();
+  commander.left.parent = '/';
+  commander.left.entries = [];
+  flushSync();
+  expect(target.querySelector('.empty')?.textContent?.trim()).toBe(
+    'This folder is empty',
+  );
+});

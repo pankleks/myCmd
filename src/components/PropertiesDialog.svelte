@@ -247,9 +247,6 @@
     margin: 0;
   }
   dt,
-  .hint {
-    color: #9ba9bd;
-  }
   dd {
     margin: 0;
     overflow-wrap: anywhere;
@@ -282,8 +279,5 @@
   }
   td input {
     vertical-align: middle;
-  }
-  .hint {
-    font-size: 12px;
   }
 </style>

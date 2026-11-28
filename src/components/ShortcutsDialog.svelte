@@ -81,7 +81,8 @@
   }}
 >
   <h2>Keyboard shortcuts</h2>
-  <div class="shortcuts-list">
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (the list scrolls with the keyboard) -->
+  <div class="shortcuts-list" tabindex="0">
     <table>
       <tbody
         >{#each shortcuts as [key, description]}<tr

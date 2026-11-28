@@ -177,3 +177,14 @@ it('disconnects the selected connection', async () => {
   await vi.waitFor(() => expect(disconnected).toHaveBeenCalledWith(profile.id));
   expect(api.disconnectSftp).toHaveBeenCalledWith(profile.id);
 });
+
+it('forgets a saved connection without disconnecting it', () => {
+  [...target.querySelectorAll<HTMLButtonElement>('button')]
+    .find((button) => button.textContent === 'Forget')!
+    .click();
+  flushSync();
+  expect(preferences.sftpProfiles).toEqual([]);
+  expect(api.saveConfig).not.toHaveBeenCalled(); // saved after the debounce
+  expect(api.disconnectSftp).not.toHaveBeenCalled();
+  expect(labelInput('Saved connection').value).toBe('');
+});

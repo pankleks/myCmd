@@ -50,7 +50,7 @@
 {/snippet}
 
 <dialog
-  class="update-dialog"
+  class="update-dialog sectioned"
   aria-labelledby="update-title"
   bind:this={dialog}
   oncancel={(event) => {
@@ -116,7 +116,7 @@
   </section>
   <footer>
     <span class="message" role="status">{message}</span>
-    <div class="actions">
+    <div class="dialog-actions">
       <button type="button" onclick={openReleasePage}>Release page</button>
       <button type="button" class="primary" onclick={onclose}>Close</button>
     </div>
@@ -125,42 +125,12 @@
 
 <style>
   .update-dialog {
-    width: min(760px, calc(100vw - 48px));
-    max-height: 90vh;
-    padding: 0;
-    background: #222b38;
-    border: 1px solid #3c485c;
-    border-radius: 0;
-    box-shadow: 0 24px 80px #0008;
-    overflow: auto;
-  }
-  header {
-    padding: 22px 28px 18px;
-    border-bottom: 1px solid #364153;
-  }
-  header h2 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 650;
+    width: 760px;
   }
   header p {
     margin: 6px 0 0;
-    color: #aab7ca;
+    color: var(--text-muted);
     font-size: 13px;
-  }
-  section {
-    padding: 18px 28px;
-  }
-  section + section {
-    border-top: 1px solid #364153;
-  }
-  h3 {
-    margin: 0 0 12px;
-    font-size: 12px;
-    font-weight: 650;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: #aab7ca;
   }
   .update-step {
     display: flex;
@@ -169,7 +139,7 @@
     padding: 8px 0;
   }
   .update-step small {
-    color: #aab7ca;
+    color: var(--text-muted);
     font-size: 12px;
     line-height: 1.45;
   }
@@ -182,9 +152,9 @@
     flex: 1;
     min-width: 0;
     padding: 8px 10px;
-    border: 1px solid #46536a;
-    background: #151d29;
-    font-family: ui-monospace, monospace;
+    border: 1px solid var(--divider);
+    background: #181d26;
+    font-family: var(--font-mono);
     font-size: 12px;
     white-space: pre-wrap;
     word-break: break-all;
@@ -192,20 +162,20 @@
   }
   .release-notes {
     font-size: 13px;
-    line-height: 1.5;
   }
   .release-notes p {
     margin: 0 0 6px;
+    line-height: 1.5;
   }
   .release-notes code {
     padding: 0 4px;
-    background: #2c3647;
-    font-family: ui-monospace, monospace;
+    background: var(--control);
+    font-family: var(--font-mono);
     font-size: 12px;
   }
-  .note-heading {
+  .release-notes .note-heading {
     font-weight: 600;
-    margin-top: 10px !important;
+    margin-top: 10px;
   }
   .note-heading.level-1,
   .note-heading.level-2 {
@@ -218,57 +188,19 @@
     content: '•';
     position: absolute;
     margin-left: -12px;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
   .note-quote {
-    border-left: 3px solid #5a82c4;
+    border-left: 3px solid var(--accent-hover);
     padding-left: 10px;
-    color: #aab7ca;
+    color: var(--text-muted);
   }
   .update-empty {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 13px;
-  }
-  footer {
-    position: sticky;
-    bottom: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    background: #1d2531;
-    border-top: 1px solid #364153;
-    padding: 14px 28px;
   }
   .message {
-    color: #aab7ca;
+    color: var(--text-muted);
     font-size: 12px;
-  }
-  .actions {
-    display: flex;
-    gap: 10px;
-  }
-  button {
-    height: auto;
-    font-size: 13px;
-    font-weight: 550;
-    border: 1px solid #46536a;
-    border-radius: 0;
-    padding: 7px 14px;
-    background: transparent;
-  }
-  button:hover {
-    background: #303d51;
-  }
-  button.primary {
-    background: #426cb0;
-    border-color: #5a82c4;
-  }
-  button.primary:hover {
-    background: #507dc3;
-  }
-  button:focus-visible {
-    outline: 1px solid #8290a3;
-    outline-offset: -1px;
   }
 </style>

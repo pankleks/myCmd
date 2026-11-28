@@ -115,6 +115,15 @@
       if (!disposed) busy = false;
     }
   }
+  // Removes the saved details only; an open connection stays open.
+  function forget() {
+    if (!selected || busy) return;
+    preferences.sftpProfiles = preferences.sftpProfiles.filter(
+      (profile) => profile.id !== selected,
+    );
+    scheduleSave();
+    select('');
+  }
   async function disconnect() {
     if (!selected || busy) return;
     busy = true;
@@ -166,7 +175,7 @@
           autocomplete="off"
         /></label
       >
-      <div class="host-row">
+      <div class="host-row field-row">
         <label
           >Host<input
             bind:value={host}
@@ -268,6 +277,12 @@
     <div class="dialog-actions">
       {#if selected}<button
           type="button"
+          class="forget"
+          disabled={busy || !!fingerprint}
+          title="Remove the saved connection details"
+          onclick={forget}>Forget</button
+        ><button
+          type="button"
           disabled={busy || !!fingerprint}
           onclick={disconnect}>Disconnect</button
         >{/if}
@@ -295,18 +310,16 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 90px;
     gap: 12px;
-    margin-top: 12px;
   }
   .host-row label {
     margin-top: 0;
   }
   select {
     width: 100%;
-    margin-top: 4px;
   }
-  .hint {
-    font-size: 12px;
-    color: #9ba9bd;
+  /* Keep Forget away from Connect: it sits on the left of the action row. */
+  .forget {
+    margin-right: auto;
   }
   code {
     display: block;

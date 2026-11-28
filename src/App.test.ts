@@ -4,7 +4,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import App from './App.svelte';
 import { api } from './filesystem/api';
 import { commander, createPanel, rows } from './state/commander.svelte';
-import { locationKey } from './filesystem/providers';
+import { locationKey, searchSessions } from './filesystem/providers';
+import { listen } from '@tauri-apps/api/event';
 
 vi.mock('@tauri-apps/api/core', () => ({
   isTauri: () => true,
@@ -429,4 +430,99 @@ it('runs function-key actions only without Ctrl, Alt or Meta', () => {
   expect(target.querySelector('dialog h2')?.textContent).toBe(
     'Delete permanently',
   );
+});
+
+it('shows a Close button when F3 opens a folder summary', async () => {
+  commander.left.entries = [
+    {
+      name: 'docs',
+      path: `${commander.left.path}/docs`,
+      type: 'directory',
+      extension: '',
+      size: 0,
+      hidden: false,
+      directoryTarget: true,
+    },
+  ];
+  commander.left.cursor = rows(commander.left).findIndex(
+    (row) => row.name === 'docs',
+  );
+  flushSync();
+  press('F3');
+  await vi.waitFor(() => {
+    flushSync();
+    expect(target.querySelector('[aria-label="Close viewer"]')).not.toBeNull();
+  });
+});
+
+it('keeps F-keys, arrows and Esc working after typing a command', () => {
+  const input = target.querySelector<HTMLInputElement>('#system-command')!;
+  commander.left.cursor = 0;
+  press('l');
+  expect(document.activeElement).toBe(input);
+  expect(input.value).toBe('l');
+  keydown(input, 'ArrowDown');
+  expect(commander.left.cursor).toBe(1);
+  input.focus();
+  keydown(input, 'Escape');
+  expect(input.value).toBe('');
+  expect(document.activeElement?.id).toBe('list-left');
+  press('l');
+  keydown(input, 'F7');
+  expect(target.querySelector('dialog h2')?.textContent).toBe('New folder');
+});
+
+it('reopens New folder with the typed name when creating it fails', async () => {
+  press('F7');
+  const input = target.querySelector<HTMLInputElement>('dialog input')!;
+  input.value = 'taken';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  target
+    .querySelector('dialog form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(api.start).toHaveBeenCalled());
+  flushSync();
+  expect(target.querySelector('dialog form')).toBeNull();
+  const onProgress = vi
+    .mocked(listen)
+    .mock.calls.find(([event]) => event === 'operation-progress')![1];
+  onProgress({
+    event: 'operation-progress',
+    id: 1,
+    payload: {
+      operationId: 'operation',
+      state: 'failed',
+      processedBytes: 0,
+      totalBytes: 0,
+      processedItems: 0,
+      totalItems: 0,
+      error: { code: 'already_exists', message: 'File exists' },
+    },
+  });
+  await vi.waitFor(() => {
+    flushSync();
+    expect(target.querySelector('dialog h2')?.textContent).toBe('New folder');
+  });
+  expect(target.querySelector<HTMLInputElement>('dialog input')!.value).toBe(
+    'taken',
+  );
+  expect(target.querySelector('dialog [role="alert"]')?.textContent).toBe(
+    'File exists',
+  );
+});
+
+it('keeps search progress and Cancel visible after switching panels', () => {
+  searchSessions.set('progress-test', {
+    root: '/left',
+    pattern: '*',
+    returnPath: '/left',
+  });
+  commander.left.path = 'search:progress-test';
+  commander.left.entries = [];
+  commander.left.loading = true;
+  commander.activePanel = 'right';
+  flushSync();
+  expect(target.textContent).toContain('Cancel search');
+  expect(target.textContent?.replace(/\s+/g, ' ')).toContain('0 matches found');
+  searchSessions.delete('progress-test');
 });

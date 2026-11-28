@@ -1,11 +1,15 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, type Snippet } from 'svelte';
   import { api, errorMessage } from '../filesystem/api';
   import { summarizeDirectory } from '../utils/directorySummary';
   import { parseLocation, providerFor } from '../filesystem/providers';
   import { bytes } from '../utils/format';
 
-  let { path, name }: { path: string; name: string } = $props();
+  let {
+    path,
+    name,
+    headerActions,
+  }: { path: string; name: string; headerActions?: Snippet } = $props();
 
   let loading = $state(true);
   let error = $state('');
@@ -54,6 +58,7 @@
       <h2>Summary</h2>
       <span title={path}>{name}</span>
     </div>
+    <div class="viewer-toolbar">{@render headerActions?.()}</div>
   </div>
   <div class="viewer-editor-shell">
     {#if error}

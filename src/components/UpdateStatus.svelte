@@ -95,7 +95,7 @@
     font-weight: 600;
   }
   .update-text small {
-    color: #aab7ca;
+    color: var(--text-muted);
     font-size: 12px;
   }
   .update-text small:empty {
@@ -105,34 +105,5 @@
     display: flex;
     flex: none;
     gap: 10px;
-  }
-  .hint {
-    color: #aab7ca;
-    font-size: 12px;
-    margin: 10px 0 0;
-  }
-  /* Same look as the Settings dialog buttons. */
-  button {
-    height: auto;
-    font-size: 13px;
-    font-weight: 550;
-    border: 1px solid #46536a;
-    border-radius: 0;
-    padding: 9px 17px;
-    background: transparent;
-  }
-  button:hover:not(:disabled) {
-    background: #303d51;
-  }
-  button.primary {
-    background: #426cb0;
-    border-color: #5a82c4;
-  }
-  button.primary:hover {
-    background: #507dc3;
-  }
-  button:focus-visible {
-    outline: 1px solid #8290a3;
-    outline-offset: -1px;
   }
 </style>

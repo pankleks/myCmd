@@ -106,9 +106,15 @@
     resolve: api.resolve,
     failed: (cause) => {
       createdFileEditor = undefined;
+      if (retryDialog) {
+        dialog = { ...retryDialog, error: errorMessage(cause) };
+        retryDialog = undefined;
+        return;
+      }
       showError(errorMessage(cause), 'Operation failed');
     },
     completed: async (payload, side) => {
+      retryDialog = undefined;
       const editor = createdFileEditor;
       createdFileEditor = undefined;
       await reloadPanels({ side, path: payload.resultPath, search: true });
@@ -181,8 +187,18 @@
     destination: string;
     side: Side;
     permanent: boolean;
+    value?: string;
+    error?: string;
   }>();
+  // A failed rename or new folder/file reopens its dialog with the typed name.
+  let retryDialog: typeof dialog;
   let active = $derived(commander[commander.activePanel]);
+  // Either panel's search keeps its progress and Cancel while the other is active.
+  let searchingPanel = $derived(
+    [commander.left, commander.right].find(
+      (panel) => panel.loading && !!searchSession(panel.path),
+    ),
+  );
   let modalOpen = $derived(
     !!(
       dialog ||
@@ -677,6 +693,12 @@
   }
   async function submit(operation: FileOperation) {
     const side = dialog!.side;
+    retryDialog =
+      operation.type === 'rename' ||
+      operation.type === 'createDirectory' ||
+      operation.type === 'createFile'
+        ? { ...dialog!, value: operation.name, error: undefined }
+        : undefined;
     operation = routeOperation(
       operation,
       dialog!.parent,
@@ -896,7 +918,25 @@
       void openDrivePicker(event.key === 'F1' ? 'left' : 'right');
       return;
     }
-    if (target.closest('input, select, textarea, dialog')) {
+    // Typing moves focus into the command line; panel keys must keep working
+    // there (as in Total Commander). Left/Right/Home/End/Backspace stay text keys.
+    const inCommandLine = target === commandInputElement;
+    if (inCommandLine && event.key === 'Escape' && modifiers(event) === '') {
+      event.preventDefault();
+      commandInput = '';
+      focusPanel();
+      return;
+    }
+    const panelKey =
+      /^F\d+$/.test(event.key) ||
+      (modifiers(event) === '' &&
+        ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Tab'].includes(
+          event.key,
+        ));
+    if (
+      target.closest('input, select, textarea, dialog') &&
+      !(inCommandLine && panelKey)
+    ) {
       if (commander.quickFind && event.key === 'Escape') {
         event.preventDefault();
         quickFindClose();
@@ -1225,23 +1265,21 @@
         void commands.cancel();
       }}>Cancel command</button
     >{/if}
-  {#if active.loading && searchSession(active.path)}<div
-      class="operation-status"
-      role="status"
-    >
+  {#if searchingPanel}<div class="operation-status" role="status">
       <div class="operation-details">
         <div class="operation-heading">
           <span class="operation-indicator" aria-hidden="true"></span>Searching
           files and folders…
         </div>
         <div class="operation-metrics">
-          {active.entries.length} matches found
+          {searchingPanel.entries.length}
+          {searchingPanel.entries.length === 1 ? 'match' : 'matches'} found
         </div>
         <progress aria-label="Search progress"></progress>
       </div>
       <button
         onclick={() => {
-          void cancelSearch(active.path).catch((cause) =>
+          void cancelSearch(searchingPanel.path).catch((cause) =>
             showError(errorMessage(cause)),
           );
         }}>Cancel search</button
@@ -1312,7 +1350,10 @@
         !isLocalPath(active.path)}
     />
   </form>
-  {#if preferences.showFunctionBar}<footer use:fitFunctionBar>
+  {#if preferences.showFunctionBar}<footer
+      class="function-bar"
+      use:fitFunctionBar
+    >
       <button onclick={showShortcuts} title="F1 — Help"
         ><kbd>F1</kbd><span>Help</span></button
       >

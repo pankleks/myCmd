@@ -55,7 +55,7 @@
 </script>
 
 <dialog
-  class="settings-dialog"
+  class="settings-dialog sectioned"
   aria-labelledby="settings-title"
   bind:this={dialog}
   oncancel={(event) => {
@@ -153,7 +153,7 @@
       <UpdateStatus />
     </section>
     <footer>
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="button" onclick={onclose}>Cancel</button><button
           class="primary"
           type="submit">Save</button
@@ -166,118 +166,26 @@
 <style>
   .settings-dialog {
     width: 520px;
-    max-height: 90vh;
-    padding: 0;
-    background: #222b38;
-    border: 1px solid #3c485c;
-    border-radius: 0;
-    box-shadow: 0 24px 80px #0008;
-    overflow: auto;
-  }
-  header {
-    padding: 24px 28px 20px;
-    border-bottom: 1px solid #364153;
-  }
-  header h2 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 650;
-  }
-  section {
-    padding: 22px 28px;
-  }
-  section + section {
-    border-top: 1px solid #364153;
-  }
-  h3 {
-    margin: 0 0 18px;
-    font-size: 12px;
-    font-weight: 650;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: #aab7ca;
   }
   .settings-row {
     gap: 24px;
     margin-top: 0;
   }
   .settings-row + .settings-row {
-    margin-top: 18px;
+    margin-top: 16px;
   }
   .settings-dialog label {
     display: block;
   }
   .muted {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 12px;
     margin-left: 5px;
   }
-  .settings-dialog input:not([type='checkbox']) {
-    background: #151d29;
-    border: 1px solid #46536a;
-    border-radius: 0;
-    padding: 9px 11px;
-  }
   .editor-label {
-    margin-bottom: 9px;
+    margin-bottom: 8px;
   }
   input[type='text'] {
-    font-family: ui-monospace, monospace;
-    font-size: 13px;
-  }
-  input::placeholder {
-    color: #93a2b8;
-    opacity: 1;
-  }
-  input:focus-visible,
-  button:focus-visible {
-    outline: 1px solid #8290a3;
-    outline-offset: -1px;
-  }
-  .hint {
-    color: #aab7ca;
-    font-size: 12px;
-    margin: 10px 0 0;
-  }
-  footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 16px;
-    background: #1d2531;
-    border-top: 1px solid #364153;
-    padding: 16px 28px;
-  }
-  .actions {
-    display: flex;
-    gap: 10px;
-  }
-  button {
-    height: auto;
-    font-size: 13px;
-    font-weight: 550;
-    border: 1px solid #46536a;
-    border-radius: 0;
-    padding: 9px 17px;
-    background: transparent;
-  }
-  button:hover {
-    background: #303d51;
-  }
-  button.primary {
-    background: #426cb0;
-    border-color: #5a82c4;
-  }
-  button.primary:hover {
-    background: #507dc3;
-  }
-  @media (max-width: 420px) {
-    header,
-    section {
-      padding: 20px;
-    }
-    footer {
-      padding: 16px 20px;
-    }
+    font-family: var(--font-mono);
   }
 </style>
