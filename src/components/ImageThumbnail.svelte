@@ -1,63 +1,30 @@
 <script lang="ts">
   import Icon from '@iconify/svelte';
-  import { onDestroy, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { errorMessage } from '../filesystem/api';
   import { icons } from '../utils/uiIcons';
   import type { GalleryImage } from '../utils/imageGallery';
   import { loadThumbnail } from '../utils/thumbnails';
 
   let { image }: { image: GalleryImage } = $props();
-  let element: HTMLDivElement;
   let url = $state('');
   let error = $state('');
-  let controller: AbortController | undefined;
-  let observer: IntersectionObserver | undefined;
 
-  function start() {
-    if (url || error || controller) return;
-    const current = (controller = new AbortController());
-    loadThumbnail(image, current.signal)
-      .then((result) => {
-        if (current.signal.aborted) {
-          if (result.startsWith('blob:')) URL.revokeObjectURL(result);
-        } else url = result;
-      })
-      .catch((cause) => {
-        if (!current.signal.aborted) error = errorMessage(cause);
-      })
-      .finally(() => {
-        if (controller === current) controller = undefined;
-      });
-  }
-
-  // Tiles scrolled away before their turn give their place to visible ones.
-  function stop() {
-    if (url || !controller) return;
-    controller.abort();
-    controller = undefined;
-  }
-
+  // The grid mounts only tiles near the viewport: load at once, and give the
+  // place in the queue back when the tile scrolls away.
   onMount(() => {
-    if (typeof IntersectionObserver === 'undefined') {
-      start();
-      return;
-    }
-    observer = new IntersectionObserver(
-      (entries) =>
-        entries.some((entry) => entry.isIntersecting) ? start() : stop(),
-      { root: element.closest('.image-grid'), rootMargin: '200px' },
+    const controller = new AbortController();
+    loadThumbnail(image, controller.signal).then(
+      (result) => (url = result),
+      (cause) => {
+        if (!controller.signal.aborted) error = errorMessage(cause);
+      },
     );
-    observer.observe(element);
-  });
-
-  onDestroy(() => {
-    observer?.disconnect();
-    controller?.abort();
-    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    return () => controller.abort();
   });
 </script>
 
-<div class="image-thumbnail" bind:this={element}>
+<div class="image-thumbnail">
   {#if url && !error}
     <img
       src={url}

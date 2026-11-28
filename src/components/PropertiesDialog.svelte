@@ -114,7 +114,7 @@
 
 <dialog
   bind:this={dialog}
-  class="properties-dialog"
+  class="properties-dialog dialog-md"
   aria-labelledby="properties-title"
   oncancel={(event) => {
     event.preventDefault();
@@ -231,12 +231,6 @@
 </dialog>
 
 <style>
-  .properties-dialog {
-    width: 620px;
-    max-width: calc(100vw - 40px);
-    max-height: 90vh;
-    overflow: auto;
-  }
   dl {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);

@@ -1312,12 +1312,14 @@
                   }[progress.state]
                 : 'Preparing operation…'}</span
           >
-          {#if measurableProgress}<span class="operation-percent"
-              >{percent}%</span
+          <!-- Live region: announce state changes, not every percent or file. -->
+          {#if measurableProgress}<span
+              class="operation-percent"
+              aria-live="off">{percent}%</span
             >{/if}
         </div>
         {#if busy}
-          <div class="operation-metrics">
+          <div class="operation-metrics" aria-live="off">
             {#if progress && measurableProgress}
               {progress.processedItems} / {progress.totalItems} items · {bytes(
                 progress.processedBytes,
@@ -1333,6 +1335,7 @@
           ></progress>
           {#if progress?.currentItem}<div
               class="current-item"
+              aria-live="off"
               title={progress.currentItem}
             >
               {progress.currentItem}

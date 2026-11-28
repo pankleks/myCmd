@@ -259,14 +259,18 @@
     style:padding-right={`${scrollbarWidth}px`}
   >
     {#each columns as item, index}
-      <div class="column-heading">
+      <!-- The header cell carries the role; the button stays a button. -->
+      <div
+        class="column-heading"
+        role="columnheader"
+        aria-sort={panel.sort.column === item.column
+          ? panel.sort.direction === 'asc'
+            ? 'ascending'
+            : 'descending'
+          : 'none'}
+      >
         <button
-          role="columnheader"
-          aria-sort={panel.sort.column === item.column
-            ? panel.sort.direction === 'asc'
-              ? 'ascending'
-              : 'descending'
-            : 'none'}
+          type="button"
           onclick={() => sort(panel, item.column)}
           ondblclick={() => (preferences.columnWidths = null)}
           title={`Sort by ${item.label}; click again to reverse. Double-click to reset column widths.`}

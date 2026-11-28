@@ -1,8 +1,16 @@
 <script lang="ts">
   import { onDestroy, onMount, type Snippet } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import { api, errorMessage } from '../filesystem/api';
-  import { summarizeDirectory } from '../utils/directorySummary';
-  import { parseLocation, providerFor } from '../filesystem/providers';
+  import {
+    summarizeDirectory,
+    summarizeLocalDirectory,
+  } from '../utils/directorySummary';
+  import {
+    isLocalPath,
+    parseLocation,
+    providerFor,
+  } from '../filesystem/providers';
   import { bytes } from '../utils/format';
 
   let {
@@ -18,6 +26,8 @@
   let size = $state(0);
   let incomplete = $state(false);
   let disposed = false;
+  const requestIds = [crypto.randomUUID(), crypto.randomUUID()];
+  let sizing = false;
 
   onMount(() => {
     void load();
@@ -25,20 +35,35 @@
 
   onDestroy(() => {
     disposed = true;
+    if (sizing) void api.cancelDirectorySizing(requestIds).catch(() => {});
   });
 
   async function load() {
     try {
-      const summary = await summarizeDirectory(
-        path,
-        (dir) => {
-          const location = parseLocation(dir);
-          return location.kind === 'sftp'
-            ? providerFor(location).list(location)
-            : api.list(dir);
-        },
-        () => disposed,
-      );
+      sizing = isLocalPath(path);
+      const local = sizing
+        ? await summarizeLocalDirectory(
+            () =>
+              invoke('count_delete_entries', {
+                paths: [path],
+                requestId: requestIds[0],
+              }),
+            () => api.measureDirectory(path, requestIds[1]),
+          ).catch(() => undefined)
+        : undefined;
+      sizing = false;
+      const summary =
+        local ??
+        (await summarizeDirectory(
+          path,
+          (dir) => {
+            const location = parseLocation(dir);
+            return location.kind === 'sftp'
+              ? providerFor(location).list(location)
+              : api.list(dir);
+          },
+          () => disposed,
+        ));
       if (disposed) return;
       files = summary.files;
       directories = summary.directories;

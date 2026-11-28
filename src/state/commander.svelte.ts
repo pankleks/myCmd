@@ -14,9 +14,17 @@ import {
 } from '../filesystem/providers';
 export type Side = 'left' | 'right';
 export function createPanel(): PanelState {
+  // Not deep: proxying every entry makes each sort and filter several times
+  // slower in large folders. Replace the array (or an entry) to update it.
+  let entries: FileEntry[] = $state.raw([]);
   const state: PanelState = $state({
     path: '',
-    entries: [],
+    get entries() {
+      return entries;
+    },
+    set entries(value) {
+      entries = value;
+    },
     cursor: 0,
     selected: new Set(),
     sort: { column: 'name', direction: 'asc' },
@@ -69,21 +77,22 @@ export function previewEntry(panel: PanelState): Row | undefined {
 }
 
 function buildRows(panel: PanelState): Row[] {
+  // Read reactive state once: a tracked read per comparison is most of the
+  // sort time in large folders.
+  const { showHidden } = panel;
+  const { column, direction } = panel.sort;
+  const sign = direction === 'asc' ? 1 : -1;
   const items: Row[] = panel.entries
-    .filter((e) => panel.showHidden || !e.hidden)
+    .filter((e) => showHidden || !e.hidden)
     .sort((a, b) => {
       const directory =
         Number(b.type === 'directory') - Number(a.type === 'directory');
       if (directory) return directory;
-      const column = panel.sort.column;
       const cmp =
         column === 'size' || column === 'modified'
           ? (a[column] ?? 0) - (b[column] ?? 0)
           : collator.compare(a[column], b[column]);
-      return (
-        (cmp || collator.compare(a.name, b.name)) *
-        (panel.sort.direction === 'asc' ? 1 : -1)
-      );
+      return (cmp || collator.compare(a.name, b.name)) * sign;
     });
   if (panel.parent)
     items.unshift({
@@ -242,10 +251,13 @@ export async function measureDirectory(panel: PanelState, row?: Row) {
     }
     const size = await pending.promise;
     if (panel.revision !== revision) return;
-    const entry = panel.entries.find((e) => e.path === row.path);
-    if (entry) {
+    const index = panel.entries.findIndex((e) => e.path === row.path);
+    if (index >= 0) {
       const current = rows(panel)[panel.cursor]?.path;
-      entry.size = size;
+      const entry = { ...panel.entries[index], size };
+      const next = [...panel.entries];
+      next[index] = entry;
+      panel.entries = next;
       measuredDirectories.add(entry);
       panel.cursor = Math.max(
         0,

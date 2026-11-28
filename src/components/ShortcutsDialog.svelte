@@ -82,7 +82,7 @@
 </script>
 
 <dialog
-  class="shortcuts-dialog"
+  class="shortcuts-dialog dialog-lg"
   aria-labelledby="shortcuts-title"
   bind:this={dialog}
   oncancel={(event) => {

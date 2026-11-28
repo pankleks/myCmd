@@ -55,7 +55,7 @@
 </script>
 
 <dialog
-  class="settings-dialog sectioned"
+  class="settings-dialog sectioned dialog-md"
   aria-labelledby="settings-title"
   bind:this={dialog}
   oncancel={(event) => {
@@ -164,9 +164,6 @@
 </dialog>
 
 <style>
-  .settings-dialog {
-    width: 520px;
-  }
   .settings-row {
     gap: 24px;
     margin-top: 0;

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { FileEntry } from '../filesystem/types';
-import { galleryImages, gridStep, viewerStep } from './imageGallery';
+import {
+  galleryImages,
+  gridStep,
+  gridWindow,
+  viewerStep,
+} from './imageGallery';
 
 function entry(name: string, extra: Partial<FileEntry> = {}) {
   const dot = name.lastIndexOf('.');
@@ -91,5 +96,27 @@ describe('gridStep', () => {
     expect(gridStep('ArrowDown', 0, 3, 0)).toBe(1);
     expect(gridStep('Enter', 0, 3, 4)).toBeUndefined();
     expect(gridStep('ArrowDown', 0, 0, 4)).toBeUndefined();
+  });
+});
+
+describe('gridWindow', () => {
+  it('renders the rows in view plus two rows on each side', () => {
+    // 1,000 rows of 100px in a 450px viewport scrolled to row 50.
+    expect(gridWindow(5000, 450, 100, 1000)).toEqual({
+      firstRow: 48,
+      lastRow: 57,
+    });
+    expect(gridWindow(0, 450, 100, 1000)).toEqual({ firstRow: 0, lastRow: 7 });
+    expect(gridWindow(99_950, 450, 100, 1000)).toEqual({
+      firstRow: 997,
+      lastRow: 1000,
+    });
+  });
+  it('stays inside the grid when it shrinks below the scroll position', () => {
+    expect(gridWindow(5000, 450, 100, 3)).toEqual({ firstRow: 3, lastRow: 3 });
+  });
+  it('renders the first rows until a row has been measured', () => {
+    expect(gridWindow(5000, 450, 0, 1000)).toEqual({ firstRow: 0, lastRow: 8 });
+    expect(gridWindow(0, 0, 0, 2)).toEqual({ firstRow: 0, lastRow: 2 });
   });
 });

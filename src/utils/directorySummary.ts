@@ -7,6 +7,29 @@ export interface DirectorySummaryResult {
   incomplete: boolean;
 }
 
+/**
+ * Totals of a local folder from two backend walks, without sending every
+ * listing to the frontend. Undefined when the size walk fails (it stops at
+ * the first unreadable folder): the caller then walks the listings instead,
+ * which reports partial results and errors for the folder itself.
+ */
+export async function summarizeLocalDirectory(
+  count: () => Promise<{ folders: number; files: number; skipped: number }>,
+  measure: () => Promise<number>,
+): Promise<DirectorySummaryResult | undefined> {
+  const measuring = measure().catch(() => undefined);
+  const counts = await count();
+  const size = await measuring;
+  if (size === undefined) return;
+  return {
+    files: counts.files,
+    // The backend counts the folder itself too.
+    directories: Math.max(0, counts.folders - 1),
+    size,
+    incomplete: counts.skipped > 0,
+  };
+}
+
 export async function summarizeDirectory(
   root: string,
   list: (path: string) => Promise<Listing>,

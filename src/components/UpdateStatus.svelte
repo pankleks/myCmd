@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { version } from '../../package.json';
   import { api, errorMessage, type AvailableUpdate } from '../filesystem/api';
   import UpdateDialog from './UpdateDialog.svelte';
@@ -15,6 +15,7 @@
   let checked = $state(false);
   let error = $state('');
   let dialogOpen = $state(false);
+  let viewButton = $state<HTMLButtonElement>();
   let disposed = false;
 
   let status = $derived(
@@ -62,6 +63,7 @@
     {#if update}<button
         type="button"
         class="primary"
+        bind:this={viewButton}
         onclick={() => (dialogOpen = true)}>View…</button
       >{/if}
     <button type="button" disabled={checking} onclick={() => check(true)}
@@ -74,7 +76,15 @@
   automatically.
 </p>
 {#if dialogOpen && update}
-  <UpdateDialog {update} {current} onclose={() => (dialogOpen = false)} />
+  <UpdateDialog
+    {update}
+    {current}
+    onclose={() => {
+      dialogOpen = false;
+      // Back to the button that opened it; Settings is still open.
+      void tick().then(() => viewButton?.focus());
+    }}
+  />
 {/if}
 
 <style>

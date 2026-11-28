@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Listing } from '../filesystem/types';
-import { summarizeDirectory } from './directorySummary';
+import {
+  summarizeDirectory,
+  summarizeLocalDirectory,
+} from './directorySummary';
 
 function entry(
   name: string,
@@ -98,5 +101,53 @@ describe('summarizeDirectory', () => {
     cancelled = true;
     await summarizeDirectory('/root', list, () => cancelled);
     expect(list).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('summarizeLocalDirectory', () => {
+  const counts =
+    (folders: number, files: number, skipped = 0) =>
+    async () => ({
+      folders,
+      files,
+      skipped,
+    });
+
+  it('reports subfolders without the folder itself', async () => {
+    await expect(
+      summarizeLocalDirectory(counts(3, 4), async () => 175),
+    ).resolves.toEqual({
+      files: 4,
+      directories: 2,
+      size: 175,
+      incomplete: false,
+    });
+  });
+
+  it('marks skipped entries as a partial result', async () => {
+    await expect(
+      summarizeLocalDirectory(counts(1, 1, 2), async () => 10),
+    ).resolves.toEqual({
+      files: 1,
+      directories: 0,
+      size: 10,
+      incomplete: true,
+    });
+  });
+
+  it('leaves unreadable trees to the listing walk', async () => {
+    await expect(
+      summarizeLocalDirectory(counts(2, 1, 1), async () => {
+        throw new Error('denied');
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      summarizeLocalDirectory(
+        async () => {
+          throw new Error('cancelled');
+        },
+        async () => 1,
+      ),
+    ).rejects.toThrow('cancelled');
   });
 });

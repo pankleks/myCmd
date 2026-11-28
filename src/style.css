@@ -140,7 +140,7 @@ main {
   flex: 1;
 }
 .location-pin {
-  font-size: 21px;
+  font-size: 20px;
   width: 38px;
   padding: 0;
 }
@@ -466,7 +466,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .operation-indicator {
@@ -614,7 +614,7 @@ dialog {
   border: 0;
   background: var(--surface);
   color: #e1e7f1;
-  padding: 22px;
+  padding: 24px;
 }
 /* Controls and the dialog surface are close in color: give controls a
    visible edge. Low specificity, so .primary, .danger and hover still win. */
@@ -675,10 +675,6 @@ dialog.sectioned {
 dialog::backdrop {
   background: #090e188c;
 }
-.shortcuts-dialog {
-  width: 760px;
-  max-height: 90vh;
-}
 .shortcuts-list {
   max-height: 65vh;
   overflow: auto;
@@ -702,9 +698,10 @@ dialog::backdrop {
 .shortcuts-list kbd {
   white-space: normal;
 }
+/* Type scale: 11 / 12 / 13 / 14 / 16 / 20 px. Spacing: multiples of 4 px. */
 dialog h2 {
-  font-size: 19px;
-  margin: 0 0 17px;
+  font-size: 20px;
+  margin: 0 0 16px;
 }
 dialog p {
   overflow-wrap: anywhere;
@@ -728,12 +725,20 @@ dialog input:not([type='checkbox']) {
 }
 .dialog-actions {
   display: flex;
-  gap: 7px;
+  gap: 8px;
   justify-content: flex-end;
   margin-top: 24px;
 }
 .dialog-actions button {
-  padding: 7px 12px;
+  /* 6 px + the 1 px dialog control border keeps the earlier button height. */
+  padding: 6px 12px;
+}
+/* Dialog widths: default 480 px, .dialog-md 600 px, .dialog-lg 760 px. */
+dialog.dialog-md {
+  width: 600px;
+}
+dialog.dialog-lg {
+  width: 760px;
 }
 .primary {
   background: var(--accent);
@@ -815,7 +820,7 @@ dialog.file-viewer[open] {
 .viewer-heading h2 {
   flex: none;
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
 }
 .viewer-heading span {
   overflow: hidden;

@@ -57,6 +57,32 @@ export function viewerStep(
   }
 }
 
+/**
+ * Rows of the grid to render: those in the viewport plus `overscan` rows on
+ * each side. Before a row is measured (`rowStep` 0), the first `unmeasured`.
+ */
+export function gridWindow(
+  scrollTop: number,
+  height: number,
+  rowStep: number,
+  totalRows: number,
+  overscan = 2,
+  unmeasured = 8,
+): { firstRow: number; lastRow: number } {
+  if (!rowStep)
+    return { firstRow: 0, lastRow: Math.min(totalRows, unmeasured) };
+  return {
+    firstRow: Math.min(
+      totalRows,
+      Math.max(0, Math.floor(scrollTop / rowStep) - overscan),
+    ),
+    lastRow: Math.min(
+      totalRows,
+      Math.ceil((scrollTop + height) / rowStep) + overscan,
+    ),
+  };
+}
+
 /** Next selected index for a key in a grid with `columns` tiles per row. */
 export function gridStep(
   key: string,

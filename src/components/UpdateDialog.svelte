@@ -50,7 +50,7 @@
 {/snippet}
 
 <dialog
-  class="update-dialog sectioned"
+  class="update-dialog sectioned dialog-lg"
   aria-labelledby="update-title"
   bind:this={dialog}
   oncancel={(event) => {
@@ -124,9 +124,6 @@
 </dialog>
 
 <style>
-  .update-dialog {
-    width: 760px;
-  }
   header p {
     margin: 6px 0 0;
     color: var(--text-muted);

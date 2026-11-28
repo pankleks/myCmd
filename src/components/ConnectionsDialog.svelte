@@ -141,7 +141,7 @@
 
 <dialog
   bind:this={dialog}
-  class="connections-dialog"
+  class="connections-dialog dialog-md"
   aria-labelledby="connections-title"
   oncancel={(event) => {
     event.preventDefault();
@@ -295,11 +295,6 @@
 </dialog>
 
 <style>
-  .connections-dialog {
-    width: 580px;
-    max-height: 90vh;
-    overflow: auto;
-  }
   fieldset {
     border: 0;
     padding: 0;

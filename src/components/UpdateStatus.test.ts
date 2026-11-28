@@ -124,6 +124,8 @@ it('checks once on open and offers the dialog for a newer version', async () => 
   dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
   flushSync();
   expect(target.querySelector('dialog.update-dialog')).toBeNull();
+  // Focus goes back to the button that opened the dialog.
+  await settle(() => expect(document.activeElement).toBe(button('View…')));
 });
 
 it('reports the newest version and failed checks from Check now', async () => {

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileEntry, Listing, PanelState } from '../filesystem/types';
 import { api } from '../filesystem/api';
@@ -275,8 +276,17 @@ describe('sorting and selection', () => {
     expect(rows(p)).toHaveLength(3);
     p.sort = { column: 'size', direction: 'asc' };
     expect(rows(p).map((item) => item.name)).toEqual(['a', 'c', 'b']);
-    p.entries[1].size = 0;
+    // Entries are not deep state: replace the array to change one.
+    p.entries = p.entries.map((item) =>
+      item.name === 'b' ? { ...item, size: 0 } : item,
+    );
     expect(rows(p).map((item) => item.name)).toEqual(['a', 'b', 'c']);
+  });
+  it('keeps entries as plain objects, not deep state proxies', () => {
+    const p = createPanel();
+    const original = entry('a');
+    p.entries = [original];
+    expect(p.entries[0]).toBe(original);
   });
   it.each(['name', 'extension', 'size', 'modified'] as const)(
     'keeps parent and directories first when sorting %s in both directions',
@@ -623,6 +633,10 @@ describe('directory sizing', () => {
     vi.mocked(api.measureDirectory).mockResolvedValue(100);
     await measureDirectory(p, rows(p)[0]);
     expect(rows(p)[p.cursor].name).toBe('b');
+    expect(rows(p).map((item) => [item.name, item.size])).toEqual([
+      ['b', 1],
+      ['a', 100],
+    ]);
   });
   it('stores the measured size and skips repeat measurements in the current list', async () => {
     const p = panel();

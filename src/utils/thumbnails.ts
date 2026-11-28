@@ -41,10 +41,40 @@ function cacheKey(image: GalleryImage) {
   return `${image.path}\0${image.size}\0${image.modified ?? ''}`;
 }
 
+/** Scales a full-size preview down so the cache holds small data URLs only. */
+async function shrink(url: string): Promise<string> {
+  const image = new Image();
+  image.src = url;
+  await image.decode();
+  const scale = Math.min(
+    1,
+    THUMBNAIL_SIDE / Math.max(image.naturalWidth, image.naturalHeight),
+  );
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Image preview is unavailable.');
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
+}
+
+async function fullPreview(image: GalleryImage, signal: AbortSignal) {
+  const url = await loadImagePreview(image.path, image.extension, signal);
+  // SVG stays vector (and may have no intrinsic size to scale by).
+  if (url.startsWith('data:image/svg+xml')) return url;
+  try {
+    signal.throwIfAborted();
+    return await shrink(url);
+  } finally {
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  }
+}
+
 /**
- * Loads a small image for the grid. Backend thumbnails are cached data URLs.
- * Other formats (HEIC, AVIF, SVG) use the full preview; a blob URL result
- * belongs to the caller, who must revoke it.
+ * Loads a small image for the grid as a data URL, cached until the file
+ * changes. The backend scales common formats; HEIC and AVIF are decoded in
+ * full once and scaled here.
  */
 export async function loadThumbnail(
   image: GalleryImage,
@@ -61,9 +91,9 @@ export async function loadThumbnail(
   await acquire(signal);
   try {
     signal.throwIfAborted();
-    if (!hasNativeThumbnail(image.extension))
-      return await loadImagePreview(image.path, image.extension, signal);
-    const url = await api.readImageThumbnail(image.path, THUMBNAIL_SIDE);
+    const url = hasNativeThumbnail(image.extension)
+      ? await api.readImageThumbnail(image.path, THUMBNAIL_SIDE)
+      : await fullPreview(image, signal);
     cache.set(key, url);
     if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
     return url;

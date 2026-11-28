@@ -109,7 +109,7 @@
     justify-content: space-between;
     gap: 24px;
     width: 100%;
-    padding: 7px 10px;
+    padding: 8px 12px;
     text-align: left;
     background: transparent;
   }

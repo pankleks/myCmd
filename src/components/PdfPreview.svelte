@@ -343,7 +343,10 @@
     min-height: 0;
     overflow: auto;
     padding: 16px;
-    outline: none;
+  }
+  .pdf-pages:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
   }
   .pdf-page {
     position: relative;
