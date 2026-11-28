@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '@iconify/svelte';
+  import Icon from './Icon.svelte';
   import { icons } from '../utils/uiIcons';
   import { onDestroy, onMount, tick, type Snippet } from 'svelte';
   import { api, errorMessage } from '../filesystem/api';

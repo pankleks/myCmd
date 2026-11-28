@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '@iconify/svelte';
+  import Icon from './Icon.svelte';
   import { icons } from '../utils/uiIcons';
   import FolderPicker from './FolderPicker.svelte';
   import type { Root } from '../filesystem/types';

@@ -22,7 +22,6 @@
     "format:check": "prettier --check src scripts .github vite.config.ts vitest.config.ts svelte.config.js *.json src-tauri/*.json src-tauri/capabilities/*.json"
   },
   "dependencies": {
-    "@iconify/svelte": "^5.2.2",
     "@tauri-apps/api": "^2.0.0",
     "dompurify": "^3.4.17",
     "jsonc-parser": "^3.3.1",

@@ -261,7 +261,7 @@
     try {
       await api.copyText(displayPath(entry.path));
     } catch (cause) {
-      showError(errorMessage(cause), 'Unable to copy path');
+      showError(errorMessage(cause), 'Copy path failed');
     }
   }
   async function showSystemActions(path: string) {
@@ -566,7 +566,7 @@
     try {
       await api.edit(path, editor);
     } catch (cause) {
-      showError(errorMessage(cause), 'Unable to open editor');
+      showError(errorMessage(cause), 'Open editor failed');
     }
   }
   function editCurrentFile() {
@@ -610,7 +610,7 @@
     try {
       await api.openTerminal(path);
     } catch (cause) {
-      showError(errorMessage(cause), 'Unable to open terminal');
+      showError(errorMessage(cause), 'Open terminal failed');
     }
   }
   function request(action: Action, permanent = false) {

@@ -2,7 +2,7 @@
   import { fileNameWithoutExtension } from '../utils/fileName';
   import LocationPicker from './LocationPicker.svelte';
   import { tick } from 'svelte';
-  import Icon from '@iconify/svelte';
+  import Icon from './Icon.svelte';
   import { icons } from '../utils/uiIcons';
   import { fileIcon } from '../utils/fileIcon';
   import type { PanelState, Root, Column } from '../filesystem/types';
