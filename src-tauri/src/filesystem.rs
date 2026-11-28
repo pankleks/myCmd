@@ -90,6 +90,31 @@ pub fn absolute(p: &Path) -> Result<PathBuf> {
     fs::canonicalize(&p).map_err(|e| FsError::io(e, &p))
 }
 
+/// Canonical Windows paths start with `\\?\`; Explorer and cmd.exe accept only the plain form.
+#[cfg(windows)]
+pub fn plain_windows_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else {
+        path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned()
+    }
+}
+
+/// cmd.exe cannot run in a `\\?\` or UNC folder: it prints a warning and
+/// silently runs in C:\Windows instead, so refuse rather than run there.
+#[cfg(windows)]
+pub fn windows_working_directory(path: &Path) -> Result<PathBuf> {
+    let plain = plain_windows_path(path);
+    if plain.starts_with(r"\\") {
+        return Err(FsError::new(
+            "invalid_path",
+            "Commands cannot run in a network (UNC) folder. Map it to a drive letter first.",
+        ));
+    }
+    Ok(PathBuf::from(plain))
+}
+
 pub fn read_pdf_preview(path: &Path) -> Result<Vec<u8>> {
     let path = absolute(path)?;
     let metadata = fs::metadata(&path).map_err(|e| FsError::io(e, &path))?;
@@ -729,6 +754,32 @@ pub fn roots() -> Vec<Root> {
 mod tests {
     use super::*;
     use std::io::Write;
+    #[cfg(windows)]
+    #[test]
+    fn converts_canonical_windows_paths_to_plain_paths() {
+        assert_eq!(
+            plain_windows_path(Path::new(r"\\?\C:\Data\日本語.txt")),
+            r"C:\Data\日本語.txt"
+        );
+        assert_eq!(
+            plain_windows_path(Path::new(r"\\?\UNC\server\share\file.txt")),
+            r"\\server\share\file.txt"
+        );
+        assert_eq!(
+            plain_windows_path(Path::new(r"C:\Data\file.txt")),
+            r"C:\Data\file.txt"
+        );
+        assert_eq!(
+            windows_working_directory(Path::new(r"\\?\C:\Data")).unwrap(),
+            PathBuf::from(r"C:\Data")
+        );
+        assert_eq!(
+            windows_working_directory(Path::new(r"\\?\UNC\server\share"))
+                .unwrap_err()
+                .code,
+            "invalid_path"
+        );
+    }
     #[cfg(target_os = "linux")]
     #[test]
     fn mount_picker_hides_system_snap_and_bind_mounts() {

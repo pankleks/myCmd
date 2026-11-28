@@ -95,6 +95,9 @@ fn open(path: &Path) -> Result<()> {
             "Terminal requires a directory",
         ));
     }
+    // The Windows launcher is cmd.exe, which cannot start in a `\\?\` folder.
+    #[cfg(windows)]
+    let directory = filesystem::windows_working_directory(&directory)?;
     for mut command in launchers(&directory) {
         match spawn_detached(&mut command) {
             Ok(()) => return Ok(()),

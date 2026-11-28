@@ -135,18 +135,12 @@ fn window() -> Result<Window> {
     }
 }
 
-fn parsing_name(path: &Path) -> String {
-    let path = path.to_string_lossy();
-    if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{unc}")
-    } else {
-        path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned()
-    }
-}
-
 fn context_menu(path: &Path, hwnd: HWND) -> Result<(IContextMenu, Menu, Pidl)> {
     // Canonical filesystem paths use extended prefixes that Explorer does not accept.
-    let path: Vec<u16> = parsing_name(path).encode_utf16().chain(Some(0)).collect();
+    let path: Vec<u16> = crate::filesystem::plain_windows_path(path)
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
     unsafe {
         let mut raw = std::ptr::null_mut();
         SHParseDisplayName(PCWSTR(path.as_ptr()), None, &mut raw, 0, None)?;
@@ -214,21 +208,6 @@ pub fn show(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn converts_canonical_paths_to_shell_parsing_names() {
-        assert_eq!(
-            parsing_name(Path::new(r"\\?\C:\Data\日本語.txt")),
-            r"C:\Data\日本語.txt"
-        );
-        assert_eq!(
-            parsing_name(Path::new(r"\\?\UNC\server\share\file.txt")),
-            r"\\server\share\file.txt"
-        );
-        assert_eq!(
-            parsing_name(Path::new(r"C:\Data\file.txt")),
-            r"C:\Data\file.txt"
-        );
-    }
     #[test]
     fn shell_builds_a_real_context_menu_for_a_local_file() {
         let _ole = Ole::new().unwrap();

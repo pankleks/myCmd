@@ -339,8 +339,7 @@ impl Worker {
                         &directory.source,
                         &directory.target,
                         &directory.metadata,
-                    )
-                    .map_err(|e| FsError::io(e, &directory.target))?;
+                    );
                 }
                 if moving && directory.complete {
                     fs::remove_dir(&directory.source)
@@ -517,8 +516,7 @@ impl Worker {
                     .map_err(|e| FsError::io(e, &target))?;
                 self.tick(source, n as u64, 0)?;
             }
-            preserve_file_metadata(&input, temp.as_file(), &snapshot.metadata)
-                .map_err(|e| FsError::io(e, &target))?;
+            preserve_file_metadata(&input, temp.as_file(), &snapshot.metadata);
             temp.as_file()
                 .sync_all()
                 .map_err(|e| FsError::io(e, &target))?;
@@ -1003,32 +1001,45 @@ fn rename_noreplace(source: &Path, destination: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        let source = std::ffi::CString::new(source.as_os_str().as_bytes())
+        let c_source = std::ffi::CString::new(source.as_os_str().as_bytes())
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
-        let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())
+        let c_destination = std::ffi::CString::new(destination.as_os_str().as_bytes())
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
         // Both C strings remain valid for the duration of the syscall.
         #[cfg(target_os = "macos")]
-        let result =
-            unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) };
+        let result = unsafe {
+            libc::renamex_np(c_source.as_ptr(), c_destination.as_ptr(), libc::RENAME_EXCL)
+        };
         #[cfg(target_os = "linux")]
         let result = unsafe {
             libc::renameat2(
                 libc::AT_FDCWD,
-                source.as_ptr(),
+                c_source.as_ptr(),
                 libc::AT_FDCWD,
-                destination.as_ptr(),
+                c_destination.as_ptr(),
                 libc::RENAME_NOREPLACE,
             )
         };
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        return Err(std::io::Error::from(std::io::ErrorKind::Unsupported));
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if result == 0 {
-            Ok(())
+        let error = if result == 0 {
+            return Ok(());
         } else {
-            Err(std::io::Error::last_os_error())
+            std::io::Error::last_os_error()
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        let error = std::io::Error::from(std::io::ErrorKind::Unsupported);
+        // NFS, FUSE (sshfs) and SMB mounts reject the no-replace flag (EINVAL/ENOTSUP).
+        // shortcut: check-then-rename there; a target created in between is replaced.
+        if matches!(
+            error.kind(),
+            std::io::ErrorKind::InvalidInput | std::io::ErrorKind::Unsupported
+        ) && matches!(
+            fs::symlink_metadata(destination),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound
+        ) {
+            return fs::rename(source, destination);
         }
+        Err(error)
     }
     #[cfg(windows)]
     {
@@ -1114,49 +1125,45 @@ fn unchanged_metadata(before: &fs::Metadata, after: &fs::Metadata) -> bool {
     }
 }
 
-fn preserve_file_metadata(
-    source: &fs::File,
-    destination: &fs::File,
-    metadata: &fs::Metadata,
-) -> std::io::Result<()> {
+// Metadata is best effort, like `cp -a`: FAT/exFAT, NFSv3 and SMB targets reject
+// xattrs or Unix modes, and that must not fail a copy whose data is complete.
+fn preserve_file_metadata(source: &fs::File, destination: &fs::File, metadata: &fs::Metadata) {
     #[cfg(unix)]
     {
         use xattr::FileExt;
-        for name in source.list_xattr()? {
-            if let Some(value) = source.get_xattr(&name)? {
-                destination.set_xattr(&name, &value)?;
+        for name in source.list_xattr().into_iter().flatten() {
+            if let Ok(Some(value)) = source.get_xattr(&name) {
+                let _ = destination.set_xattr(&name, &value);
             }
         }
     }
     #[cfg(not(unix))]
     let _ = source;
-    destination.set_permissions(metadata.permissions())?;
-    destination.set_times(
-        fs::FileTimes::new()
-            .set_accessed(metadata.accessed()?)
-            .set_modified(metadata.modified()?),
-    )
+    let _ = destination.set_permissions(metadata.permissions());
+    if let (Ok(accessed), Ok(modified)) = (metadata.accessed(), metadata.modified()) {
+        let _ = destination.set_times(
+            fs::FileTimes::new()
+                .set_accessed(accessed)
+                .set_modified(modified),
+        );
+    }
 }
 
-fn preserve_directory_metadata(
-    source: &Path,
-    destination: &Path,
-    metadata: &fs::Metadata,
-) -> std::io::Result<()> {
+fn preserve_directory_metadata(source: &Path, destination: &Path, metadata: &fs::Metadata) {
     #[cfg(unix)]
-    for name in xattr::list(source)? {
-        if let Some(value) = xattr::get(source, &name)? {
-            xattr::set(destination, &name, &value)?;
+    for name in xattr::list(source).into_iter().flatten() {
+        if let Ok(Some(value)) = xattr::get(source, &name) {
+            let _ = xattr::set(destination, &name, &value);
         }
     }
     #[cfg(not(unix))]
     let _ = source;
-    filetime::set_file_times(
+    let _ = filetime::set_file_times(
         destination,
         filetime::FileTime::from_last_access_time(metadata),
         filetime::FileTime::from_last_modification_time(metadata),
-    )?;
-    fs::set_permissions(destination, metadata.permissions())
+    );
+    let _ = fs::set_permissions(destination, metadata.permissions());
 }
 
 /// "report.pdf" -> "report (2).pdf"; folders keep dots in their name.

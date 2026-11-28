@@ -390,6 +390,11 @@ pub async fn run_system_command(
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(windows)]
         let shell = env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
+        #[cfg(windows)]
+        let cwd = crate::filesystem::windows_working_directory(std::path::Path::new(&cwd))
+            .map_err(|e| e.message)?
+            .to_string_lossy()
+            .into_owned();
         #[cfg(not(windows))]
         let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
         let result = run_shell_controlled(

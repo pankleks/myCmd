@@ -2,6 +2,7 @@ use crate::error::{FsError, Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -385,22 +386,38 @@ pub fn config_path() -> PathBuf {
 }
 
 pub fn load_from(path: &Path) -> AppConfig {
-    match fs::read_to_string(path) {
-        Ok(contents) => serde_json::from_str::<AppConfig>(&contents).unwrap_or_default(),
-        Err(_) => AppConfig::default(),
-    }
+    let Ok(contents) = fs::read_to_string(path) else {
+        return AppConfig::default();
+    };
+    serde_json::from_str::<AppConfig>(&contents).unwrap_or_else(|error| {
+        // The next save writes defaults; keep the user's (possibly hand-edited) file.
+        let backup = corrupt_backup_path(path);
+        eprintln!(
+            "myCmd: {} is invalid ({error}); moved to {}",
+            path.display(),
+            backup.display()
+        );
+        let _ = fs::rename(path, backup);
+        AppConfig::default()
+    })
+}
+
+fn corrupt_backup_path(path: &Path) -> PathBuf {
+    path.with_extension("json.corrupt")
 }
 
 pub fn save_to(path: &Path, config: &AppConfig) -> Result<()> {
     let config = config.sanitized();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| FsError::io(e, parent))?;
-    }
+    let parent = path.parent().unwrap_or(Path::new("."));
+    fs::create_dir_all(parent).map_err(|e| FsError::io(e, parent))?;
     let payload = serde_json::to_string_pretty(&config)
         .map_err(|e| FsError::new("config_encode", e.to_string()))?;
-    let tmp_path = path.with_extension(format!("json.tmp-{}", std::process::id()));
-    fs::write(&tmp_path, payload).map_err(|e| FsError::io(e, &tmp_path))?;
-    fs::rename(&tmp_path, path).map_err(|e| FsError::io(e, path))
+    let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|e| FsError::io(e, parent))?;
+    file.write_all(payload.as_bytes())
+        .and_then(|()| file.as_file().sync_all())
+        .map_err(|e| FsError::io(e, file.path()))?;
+    file.persist(path).map_err(|e| FsError::io(e.error, path))?;
+    Ok(())
 }
 
 pub fn load() -> AppConfig {
@@ -432,10 +449,16 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_file_returns_defaults() {
+    fn corrupt_file_returns_defaults_and_is_kept_before_the_next_save() {
         let (_dir, path) = temp_path("config.json");
-        fs::write(&path, "{not valid json").expect("write fixture");
+        let broken = r#"{"pinnedDirectories": ["/data"],}"#;
+        fs::write(&path, broken).expect("write fixture");
         assert_eq!(load_from(&path), AppConfig::default());
+        save_to(&path, &AppConfig::default()).expect("save");
+        assert_eq!(
+            fs::read_to_string(corrupt_backup_path(&path)).expect("backup"),
+            broken
+        );
     }
 
     #[test]

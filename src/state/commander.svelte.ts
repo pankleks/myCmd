@@ -121,10 +121,23 @@ export async function load(
       panel.entries = [];
       panel.selected = new Set();
     }
-    const result = await providerFor(location).list(location, (entries) => {
-      if (revision === panel.revision)
-        panel.entries = [...panel.entries, ...entries];
-    });
+    // Each assignment re-filters and re-sorts every row, so assigning per batch
+    // is O(n²) over a large search: show the first batch, then at most ~3/s.
+    const streamed: FileEntry[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const show = () => {
+      timer = undefined;
+      if (revision === panel.revision) panel.entries = [...streamed];
+    };
+    const result = await providerFor(location)
+      .list(location, (entries) => {
+        if (revision !== panel.revision) return;
+        const first = streamed.length === 0;
+        streamed.push(...entries);
+        if (first) show();
+        else timer ??= setTimeout(show, 300);
+      })
+      .finally(() => clearTimeout(timer));
     if (revision !== panel.revision) return;
     const same = panel.path === result.path;
     panel.path = result.path;

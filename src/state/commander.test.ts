@@ -116,6 +116,44 @@ describe('search result navigation', () => {
       listing.mockRestore();
     }
   });
+  it('shows the first search batch at once and groups later batches', async () => {
+    vi.useFakeTimers();
+    const p = panel();
+    const pending = deferred<{
+      path: string;
+      parent: string;
+      entries: FileEntry[];
+    }>();
+    let onBatch: ((entries: FileEntry[]) => void) | undefined;
+    const listing = vi
+      .spyOn(searchProvider, 'list')
+      .mockImplementation((location, batch) => {
+        onBatch = batch;
+        return pending.promise.then((value) => ({
+          ...value,
+          path: `search:${location.kind === 'search' ? location.sessionId : ''}`,
+        }));
+      });
+    try {
+      const searching = startSearch(p, '/home', '*');
+      const batch = (i: number) => [
+        entry(`match${i}`, { path: `/home/match${i}` }),
+      ];
+      await vi.waitFor(() => expect(onBatch).toBeDefined());
+      onBatch?.(batch(0));
+      expect(p.entries).toHaveLength(1);
+      for (let i = 1; i < 100; i++) onBatch?.(batch(i));
+      expect(p.entries).toHaveLength(1);
+      vi.advanceTimersByTime(300);
+      expect(p.entries).toHaveLength(100);
+      pending.resolve({ path: '', parent: '/home', entries: p.entries });
+      await searching;
+      expect(p.entries).toHaveLength(100);
+    } finally {
+      listing.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it('does not preview stale entries during a regular directory load or archive contents', () => {
     const p = panel();
     p.entries = [entry('old')];
