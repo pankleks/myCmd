@@ -25,6 +25,7 @@ vi.mock('./filesystem/api', () => ({
       rightPath: '/right',
     })),
     saveConfig: vi.fn(async () => {}),
+    takeConfigNotice: vi.fn(async () => null),
     watch: vi.fn(async () => {}),
     list: vi.fn(async (path: string) => ({
       path,
@@ -525,4 +526,21 @@ it('keeps search progress and Cancel visible after switching panels', () => {
   expect(target.textContent).toContain('Cancel search');
   expect(target.textContent?.replace(/\s+/g, ' ')).toContain('0 matches found');
   searchSessions.delete('progress-test');
+});
+
+it('tells the user once when broken settings were reset', async () => {
+  await unmount(component);
+  vi.mocked(api.takeConfigNotice).mockResolvedValueOnce(
+    'The settings file could not be read.',
+  );
+  component = mount(App, { target });
+  await vi.waitFor(() => {
+    flushSync();
+    expect(target.querySelector('dialog h2')?.textContent).toBe(
+      'Settings were reset',
+    );
+  });
+  expect(target.querySelector('.error-message')?.textContent).toBe(
+    'The settings file could not be read.',
+  );
 });

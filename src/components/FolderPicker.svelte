@@ -62,6 +62,13 @@
     nameInput?.focus();
     nameInput?.select();
   }
+  function unpin(pin: string) {
+    preferences.pinnedDirectories = preferences.pinnedDirectories.filter(
+      (pinned) => pinned !== pin,
+    );
+    scheduleSave();
+    input.focus();
+  }
   async function finishRename(save: boolean) {
     if (save && editingPin) {
       const names = { ...preferences.pinnedDirectoryNames };
@@ -125,9 +132,13 @@
       escape();
     }
     if (event.key === 'Enter' && expanded && event.target === input) {
-      event.preventDefault();
-      event.stopPropagation();
-      submit();
+      // Enter picks the highlighted match. Without one, the typed or current
+      // path stands, so Enter goes on to the form (one Enter starts a search).
+      if (firstMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        submit();
+      } else expanded = false;
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
@@ -292,6 +303,12 @@
               title="Rename pinned folder"
               onclick={(event) => void startRename(pin, event.currentTarget)}
               ><Icon icon={icons.pencil} width="16" height="16" /></button
+            ><button
+              type="button"
+              aria-label={`Unpin ${favoriteName(pin)}`}
+              title="Unpin folder"
+              onclick={() => unpin(pin)}
+              ><Icon icon={icons.x} width="16" height="16" /></button
             >
           {/if}
         </div>

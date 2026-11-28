@@ -409,3 +409,21 @@ it('shows drives before pins and restores current path on Escape', () => {
   expect(input.value).toBe('/tmp');
   expect(target.querySelector('.location-menu')).toBeNull();
 });
+
+it('unpins a folder from the dropdown', async () => {
+  preferences.pinnedDirectories = ['/home/user/Projects'];
+  flushSync();
+  target
+    .querySelector<HTMLButtonElement>(
+      '.location-bar button[aria-haspopup], .location-bar input',
+    )
+    ?.focus();
+  flushSync();
+  const unpin = target.querySelector<HTMLButtonElement>(
+    '[aria-label="Unpin Projects"]',
+  );
+  expect(unpin).not.toBeNull();
+  unpin!.click();
+  flushSync();
+  expect(preferences.pinnedDirectories).toEqual([]);
+});

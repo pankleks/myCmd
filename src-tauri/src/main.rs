@@ -69,6 +69,7 @@ fn main() {
             commands::cancel_operation,
             commands::resolve_conflict,
             commands::load_config,
+            commands::take_config_notice,
             commands::save_config,
             shell::run_system_command,
             shell::cancel_system_command,

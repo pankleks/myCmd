@@ -117,6 +117,7 @@ export const api = {
   /** Opens the release found by the last check; the URL never leaves Rust. */
   openReleasePage: () => invoke<void>('open_release_page'),
   loadConfig: () => invoke<AppConfig>('load_config'),
+  takeConfigNotice: () => invoke<string | null>('take_config_notice'),
   saveConfig: (config: AppConfig) => invoke<void>('save_config', { config }),
 };
 export function errorMessage(error: unknown): string {

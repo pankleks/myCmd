@@ -459,6 +459,11 @@ fn launch_in_terminal(path: &std::path::Path) -> Result<()> {
 pub fn load_config() -> Result<AppConfig> {
     Ok(config::load())
 }
+/// Why the settings were reset at startup, once; None when they loaded fine.
+#[tauri::command]
+pub fn take_config_notice() -> Option<String> {
+    config::take_reset_notice()
+}
 
 fn edit(path: &std::path::Path, editor: Option<&str>) -> Result<()> {
     let path = filesystem::absolute(path)?;

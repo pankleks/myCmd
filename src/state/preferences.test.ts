@@ -8,6 +8,7 @@ import {
   persistPreferences,
   preferences,
   scheduleSave,
+  flushSave,
   setShowHidden,
 } from './preferences.svelte';
 
@@ -265,5 +266,18 @@ describe('scheduleSave', () => {
     expect(saveConfig).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(300);
     expect(saveConfig).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('flushSave', () => {
+  it('saves a pending change at once and only once', () => {
+    vi.useFakeTimers();
+    flushSave();
+    expect(saveConfig).not.toHaveBeenCalled();
+    scheduleSave();
+    flushSave();
+    expect(saveConfig).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1000);
+    expect(saveConfig).toHaveBeenCalledOnce();
   });
 });

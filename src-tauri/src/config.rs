@@ -392,14 +392,30 @@ pub fn load_from(path: &Path) -> AppConfig {
     serde_json::from_str::<AppConfig>(&contents).unwrap_or_else(|error| {
         // The next save writes defaults; keep the user's (possibly hand-edited) file.
         let backup = corrupt_backup_path(path);
-        eprintln!(
-            "myCmd: {} is invalid ({error}); moved to {}",
-            path.display(),
-            backup.display()
-        );
-        let _ = fs::rename(path, backup);
+        let notice = match fs::rename(path, &backup) {
+            Ok(()) => format!(
+                "The settings file could not be read ({error}). It was kept as {} and default settings are used.",
+                backup.display()
+            ),
+            Err(_) => format!(
+                "The settings file {} could not be read ({error}). Default settings are used.",
+                path.display()
+            ),
+        };
+        eprintln!("myCmd: {notice}");
+        *RESET_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = Some(notice);
         AppConfig::default()
     })
+}
+
+/// Set when a broken settings file was replaced by defaults; shown once.
+static RESET_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn take_reset_notice() -> Option<String> {
+    RESET_NOTICE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
 }
 
 fn corrupt_backup_path(path: &Path) -> PathBuf {
@@ -454,6 +470,7 @@ mod tests {
         let broken = r#"{"pinnedDirectories": ["/data"],}"#;
         fs::write(&path, broken).expect("write fixture");
         assert_eq!(load_from(&path), AppConfig::default());
+        assert!(take_reset_notice().is_some_and(|notice| notice.contains("json.corrupt")));
         save_to(&path, &AppConfig::default()).expect("save");
         assert_eq!(
             fs::read_to_string(corrupt_backup_path(&path)).expect("backup"),

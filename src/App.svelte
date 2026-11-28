@@ -44,6 +44,7 @@
     preferences,
     loadPreferences,
     scheduleSave,
+    flushSave,
     setShowHidden,
   } from './state/preferences.svelte';
   import { handleControlShortcut, swapPanels } from './state/controlShortcuts';
@@ -757,6 +758,12 @@
     }
     await commands.run(command, active.path);
   }
+  // shortcut: best effort. The save is sent before the window goes away, but
+  // the webview may close before the backend finishes writing it.
+  onMount(() => {
+    window.addEventListener('beforeunload', flushSave);
+    return () => window.removeEventListener('beforeunload', flushSave);
+  });
   onMount(() => {
     let disposed = false;
     const directoryRefresh = createDirectoryRefresh<Side>({
@@ -826,6 +833,8 @@
           ready = true;
           focusPanel();
         }
+        const notice = await api.takeConfigNotice().catch(() => null);
+        if (notice && !disposed) showError(notice, 'Settings were reset');
       } catch (e) {
         showError(errorMessage(e));
       }

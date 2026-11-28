@@ -180,3 +180,17 @@ it('requires text only when content search is enabled and ignores it when disabl
   search();
   expect(submit).toHaveBeenLastCalledWith('/current', '*.*', undefined);
 });
+
+it('lets Enter start the search when no match is highlighted', () => {
+  typeFolder('/new/folder');
+  const event = new KeyboardEvent('keydown', {
+    key: 'Enter',
+    bubbles: true,
+    cancelable: true,
+  });
+  folderInput().dispatchEvent(event);
+  flushSync();
+  expect(event.defaultPrevented).toBe(false);
+  expect(target.querySelector('.location-menu')).toBeNull();
+  expect(folderInput().value).toBe('/new/folder');
+});

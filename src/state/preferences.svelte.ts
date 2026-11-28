@@ -114,3 +114,11 @@ export function scheduleSave() {
     void persistPreferences();
   }, 250);
 }
+
+/** Saves a change that is still waiting for the debounce, e.g. on window close. */
+export function flushSave() {
+  if (saveTimer === undefined) return;
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  void persistPreferences();
+}

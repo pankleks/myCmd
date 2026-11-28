@@ -360,6 +360,10 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
 .active .file-row.cursor {
   background: #0047b8;
 }
+/* Hidden files (shown with Ctrl+H) are dimmed; the cursor bar stays solid. */
+.file-row.hidden-entry > span {
+  opacity: 0.6;
+}
 .file-row.selected {
   color: var(--list-selected);
 }
@@ -543,6 +547,12 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
 }
 .command-line input:focus-visible {
   background: var(--surface);
+}
+.error-message {
+  max-height: 35vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .error-command {
   font-family: var(--font-mono);
@@ -1147,7 +1157,8 @@ input[type='checkbox']:focus-visible {
   outline-offset: 2px;
 }
 .shortcuts-list:focus-visible,
-.error-output:focus-visible {
+.error-output:focus-visible,
+.error-message:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
 }

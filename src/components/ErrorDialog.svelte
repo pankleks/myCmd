@@ -28,9 +28,13 @@
   }}
 >
   <h2 id="error-title">{title}</h2>
-  {#if command}<p class="error-command">{command}</p>{/if}
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex (long output scrolls with the keyboard) -->
-  <pre class="error-output" tabindex="0">{output}</pre>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (long text scrolls with the keyboard) -->
+  {#if command}<p class="error-command">{command}</p>
+    <pre class="error-output" tabindex="0">{output}</pre>
+  {:else}
+    <!-- A message, not program output: plain text, not a monospace block. -->
+    <p class="error-message" tabindex="0">{output}</p>
+  {/if}
   <div class="dialog-actions">
     <button type="button" class="primary" bind:this={close} onclick={onclose}
       >Close</button
