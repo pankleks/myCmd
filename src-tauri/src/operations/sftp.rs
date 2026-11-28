@@ -431,15 +431,17 @@ impl Worker {
             &parent(target),
             &format!(".mycmd-{}.part", uuid::Uuid::new_v4()),
         )?;
-        let mut output = sftp
+        // The open may create the file even when its reply is lost (connection
+        // cut), so a failed open gets the same cleanup and hint as a failed write.
+        let opened = sftp
             .open_mode(
                 Path::new(&temp),
                 OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUSIVE,
                 0o600,
                 OpenType::File,
             )
-            .map_err(error)?;
-        let result = (|| {
+            .map_err(error);
+        let result = opened.and_then(|mut output| {
             self.pump(
                 source,
                 |buffer| input.read(buffer).map_err(|e| FsError::io(e, source)),
@@ -480,8 +482,7 @@ impl Worker {
             snapshot.verify(&input, source)?;
             self.check()?;
             commit_upload(sftp, &temp, target, overwrite)
-        })();
-        drop(output);
+        });
         if let Err(mut failure) = result {
             if let Err(cleanup) = sftp.unlink(Path::new(&temp)).map_err(error) {
                 if cleanup.code != "not_found" {
