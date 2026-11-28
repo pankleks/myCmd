@@ -405,7 +405,7 @@
         <div class="viewer-editor" bind:this={editorContainer}></div>
       {/if}
       {#if loading || editorLoading}<div class="viewer-loading" role="status">
-          {loading ? 'Loading preview…' : 'Loading Monaco…'}
+          {loading ? 'Loading preview…' : 'Loading editor…'}
         </div>{/if}
     </div>
     {#if error || editorError}<div class="dialog-actions viewer-actions">

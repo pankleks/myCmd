@@ -203,9 +203,9 @@
         /></label
       >
       <label
-        >Starting directory<input
+        >Starting folder<input
           bind:value={directory}
-          placeholder="Server home directory"
+          placeholder="Server home folder"
           autocomplete="off"
           spellcheck="false"
         /></label

@@ -152,7 +152,7 @@ it('names the items a delete will remove', () => {
     '…and 2 more',
   ]);
   expect(target.querySelector('p')!.textContent).toMatch(
-    /Move\s+12 items\s+to the Recycle Bin\?/,
+    /Move\s+12 items\s+to the (Recycle Bin|Trash)\?/,
   );
 });
 

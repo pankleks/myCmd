@@ -525,7 +525,7 @@
       !searchSession(active.path) &&
       parseLocation(active.path).kind !== 'sftp'
     ) {
-      showError('Previews are available for local files only.');
+      showError('Previews are not available inside archives.');
       return;
     }
     const entry = previewEntry(active);
@@ -603,7 +603,7 @@
   }
   async function openTerminal(path: string) {
     if (!isLocalPath(path)) {
-      showError('Terminals can only be opened in local directories.');
+      showError('Terminals can only be opened in local folders.');
       return;
     }
     try {
@@ -664,7 +664,7 @@
         targetLocation.kind !== 'sftp')
     ) {
       showError(
-        'Archives support F5 extraction to a local directory and F8 permanent deletion. Other changes are not supported yet.',
+        'Archives support F5 extraction to a local folder and F8 permanent deletion. Other changes are not supported yet.',
       );
       return;
     }
@@ -1292,7 +1292,7 @@
           <span class="operation-indicator" aria-hidden="true"></span>
           <span
             >{!ready
-              ? 'Waiting for Tauri backend'
+              ? 'Starting…'
               : progress
                 ? {
                     queued: 'Queued',

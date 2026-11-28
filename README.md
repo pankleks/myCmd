@@ -36,7 +36,7 @@ Use **F5** to copy between one local panel and one SFTP panel. Transfers reuse p
 
 Remote folders support **F7**, **F2**, and **F8** (permanent deletion with confirmation). Transfers reject symbolic links rather than following them; remote deletion removes the link itself. Folder and regular-file permissions and file modification times are preserved where supported (the owner always keeps write access to new folders), without ownership or special permission bits; files uploaded from Windows get 0644.
 
-Remote Move, remote-to-remote copies, ZIP, search, previews/editing, clipboard file export, and native system actions are not supported on SFTP locations. Use **Connections…** to disconnect or reconnect, and **Ctrl+R** to refresh remote listings.
+Remote Move, remote-to-remote copies, ZIP, search, editing, clipboard file export, and native system actions are not supported on SFTP locations. Use **Connections…** to disconnect or reconnect, and **Ctrl+R** to refresh remote listings.
 
 ## Install
 

@@ -15,3 +15,12 @@ export function date(value?: number) {
         hourCycle: 'h23',
       });
 }
+/** "1 item", "2 items". */
+export function plural(count: number, word: string, many = `${word}s`) {
+  return `${count} ${count === 1 ? word : many}`;
+}
+/** What the system calls deleted items that can be restored. */
+export const trashName =
+  typeof navigator !== 'undefined' && /^Win/.test(navigator.platform)
+    ? 'Recycle Bin'
+    : 'Trash';

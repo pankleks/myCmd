@@ -26,6 +26,7 @@
 </script>
 
 <dialog
+  aria-labelledby="search-title"
   bind:this={dialog}
   oncancel={(event) => {
     event.preventDefault();
@@ -39,7 +40,7 @@
       onsubmit(root, pattern, searchContent ? searchText : undefined);
     }}
   >
-    <h2>Search files and folders</h2>
+    <h2 id="search-title">Search files and folders</h2>
     <label
       >Glob pattern<input
         bind:value={pattern}
@@ -87,7 +88,7 @@
       {searchContent
         ? 'Searches recursively and returns files containing the text.'
         : 'Searches names recursively, including folders.'}
-      Archives and directory links are not traversed.
+      Archives and folder links are not traversed.
     </p>
     <div class="dialog-actions">
       <button type="button" onclick={onclose}>Cancel</button><button

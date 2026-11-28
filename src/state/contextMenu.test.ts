@@ -70,6 +70,7 @@ describe('contextMenuItems', () => {
     );
     expect(labels(items)).toEqual([
       'Open folder',
+      'View',
       'Download to opposite panel…',
       'New folder…',
       'Rename…',
@@ -77,7 +78,7 @@ describe('contextMenuItems', () => {
       'Connections…',
     ]);
     expect(items[0].disabled).toBe(true);
-    items[4].run();
+    items[5].run();
     expect(a.request).toHaveBeenCalledWith('delete', true);
     expect(
       labels(

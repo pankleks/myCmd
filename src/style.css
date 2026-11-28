@@ -10,6 +10,12 @@
   --danger-hover: #a64652;
   --focus: #80aaff;
   --text-muted: #9ba9bd;
+  --text-secondary: #b6c4d8;
+  --border: #47566e;
+  --bg-sunken: #141920;
+  --bg-bar: #1c222b;
+  --danger-text: #ffb7bd;
+  --warning-text: #f4d59a;
   --font-mono: Consolas, ui-monospace, monospace;
   font-family:
     Segoe UI,
@@ -84,7 +90,7 @@ main {
 .panel {
   --list-background: #000080;
   --list-foreground: #00ffff;
-  --list-hidden-file: #ffff00;
+  --list-selected: #ffff00;
   font-size: var(--file-font-size, 18px);
   min-width: 0;
   display: flex;
@@ -118,7 +124,7 @@ main {
 .pathbar input {
   width: 100%;
   height: 32px;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
 }
 .pathbar select {
   max-width: 115px;
@@ -168,7 +174,7 @@ main {
   max-height: min(600px, calc(100vh - 120px));
   overflow: auto;
   background: #232b36;
-  border: 1px solid #47566e;
+  border: 1px solid var(--border);
   box-shadow: 0 10px 24px #0008;
   padding: 6px 0;
 }
@@ -176,7 +182,7 @@ main {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #9ba9bd;
+  color: var(--text-muted);
   padding: 10px 12px 5px;
 }
 .location-option {
@@ -201,7 +207,7 @@ main {
 }
 .location-option small {
   margin-left: auto;
-  color: #9ba9bd;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -209,7 +215,7 @@ main {
 }
 .location-empty {
   padding: 8px 12px;
-  color: #9ba9bd;
+  color: var(--text-muted);
   font-size: 12px;
 }
 .columns,
@@ -308,7 +314,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  scrollbar-color: #2b333f #141920;
+  scrollbar-color: #2b333f var(--bg-sunken);
   outline: none;
   position: relative;
   background: var(--list-background);
@@ -317,7 +323,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   width: 12px;
 }
 .file-list::-webkit-scrollbar-track {
-  background: #141920;
+  background: var(--bg-sunken);
 }
 .file-list::-webkit-scrollbar-thumb {
   background: #2b333f;
@@ -355,10 +361,10 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   background: #0047b8;
 }
 .file-row.selected {
-  color: var(--list-hidden-file);
+  color: var(--list-selected);
 }
 .file-row.selected > span {
-  color: var(--list-hidden-file);
+  color: var(--list-selected);
 }
 .file-icon {
   display: inline-flex;
@@ -376,7 +382,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   color: var(--list-foreground);
 }
 .file-row.selected.directory .filename {
-  color: var(--list-hidden-file);
+  color: var(--list-selected);
 }
 .panel-status {
   display: flex;
@@ -394,10 +400,10 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   padding: 5px 9px;
   color: #c0c0c0;
   font-size: 13px;
-  background: #141920;
+  background: var(--bg-sunken);
 }
 .quick-find-query {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   color: #fff;
   border-right: 2px solid #00ffff;
   padding-right: 2px;
@@ -405,7 +411,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
 }
 .quick-find-miss {
   margin-left: auto;
-  color: #ff9d9d;
+  color: var(--danger-text);
 }
 .empty {
   padding: 30px;
@@ -415,7 +421,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
 .panel-error {
   padding: 8px;
   background: #482c32;
-  color: #ffc3c5;
+  color: var(--danger-text);
   overflow-wrap: anywhere;
 }
 .panel-error {
@@ -428,7 +434,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   overflow: auto;
   padding: 6px 9px;
   background: #3c3424;
-  color: #f4d59a;
+  color: var(--warning-text);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -512,9 +518,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
 }
 .current-item {
   margin-top: 8px;
-  font:
-    12px Consolas,
-    monospace;
+  font: 12px var(--font-mono);
   color: #c0deca;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -541,7 +545,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   background: var(--surface);
 }
 .error-command {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
 .error-output {
@@ -550,10 +554,8 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
   margin: 0;
   padding: 8px;
   background: #171b23;
-  color: #ffc3c5;
-  font:
-    12px/1.5 Consolas,
-    monospace;
+  color: var(--danger-text);
+  font: 12px/1.5 var(--font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -591,7 +593,7 @@ dialog :where(label, .field-row) + :where(label, .field-row) {
 kbd {
   font-family: inherit;
   font-weight: 700;
-  color: #99bbff;
+  color: var(--focus);
   font-size: 12px;
 }
 dialog {
@@ -682,7 +684,7 @@ dialog::backdrop {
   vertical-align: top;
 }
 .shortcuts-list tr:nth-child(even) {
-  background: #202731;
+  background: var(--bg-bar);
 }
 .shortcuts-list th {
   width: 38%;
@@ -696,7 +698,7 @@ dialog h2 {
 }
 dialog p {
   overflow-wrap: anywhere;
-  color: #b6c4d8;
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 .delete-names {
@@ -738,7 +740,7 @@ dialog input:not([type='checkbox']) {
   background: var(--danger-hover);
 }
 .danger-text {
-  color: #ffb7bd !important;
+  color: var(--danger-text) !important;
 }
 .file-viewer {
   position: fixed;
@@ -784,7 +786,7 @@ dialog.file-viewer[open] {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: #9ba9bd;
+  color: var(--text-muted);
   text-align: center;
 }
 .viewer-header {
@@ -807,7 +809,7 @@ dialog.file-viewer[open] {
 }
 .viewer-heading span {
   overflow: hidden;
-  color: #b6c4d8;
+  color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -822,7 +824,7 @@ dialog.file-viewer[open] {
   gap: 8px;
 }
 .viewer-position {
-  color: #b6c4d8;
+  color: var(--text-secondary);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -840,7 +842,7 @@ dialog.file-viewer:focus {
   align-content: start;
   gap: 8px;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  border: 1px solid #364155;
+  border: 1px solid var(--divider);
   border-radius: 6px;
   background: #171b23;
 }
@@ -861,12 +863,12 @@ dialog.file-viewer:focus {
   background: #232a37;
 }
 .image-tile.selected {
-  border-color: #5b8bd9;
+  border-color: var(--accent-hover);
   background: #263249;
 }
 .image-grid:focus-visible .image-tile.selected,
 .image-grid:focus .image-tile.selected {
-  border-color: #8db4ff;
+  border-color: var(--focus);
 }
 .image-thumbnail {
   display: flex;
@@ -875,7 +877,7 @@ dialog.file-viewer:focus {
   justify-content: center;
   overflow: hidden;
   border-radius: 4px;
-  background: #202632;
+  background: var(--bg-bar);
 }
 .image-thumbnail img {
   display: block;
@@ -889,7 +891,7 @@ dialog.file-viewer:focus {
 }
 .image-tile-name {
   overflow: hidden;
-  color: #b6c4d8;
+  color: var(--text-secondary);
   font-size: 12px;
   text-align: center;
   text-overflow: ellipsis;
@@ -911,7 +913,7 @@ dialog.file-viewer:focus {
   flex: 1;
   min-height: 0;
   margin: 0 12px;
-  border: 1px solid #3c4658;
+  border: 1px solid var(--divider);
   background: #171b23;
 }
 .viewer-editor {
@@ -932,7 +934,7 @@ dialog.file-viewer:focus {
 .directory-summary dt {
   flex: none;
   width: 130px;
-  color: #9ba9bd;
+  color: var(--text-muted);
 }
 .directory-summary dd {
   margin: 0;
@@ -940,7 +942,7 @@ dialog.file-viewer:focus {
 }
 .directory-summary-note {
   padding: 0 24px 20px;
-  color: #e0a44a;
+  color: var(--warning-text);
 }
 .preview-search {
   display: flex;
@@ -959,7 +961,7 @@ dialog.file-viewer:focus {
   justify-content: center;
 }
 .preview-search [role='status'] {
-  color: #b6c4d8;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .markdown-preview mark[data-preview-search] {
@@ -1000,7 +1002,7 @@ dialog.file-viewer:focus {
 .markdown-preview h1,
 .markdown-preview h2 {
   padding-bottom: 0.3em;
-  border-bottom: 1px solid #364155;
+  border-bottom: 1px solid var(--divider);
 }
 .markdown-preview p,
 .markdown-preview ul,
@@ -1017,17 +1019,17 @@ dialog.file-viewer:focus {
 .markdown-preview blockquote {
   padding: 0 1em;
   border-left: 3px solid #526783;
-  color: #aebbd0;
+  color: var(--text-secondary);
 }
 .markdown-preview code {
   padding: 0.12em 0.35em;
   background: #252d3b;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
 }
 .markdown-preview pre {
   overflow: auto;
   padding: 12px 14px;
-  background: #11151c;
+  background: var(--bg-sunken);
 }
 .markdown-preview pre code {
   padding: 0;
@@ -1040,21 +1042,21 @@ dialog.file-viewer:focus {
 .markdown-preview th,
 .markdown-preview td {
   padding: 6px 10px;
-  border: 1px solid #3c4658;
+  border: 1px solid var(--divider);
   text-align: left;
 }
 .markdown-preview th {
   background: #252d3b;
 }
 .markdown-preview a {
-  color: #91b7ff;
+  color: var(--focus);
   text-decoration: underline;
   text-decoration-color: #526783;
   cursor: default;
 }
 .markdown-preview hr {
   border: 0;
-  border-top: 1px solid #364155;
+  border-top: 1px solid var(--divider);
 }
 .markdown-preview img {
   max-width: 100%;
@@ -1071,7 +1073,7 @@ dialog.file-viewer:focus {
   align-items: center;
   justify-content: center;
   overflow: auto;
-  background-color: #202632;
+  background-color: var(--bg-bar);
   background-image:
     linear-gradient(45deg, #29313e 25%, transparent 25%),
     linear-gradient(-45deg, #29313e 25%, transparent 25%),
@@ -1099,7 +1101,7 @@ dialog.file-viewer:focus {
   align-items: center;
   justify-content: center;
   background: #171b23ed;
-  color: #b6c4d8;
+  color: var(--text-secondary);
 }
 .viewer-message {
   flex-direction: column;
@@ -1153,13 +1155,13 @@ dl {
   font-size: 14px;
 }
 dt {
-  color: #93a7c4;
+  color: var(--text-muted);
   margin-top: 10px;
 }
 dd {
   margin: 4px 0;
 }
 .conflict-path {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }

@@ -16,7 +16,7 @@
     dirSizing,
     type Side,
   } from '../state/commander.svelte';
-  import { bytes, date } from '../utils/format';
+  import { bytes, date, plural } from '../utils/format';
   import { displayPath } from '../utils/paths';
   import {
     locationLabel,
@@ -435,7 +435,7 @@
   {/if}
   {#if commander.quickFind?.side === side}
     <div class="quick-find" role="status">
-      <span>Search:</span><span class="quick-find-query"
+      <span>Quick find:</span><span class="quick-find-query"
         >{commander.quickFind.query}</span
       >{#if !commander.quickFind.matched}<span class="quick-find-miss"
           >no match</span
@@ -446,7 +446,7 @@
     <span
       >{panel.loading
         ? 'Loading…'
-        : `${items.filter((e) => !e.parentEntry).length} items`}</span
+        : plural(items.filter((e) => !e.parentEntry).length, 'item')}</span
     ><span
       >{panel.selected.size} selected · {bytes(
         panel.entries

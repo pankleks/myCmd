@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import type { FileEntry } from '../filesystem/types';
   import type { FileOperation } from '../operations/types';
+  import { plural, trashName } from '../utils/format';
   import { isLocalPath, parseLocation } from '../filesystem/providers';
   import { preferences, scheduleSave } from '../state/preferences.svelte';
   import {
@@ -50,7 +51,7 @@
     action === 'delete'
       ? permanent
         ? 'Delete permanently'
-        : 'Move to Recycle Bin'
+        : `Move to ${trashName}`
       : labels[action],
   );
   let value = $state('');
@@ -125,6 +126,7 @@
 </script>
 
 <dialog
+  aria-labelledby="operation-title"
   bind:this={dialog}
   oncancel={(e) => {
     e.preventDefault();
@@ -137,12 +139,12 @@
       submit();
     }}
   >
-    <h2>{title}</h2>
+    <h2 id="operation-title">{title}</h2>
     {#if action === 'delete'}
       <p>
         {permanent ? 'Delete' : 'Move'}
-        {entries.length === 1 ? '1 item' : `${entries.length} items`}
-        {permanent ? 'permanently?' : 'to the Recycle Bin?'}
+        {plural(entries.length, 'item')}
+        {permanent ? 'permanently?' : `to the ${trashName}?`}
       </p>
       <!-- Name what is deleted: selected items may be scrolled out of view. -->
       <ul class="delete-names">
@@ -152,8 +154,11 @@
         {#if entries.length > 10}<li>…and {entries.length - 10} more</li>{/if}
       </ul>
       <p>
-        {#if counts}{counts.folders} folders, {counts.files} files / links (including
-          all children).
+        {#if counts}{plural(counts.folders, 'folder')}, {plural(
+            counts.files,
+            'file or link',
+            'files or links',
+          )} (including all children).
         {:else if countFailed}Unable to count all contents.
         {:else}Counting contents…{/if}
       </p>
@@ -163,10 +168,10 @@
         </p>
         {#if parseLocation(parent).kind === 'archive'}<p>
             The archive will be rewritten. Deleted entries do not go to the
-            Recycle Bin.
+            {trashName}.
           </p>{/if}
       {:else}
-        <p>You can restore them from the Recycle Bin.</p>
+        <p>You can restore them from the {trashName}.</p>
       {/if}
       {#if counts?.skipped}<p class="danger-text">
           Count is incomplete: {counts.skipped} entries could not be read.

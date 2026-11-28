@@ -259,7 +259,7 @@
   }
   fieldset {
     margin-top: 20px;
-    border: 1px solid #47566e;
+    border: 1px solid var(--border);
   }
   table {
     width: 100%;

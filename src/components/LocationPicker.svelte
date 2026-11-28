@@ -78,8 +78,8 @@
     aria-pressed={pinned}
     disabled={!path ||
       (!isLocalPath(path) && parseLocation(path).kind !== 'sftp')}
-    title={pinned ? 'Unpin current directory' : 'Pin current directory'}
-    aria-label={pinned ? 'Unpin current directory' : 'Pin current directory'}
+    title={pinned ? 'Unpin current folder' : 'Pin current folder'}
+    aria-label={pinned ? 'Unpin current folder' : 'Pin current folder'}
     onclick={togglePin}
     ><Icon icon={icons.star} width="18" height="18" /></button
   >

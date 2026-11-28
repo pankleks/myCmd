@@ -72,7 +72,7 @@
           <dd>{files.toLocaleString()}</dd>
         </div>
         <div>
-          <dt>Subdirectories</dt>
+          <dt>Subfolders</dt>
           <dd>{directories.toLocaleString()}</dd>
         </div>
         <div>

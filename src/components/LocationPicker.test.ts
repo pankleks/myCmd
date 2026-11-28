@@ -268,16 +268,18 @@ async function editFavorite(name = 'Projects') {
   target.querySelector<HTMLInputElement>('input')!.focus();
   flushSync();
   target
-    .querySelector<HTMLButtonElement>(`[aria-label="Rename favorite ${name}"]`)!
+    .querySelector<HTMLButtonElement>(
+      `[aria-label="Rename pinned folder ${name}"]`,
+    )!
     .click();
   await vi.waitFor(() => {
     flushSync();
     expect(document.activeElement).toBe(
-      target.querySelector('[aria-label="Favorite name"]'),
+      target.querySelector('[aria-label="Pinned folder name"]'),
     );
   });
   return target.querySelector<HTMLInputElement>(
-    '[aria-label="Favorite name"]',
+    '[aria-label="Pinned folder name"]',
   )!;
 }
 
@@ -322,14 +324,14 @@ it('cancels with Escape and resets a name by saving empty text', async () => {
   editor.value = '  ';
   editor.dispatchEvent(new Event('input', { bubbles: true }));
   target
-    .querySelector<HTMLButtonElement>('[aria-label="Save favorite name"]')!
+    .querySelector<HTMLButtonElement>('[aria-label="Save pinned folder name"]')!
     .click();
   flushSync();
   expect(
     preferences.pinnedDirectoryNames['/home/user/Projects'],
   ).toBeUndefined();
   expect(
-    target.querySelector('[aria-label="Rename favorite Projects"]'),
+    target.querySelector('[aria-label="Rename pinned folder Projects"]'),
   ).not.toBeNull();
   expect(navigate).not.toHaveBeenCalled();
 });

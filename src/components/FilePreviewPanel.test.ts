@@ -108,7 +108,7 @@ describe('panel preview debounce', () => {
     await advance(200);
     await vi.waitFor(() => {
       flushSync();
-      expect(target.textContent).toContain('Subdirectories');
+      expect(target.textContent).toContain('Subfolders');
     });
     expect(mocks.list).toHaveBeenCalledWith('/dir');
     expect(mocks.read).not.toHaveBeenCalled();

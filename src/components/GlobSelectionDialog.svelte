@@ -29,6 +29,7 @@
 </script>
 
 <dialog
+  aria-labelledby="glob-title"
   bind:this={dialog}
   oncancel={(event) => {
     event.preventDefault();
@@ -41,7 +42,7 @@
       onsubmit(pattern);
     }}
   >
-    <h2>{title}</h2>
+    <h2 id="glob-title">{title}</h2>
     <label
       >Glob pattern<input
         bind:value={pattern}

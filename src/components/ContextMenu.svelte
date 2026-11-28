@@ -99,7 +99,7 @@
     max-height: calc(100vh - 8px);
     overflow: auto;
     background: #232b36;
-    border: 1px solid #47566e;
+    border: 1px solid var(--border);
     box-shadow: 0 10px 24px #0008;
     padding: 4px;
   }
@@ -119,12 +119,12 @@
     outline-offset: -1px;
   }
   kbd {
-    color: #9ba9bd;
+    color: var(--text-muted);
     font: inherit;
     font-size: 12px;
   }
   [role='separator'] {
-    border-top: 1px solid #47566e;
+    border-top: 1px solid var(--border);
     margin: 4px 0;
   }
 </style>

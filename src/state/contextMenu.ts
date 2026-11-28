@@ -97,6 +97,7 @@ export function contextMenuItems(
         disabled: !single || !entry?.directoryTarget,
         run: actions.open,
       },
+      { label: 'View', shortcut: 'F3', disabled: !single, run: actions.view },
       {
         label: 'Download to opposite panel…',
         shortcut: 'F5',

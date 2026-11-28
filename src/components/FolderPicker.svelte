@@ -13,7 +13,7 @@
     roots,
     id,
     value = $bindable(''),
-    ariaLabel = 'Directory path',
+    ariaLabel = 'Folder path',
     buttonTitle = 'Choose folder',
     required = false,
     onchoose,
@@ -74,7 +74,7 @@
     await tick();
     if (renameRow.isConnected)
       renameRow
-        .querySelector<HTMLButtonElement>('[title="Rename favorite"]')
+        .querySelector<HTMLButtonElement>('[title="Rename pinned folder"]')
         ?.focus();
     else input.focus();
   }
@@ -231,15 +231,7 @@
           ><small>{root.path}</small>
         </button>
       {/each}
-      <div class="location-heading">Pinned directories</div>
-      {#if onconnections}<button
-          type="button"
-          class="location-option connections-button"
-          onclick={() => {
-            expanded = false;
-            onconnections?.();
-          }}>Connections…</button
-        >{/if}
+      <div class="location-heading">Pinned folders</div>
       {#each filteredPins as pin, index (pin)}
         <div class="pin-row">
           {#if editingPin === pin}
@@ -247,7 +239,7 @@
               <input
                 bind:this={nameInput}
                 bind:value={pinName}
-                aria-label="Favorite name"
+                aria-label="Pinned folder name"
                 onkeydown={(event) => {
                   event.stopPropagation();
                   if (event.key === 'Enter' || event.key === 'Escape') {
@@ -258,8 +250,8 @@
               />
               <button
                 type="button"
-                aria-label="Save favorite name"
-                title="Save favorite name"
+                aria-label="Save pinned folder name"
+                title="Save name"
                 onclick={() => void finishRename(true)}
                 ><Icon icon={icons.check} width="16" height="16" /></button
               >
@@ -296,8 +288,8 @@
             </button>
             <button
               type="button"
-              aria-label={`Rename favorite ${favoriteName(pin)}`}
-              title="Rename favorite"
+              aria-label={`Rename pinned folder ${favoriteName(pin)}`}
+              title="Rename pinned folder"
               onclick={(event) => void startRename(pin, event.currentTarget)}
               ><Icon icon={icons.pencil} width="16" height="16" /></button
             >
@@ -309,8 +301,17 @@
           No matching locations. Enter uses the typed path.
         </p>
       {/if}
+      {#if onconnections}<div class="location-heading">Remote</div>
+        <button
+          type="button"
+          class="location-option"
+          onclick={() => {
+            expanded = false;
+            onconnections?.();
+          }}>Connections…</button
+        >{/if}
       {#if !query && path}
-        <div class="location-heading">Current directory</div>
+        <div class="location-heading">Current folder</div>
         <button
           type="button"
           class="location-option"
@@ -369,7 +370,7 @@
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #9ba9bd;
+    color: var(--text-muted);
     white-space: nowrap;
   }
 </style>
