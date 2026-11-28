@@ -105,7 +105,8 @@ export async function load(
 ) {
   void cancelSearch(panel.path).catch(() => {});
   const revision = ++panel.revision;
-  const oldCursor = rows(panel)[panel.cursor]?.path;
+  const oldIndex = panel.cursor;
+  const oldCursor = rows(panel)[oldIndex]?.path;
   panel.loading = true;
   panel.loadingPath = path;
   panel.error = undefined;
@@ -155,7 +156,14 @@ export async function load(
     const index = rows(panel).findIndex(
       (e) => e.path === (focusPath ?? (same ? oldCursor : undefined)),
     );
-    panel.cursor = index >= 0 ? index : 0;
+    // When the cursor item is gone (deleted, moved), stay at the same row.
+    const visible = rows(panel).length;
+    panel.cursor =
+      index >= 0
+        ? index
+        : same
+          ? Math.min(oldIndex, Math.max(0, visible - 1))
+          : 0;
   } catch (error) {
     if (revision === panel.revision) panel.error = errorMessage(error);
     return error;

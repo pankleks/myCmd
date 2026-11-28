@@ -92,18 +92,27 @@ describe('normalizeConfig', () => {
       username: 'user',
       directory: '/data',
       keyPath: '/home/user/.ssh/id_ed25519',
+      auth: 'key' as const,
     };
     const config = normalizeConfig({
       sftpProfiles: [
         { ...profile, password: 'secret', passphrase: 'private' },
         { host: 'invalid' },
+        { ...profile, id: '5f2b2c4e-1d0a-4a43-9a43-2a1c3e6c7d11', auth: 'x' },
       ],
     });
-    expect(config.sftpProfiles).toEqual([profile]);
+    expect(config.sftpProfiles).toEqual([
+      profile,
+      {
+        ...profile,
+        id: '5f2b2c4e-1d0a-4a43-9a43-2a1c3e6c7d11',
+        auth: undefined,
+      },
+    ]);
     const payload = buildSavePayload(config);
     expect(JSON.stringify(payload)).not.toContain('secret');
     expect(JSON.stringify(payload)).not.toContain('private');
-    expect(normalizeConfig(payload).sftpProfiles).toEqual([profile]);
+    expect(normalizeConfig(payload).sftpProfiles?.[0]).toEqual(profile);
   });
   it('validates compression levels and persists supported choices', () => {
     for (const compressionLevel of [1, 6, 9]) {

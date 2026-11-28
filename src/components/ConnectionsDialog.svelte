@@ -51,7 +51,7 @@
     username = profile?.username ?? '';
     directory = profile?.directory ?? '';
     keyPath = profile?.keyPath ?? '';
-    auth = keyPath ? 'key' : 'agent';
+    auth = profile?.auth ?? (keyPath ? 'key' : 'agent');
     password = '';
     passphrase = '';
     fingerprint = '';
@@ -80,6 +80,7 @@
       username: username.trim(),
       directory: directory.trim(),
       keyPath: keyPath.trim() || null,
+      auth,
     };
     try {
       const result = await api.connectSftp({

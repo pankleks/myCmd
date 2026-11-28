@@ -225,6 +225,28 @@ describe('search result navigation', () => {
   });
 });
 
+describe('reload cursor', () => {
+  it('stays on the same row when the cursor item disappears', async () => {
+    const p = panel();
+    p.entries = ['a', 'b', 'c', 'd'].map((name) => entry(name));
+    p.cursor = 3; // '..' is row 0, so this is 'c'
+    vi.mocked(api.list).mockResolvedValue({
+      path: '/home',
+      parent: '/',
+      entries: ['a', 'b', 'd'].map((name) => entry(name)),
+    });
+    await load(p);
+    expect(rows(p)[p.cursor].name).toBe('d');
+    vi.mocked(api.list).mockResolvedValue({
+      path: '/home',
+      parent: '/',
+      entries: [entry('a')],
+    });
+    await load(p);
+    expect(rows(p)[p.cursor].name).toBe('a');
+  });
+});
+
 describe('sorting and selection', () => {
   it('caches reactive rows across cursor and selection changes', () => {
     inReactiveRoot(() => {

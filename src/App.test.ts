@@ -393,3 +393,40 @@ it('keeps Shift+Tab inside the search dialog instead of swapping panels', () => 
   expect(commander.left.path).toBe(leftPath);
   expect(shiftTab.defaultPrevented).toBe(false);
 });
+
+function keydown(element: Element, key: string, init: KeyboardEventInit = {}) {
+  const event = new KeyboardEvent('keydown', {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  element.dispatchEvent(event);
+  flushSync();
+  return event;
+}
+
+it('keeps Shift+Tab in the path bar for moving focus', () => {
+  const leftPath = commander.left.path;
+  const event = keydown(
+    target.querySelector('.panel.active .pathbar input')!,
+    'Tab',
+    { shiftKey: true },
+  );
+  expect(event.defaultPrevented).toBe(false);
+  expect(commander.left.path).toBe(leftPath);
+});
+
+it('runs function-key actions only without Ctrl, Alt or Meta', () => {
+  const list = target.querySelector(`#list-${commander.activePanel}`)!;
+  commander.left.cursor = 1;
+  flushSync();
+  for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }])
+    keydown(list, 'F5', init);
+  keydown(list, 'F8', { ctrlKey: true });
+  expect(target.querySelector('dialog form')).toBeNull();
+  keydown(list, 'F8', { shiftKey: true });
+  expect(target.querySelector('dialog h2')?.textContent).toBe(
+    'Delete permanently',
+  );
+});

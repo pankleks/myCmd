@@ -17,10 +17,12 @@ export interface SftpProfile {
   username: string;
   directory: string;
   keyPath: string | null;
+  auth?: SftpAuth;
 }
+export type SftpAuth = 'agent' | 'key' | 'password';
 export interface SftpConnectRequest {
   profile: SftpProfile;
-  auth: 'agent' | 'key' | 'password';
+  auth: SftpAuth;
   password?: string;
   passphrase?: string;
   trustFingerprint?: string;

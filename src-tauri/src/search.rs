@@ -34,7 +34,6 @@ fn contains_text(path: &Path, needle: &str, check: &impl Fn() -> Result<()>) -> 
     let mut first = true;
     let mut utf16 = None;
     let mut tail = String::new();
-    let mut found = false;
     loop {
         check()?;
         let read = file
@@ -79,18 +78,20 @@ fn contains_text(path: &Path, needle: &str, check: &impl Fn() -> Result<()>) -> 
         if filesystem::has_binary_controls(&text) {
             return Ok(false);
         }
-        if !found {
-            tail.push_str(&text.to_lowercase());
-            found = tail.contains(needle);
-            let mut start = tail.len().saturating_sub(needle.len());
-            while !tail.is_char_boundary(start) {
-                start -= 1;
-            }
-            tail.drain(..start);
+        tail.push_str(&text.to_lowercase());
+        // Stop at the first match, like grep: only the bytes read so far were
+        // checked for binary content, so a later NUL no longer hides the match.
+        if tail.contains(needle) {
+            return Ok(true);
         }
+        let mut start = tail.len().saturating_sub(needle.len());
+        while !tail.is_char_boundary(start) {
+            start -= 1;
+        }
+        tail.drain(..start);
         buffer.drain(..consumed);
         if eof {
-            return Ok(found);
+            return Ok(false);
         }
     }
 }
@@ -283,6 +284,12 @@ mod tests {
         utf8.extend_from_slice("Ą.CASE".as_bytes());
         std::fs::write(&path, utf8).unwrap();
         assert!(contains_text(&path, "ą.case", &|| Ok(())).unwrap());
+        // The match ends the read: content after it (here a NUL) is never inspected.
+        let mut early = b"needle".to_vec();
+        early.resize(256 * 1024, b'x');
+        early.push(0);
+        std::fs::write(&path, early).unwrap();
+        assert!(contains_text(&path, "needle", &|| Ok(())).unwrap());
         for little_endian in [true, false] {
             let mut bytes = if little_endian {
                 vec![0xff, 0xfe]

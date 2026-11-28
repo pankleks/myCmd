@@ -29,6 +29,9 @@ pub struct Profile {
     pub username: String,
     pub directory: String,
     pub key_path: Option<String>,
+    /// Remembered so a password profile does not reopen as "SSH agent".
+    #[serde(default)]
+    pub auth: Option<Auth>,
 }
 
 impl Profile {
@@ -68,7 +71,7 @@ impl Profile {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Auth {
     Agent,
@@ -620,7 +623,16 @@ pub(crate) mod tests {
             username: "test".into(),
             directory: String::new(),
             key_path: None,
+            auth: Some(Auth::Password),
         }
+    }
+
+    #[test]
+    fn profiles_saved_before_auth_was_remembered_still_load() {
+        let json = r#"{"id":"b02db8da-ccdc-41bb-8db0-5c7b0e798d7a","name":"W","host":"h","port":22,"username":"u","directory":"","keyPath":null}"#;
+        assert_eq!(serde_json::from_str::<Profile>(json).unwrap().auth, None);
+        let saved = serde_json::to_string(&profile()).unwrap();
+        assert!(saved.contains(r#""auth":"password""#));
     }
 
     #[test]

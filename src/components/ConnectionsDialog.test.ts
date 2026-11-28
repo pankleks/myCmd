@@ -84,7 +84,7 @@ it('loads saved details and sends agent authentication without secrets', async (
   submit();
   await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
   expect(api.connectSftp).toHaveBeenCalledWith({
-    profile,
+    profile: { ...profile, auth: 'agent' },
     auth: 'agent',
     password: undefined,
     passphrase: undefined,
@@ -121,10 +121,28 @@ it('does not save passwords or passphrases in remembered profiles', async () => 
   expect(api.connectSftp).toHaveBeenCalledWith(
     expect.objectContaining({ password: 'secret', auth: 'password' }),
   );
-  expect(preferences.sftpProfiles).toEqual([{ ...profile, name: 'Changed' }]);
+  expect(preferences.sftpProfiles).toEqual([
+    { ...profile, name: 'Changed', auth: 'password' },
+  ]);
   expect(
     target.querySelector<HTMLInputElement>('input[type="password"]')?.value,
   ).toBe('');
+});
+
+it('reopens a saved password profile with password authentication', async () => {
+  await unmount(component);
+  preferences.sftpProfiles = [{ ...profile, auth: 'password' }];
+  component = mount(ConnectionsDialog, {
+    target,
+    props: {
+      initialId: profile.id,
+      onconnected: connected,
+      ondisconnected: disconnected,
+      onclose: close,
+    },
+  });
+  flushSync();
+  expect(labelInput('Authentication').value).toBe('password');
 });
 
 it('reports changed keys or auth failures in place without remembering edited details', async () => {

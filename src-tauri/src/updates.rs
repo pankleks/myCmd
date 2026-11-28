@@ -278,8 +278,11 @@ fn update_instructions(release: &Release, install: &Install) -> Vec<Instruction>
                 "Quit myCmd first, then run in Terminal. The package is unsigned, so the command also clears the quarantine flag and signs the app locally, as in the README.",
                 &move |url, _| {
                     let app = sh(&bundle);
+                    let next = sh(&format!("{bundle}.new"));
+                    // A private temp folder, and the old app is removed only after
+                    // the new copy is complete: a failed copy keeps a working app.
                     format!(
-                        "curl -fL -o /tmp/myCmd-update.dmg {} && hdiutil attach -nobrowse -quiet -mountpoint /tmp/myCmd-update /tmp/myCmd-update.dmg && rm -rf {app} && ditto /tmp/myCmd-update/myCmd.app {app} && hdiutil detach -quiet /tmp/myCmd-update && rm /tmp/myCmd-update.dmg && xattr -cr {app} && codesign --force --deep --sign - {app}",
+                        "d=$(mktemp -d) && curl -fL -o \"$d/myCmd.dmg\" {} && hdiutil attach -nobrowse -quiet -mountpoint \"$d/mnt\" \"$d/myCmd.dmg\" && rm -rf {next} && ditto \"$d/mnt/myCmd.app\" {next} && hdiutil detach -quiet \"$d/mnt\" && rm -rf {app} && mv {next} {app} && rm -rf \"$d\" && xattr -cr {app} && codesign --force --deep --sign - {app}",
                         sh(url),
                     )
                 },
@@ -692,9 +695,11 @@ mod tests {
         assert!(mac[0]
             .1
             .contains(&url("macos-arm64--myCmd_0.3.0_aarch64.dmg")));
-        assert!(mac[0]
-            .1
-            .contains("rm -rf '/Users/o'\\''neil/Applications/myCmd.app' && ditto"));
+        // The old app is removed only after the new copy succeeded.
+        assert!(mac[0].1.contains(
+            "ditto \"$d/mnt/myCmd.app\" '/Users/o'\\''neil/Applications/myCmd.app.new' && hdiutil detach -quiet \"$d/mnt\" && rm -rf '/Users/o'\\''neil/Applications/myCmd.app' && mv '/Users/o'\\''neil/Applications/myCmd.app.new' '/Users/o'\\''neil/Applications/myCmd.app'"
+        ));
+        assert!(!mac[0].1.contains("/tmp/"));
         assert!(mac[0].1.ends_with(
             "codesign --force --deep --sign - '/Users/o'\\''neil/Applications/myCmd.app'"
         ));

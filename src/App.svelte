@@ -820,6 +820,14 @@
   function previewShortcut(event: KeyboardEvent) {
     if (contextMenu || modalOpen || event.isComposing) return;
     if (event.key === 'Tab' && modifiers(event) === 'shift') {
+      // In the path bar and other fields Shift+Tab moves focus back as usual;
+      // only the panels and the command line swap panels.
+      const target = event.target as HTMLElement;
+      if (
+        target.closest('input, select, textarea') &&
+        target !== commandInputElement
+      )
+        return;
       event.preventDefault();
       event.stopPropagation();
       if (!event.repeat && ready && !busy && !commandRunning) {
@@ -974,7 +982,10 @@
     const action =
       actions.find(([key]) => key === event.key)?.[1] ??
       (event.key === 'Delete' ? 'delete' : undefined);
-    if (action) {
+    // Only the plain key, or Shift for permanent delete: Ctrl+F8 or Shift+F5
+    // must not quietly run the plain action.
+    const held = modifiers(event);
+    if (action && (held === '' || (held === 'shift' && action === 'delete'))) {
       event.preventDefault();
       quickFindClose();
       request(
@@ -1076,12 +1087,19 @@
       commandInputElement?.focus();
       return;
     }
+    // A focused inline preview (Markdown, PDF) scrolls with these keys.
+    if (
+      target.closest('.preview-panel') &&
+      /^(Arrow|Page)|^(Home|End)$/.test(event.key)
+    )
+      return;
     const list = rows(active);
     const page = Math.max(
       1,
       Math.floor(
         (document.getElementById(`list-${commander.activePanel}`)
-          ?.clientHeight ?? 320) / 26,
+          ?.clientHeight ?? 320) /
+          (26 + preferences.fileRowSpacing), // same row height as FilePanel
       ),
     );
     const movement: Record<string, number> = {

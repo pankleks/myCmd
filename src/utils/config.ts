@@ -171,7 +171,7 @@ function normalizeSftpProfiles(value: unknown): SftpProfile[] {
   const profiles: SftpProfile[] = [];
   for (const item of value.slice(0, 100)) {
     if (!item || typeof item !== 'object') continue;
-    const { id, name, host, port, username, directory, keyPath } = item;
+    const { id, name, host, port, username, directory, keyPath, auth } = item;
     if (
       typeof id !== 'string' ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -199,6 +199,7 @@ function normalizeSftpProfiles(value: unknown): SftpProfile[] {
       username: username.trim(),
       directory: directory ?? '',
       keyPath: keyPath ?? null,
+      ...(['agent', 'key', 'password'].includes(auth) ? { auth } : {}),
     });
   }
   return profiles;
