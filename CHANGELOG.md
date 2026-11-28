@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.21] - 2026-11-28
+
+### Faster with large folders
+
+- Sorting, Ctrl+H and refreshes in folders with 100,000 files take a fraction of a second instead of seconds.
+- The F3 thumbnail grid shows only the visible rows, so folders with tens of thousands of images open at once; HEIC, AVIF and SVG thumbnails are cached.
+- The F3 folder summary counts local folders in the backend instead of listing every subfolder.
+- Copying many files into a watched folder no longer floods the app with change events.
+
+### Fixes
+
+- Deleting from an archive works when the archive contains unsafe member names outside the selection.
+- Executable scripts with a `#!` line run with their own interpreter (for example bash) instead of `sh`.
+- SFTP: folders with thousands of symbolic links list quickly (at most 200 links are resolved, with a warning); previews and thumbnails report "busy" during a transfer instead of waiting; an interrupted upload names the temporary file it may leave behind.
+
+### Interface
+
+- Better screen reader and keyboard support: PDF focus ring, sortable column headers, calmer progress announcements, focus back on "View…" after the update dialog.
+- One text size and spacing scale and consistent dialog widths; error titles read "… failed".
+
 ## [0.2.20] - 2026-11-28
 
 ### Fixes
