@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.2.20] - 2026-11-28
+
+### Fixes
+
+- A broken `config.json` no longer wipes all settings: it is kept as `config.json.corrupt`, the app says so at startup, and settings are written safely to disk.
+- Windows: the command line and Ctrl+T run in the panel folder instead of `C:\Windows`; network (UNC) folders are refused with a clear message.
+- Copying to USB sticks (FAT/exFAT) and network drives no longer fails when the target cannot keep file attributes or permissions.
+- Rename and move work on NFS, sshfs and SMB mounts.
+- Large searches no longer freeze the window; content search stops reading a file at the first match.
+- Extracting archives no longer fills `/tmp` and writes the data twice.
+- SFTP: servers known in `~/.ssh/known_hosts` by another key type are no longer blocked as "key changed"; reconnecting cannot freeze other SFTP actions; uploaded folders keep their permissions instead of becoming private; password connections reopen as password.
+- Moving to the Trash, renaming and cross-drive moves no longer walk whole folder trees first; the progress bar is correct.
+- A stalled network drive no longer freezes the window.
+- macOS update command: the old app is removed only after the new copy succeeded.
+
+### Interface
+
+- The delete dialog names the items it deletes and says Recycle Bin on Windows, Trash elsewhere.
+- Dialog buttons, fields and lists are clearly visible; one focus ring and one button style everywhere; Settings matches the other dialogs.
+- F-keys, arrows, Tab and Esc keep working while typing a command.
+- The conflict dialog: Enter renames, Overwrite is marked dangerous, and "apply to all" says what it does.
+- A failed rename or new folder reopens its dialog with the typed name.
+- Rename selects the name without its extension.
+- F3 on a folder has a Close button; F3 works from the SFTP context menu.
+- Empty folders and searches say so; search progress stays visible in the other panel.
+- Hidden files are dimmed; pinned folders can be unpinned from the dropdown; saved SFTP connections can be forgotten.
+- Function keys with Ctrl/Alt no longer run the plain action; PageUp/PageDown respect row spacing; the cursor stays in place after a delete.
+- Markdown previews cannot add links or imitate app dialogs.
+- Consistent wording ("folder", "pinned folder") and an accurate shortcuts list.
+
 ## [0.2.19] - 2026-11-27
 
 - F3 View on an image: Up/Down (also Left/Right, Home/End) shows the previous or next image in the folder, and the panel cursor follows. Press F3 again for a thumbnail grid of all images in the folder; Enter opens the selected one.
