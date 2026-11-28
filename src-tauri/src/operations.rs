@@ -234,6 +234,27 @@ impl Worker {
             self.emit();
         }
     }
+    /// Copies 1 MiB chunks from `read` to `write` (which also gets the running
+    /// total), checking for cancellation and reporting progress for `item`.
+    fn pump(
+        &mut self,
+        item: &Path,
+        mut read: impl FnMut(&mut [u8]) -> Result<usize>,
+        mut write: impl FnMut(&[u8], u64) -> Result<()>,
+    ) -> Result<u64> {
+        let mut buffer = vec![0; 1024 * 1024];
+        let mut total = 0u64;
+        loop {
+            self.check()?;
+            let n = read(&mut buffer)?;
+            if n == 0 {
+                return Ok(total);
+            }
+            total = total.saturating_add(n as u64);
+            write(&buffer[..n], total)?;
+            self.tick(item, n as u64, 0)?;
+        }
+    }
     fn measure(&self, p: &Path) -> Result<(u64, u64)> {
         let mut total = (0u64, 0u64);
         let mut directories: Vec<(PathBuf, fs::ReadDir)> = Vec::new();
@@ -412,19 +433,17 @@ impl Worker {
                 }
                 "cancel" => return Err(FsError::new("cancelled", "Operation cancelled")),
                 "rename" => {
+                    // `resolve` already validated a chosen name.
                     if let Some(name) = answer.name {
-                        filesystem::validate_name(&name)?;
                         target = destination.with_file_name(name);
                     } else {
                         let name = destination.file_name().unwrap().to_string_lossy();
-                        let mut n = 1;
-                        loop {
+                        for n in 1.. {
                             target =
                                 destination.with_file_name(numbered_name(&name, n, meta.is_dir()));
                             if fs::symlink_metadata(&target).is_err() {
                                 break;
                             }
-                            n += 1;
                         }
                     }
                 }
@@ -512,19 +531,11 @@ impl Worker {
             }
             let mut temp = tempfile::NamedTempFile::new_in(target.parent().unwrap())
                 .map_err(|e| FsError::io(e, &target))?;
-            let mut buffer = vec![0; 1024 * 1024];
-            loop {
-                self.check()?;
-                let n = input
-                    .read(&mut buffer)
-                    .map_err(|e| FsError::io(e, source))?;
-                if n == 0 {
-                    break;
-                }
-                temp.write_all(&buffer[..n])
-                    .map_err(|e| FsError::io(e, &target))?;
-                self.tick(source, n as u64, 0)?;
-            }
+            self.pump(
+                source,
+                |buffer| input.read(buffer).map_err(|e| FsError::io(e, source)),
+                |chunk, _| temp.write_all(chunk).map_err(|e| FsError::io(e, &target)),
+            )?;
             preserve_file_metadata(&input, temp.as_file(), &snapshot.metadata);
             temp.as_file()
                 .sync_all()
@@ -685,7 +696,6 @@ impl Worker {
             Operation::Delete { sources, permanent } => {
                 let sources = normalize_sources(sources)?;
                 for p in &sources {
-                    protect(p)?;
                     // The trash takes each item whole: count items, do not walk them.
                     let n = if permanent { self.measure(p)? } else { (0, 1) };
                     self.progress.total_bytes += n.0;
@@ -792,10 +802,8 @@ impl Worker {
                     "Archive cannot replace a source item",
                 ));
             }
-            match fs::symlink_metadata(&target) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
-                Err(e) => return Err(FsError::io(e, &target)),
-                Ok(_) => {}
+            if !exists(&target)? {
+                break;
             }
             let answer = self.ask(temp.path(), &target)?;
             match answer.action.as_str() {
@@ -805,17 +813,13 @@ impl Worker {
                     if let Some(name) = answer.name {
                         target = destination.join(zip_name(&name)?);
                     } else {
-                        let mut n = 1;
-                        loop {
+                        for n in 1.. {
                             self.check()?;
                             target =
                                 destination.join(format!("{} ({n}).zip", &name[..name.len() - 4]));
-                            match fs::symlink_metadata(&target) {
-                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
-                                Err(e) => return Err(FsError::io(e, &target)),
-                                Ok(_) => {}
+                            if !exists(&target)? {
+                                break;
                             }
-                            n += 1;
                         }
                     }
                 }
@@ -852,7 +856,6 @@ impl Worker {
     ) -> Result<()> {
         let error = |e: zip::result::ZipError| FsError::new("archive_error", e.to_string());
         let mut writer = zip::ZipWriter::new(output);
-        let mut buffer = vec![0; 1024 * 1024];
         for source in sources {
             let mut directories: Vec<(PathBuf, String, fs::ReadDir)> = Vec::new();
             let mut next = Some((source.clone(), String::new()));
@@ -883,18 +886,15 @@ impl Worker {
                             return Err(source_changed(&path));
                         }
                         writer.start_file(name, options).map_err(error)?;
-                        loop {
-                            self.check()?;
-                            let size =
-                                input.read(&mut buffer).map_err(|e| FsError::io(e, &path))?;
-                            if size == 0 {
-                                break;
-                            }
-                            writer
-                                .write_all(&buffer[..size])
-                                .map_err(|e| FsError::new("archive_error", e.to_string()))?;
-                            self.tick(&path, size as u64, 0)?;
-                        }
+                        self.pump(
+                            &path,
+                            |buffer| input.read(buffer).map_err(|e| FsError::io(e, &path)),
+                            |chunk, _| {
+                                writer
+                                    .write_all(chunk)
+                                    .map_err(|e| FsError::new("archive_error", e.to_string()))
+                            },
+                        )?;
                         snapshot.verify(&input, &path)?;
                     } else {
                         return Err(FsError::new(
@@ -972,7 +972,6 @@ impl Worker {
         let sources = normalize_sources(sources)?;
         let mut measured = Vec::with_capacity(sources.len());
         for p in &sources {
-            protect(p)?;
             let m = fs::symlink_metadata(p).map_err(|e| FsError::io(e, p))?;
             if m.is_dir() && destination.starts_with(filesystem::absolute(p)?) {
                 return Err(FsError::new(
@@ -1209,6 +1208,14 @@ fn transfer_destination(sources: &[PathBuf], destination: PathBuf) -> Result<Pat
     Ok(destination)
 }
 
+/// Whether `p` exists, without following a final symbolic link.
+fn exists(p: &Path) -> Result<bool> {
+    match fs::symlink_metadata(p) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(FsError::io(e, p)),
+    }
+}
 fn protect(p: &Path) -> Result<()> {
     if p.file_name().is_none() || p.parent().is_none() {
         return Err(FsError::new(

@@ -1,5 +1,5 @@
 use crate::{
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem,
 };
 use std::path::{Path, PathBuf};
@@ -33,9 +33,7 @@ fn local_item(path: &Path) -> Result<PathBuf> {
 
 #[tauri::command]
 pub async fn show_system_actions(window: tauri::WebviewWindow, path: String) -> Result<()> {
-    let path = tauri::async_runtime::spawn_blocking(move || local_item(Path::new(&path)))
-        .await
-        .map_err(|e| FsError::new("system_actions_error", e.to_string()))??;
+    let path = blocking("system_actions_error", move || local_item(Path::new(&path))).await?;
     #[cfg(target_os = "linux")]
     {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -49,17 +47,16 @@ pub async fn show_system_actions(window: tauri::WebviewWindow, path: String) -> 
                 let _ = tx.send(result);
             })
             .map_err(|e| FsError::new("system_actions_error", e.to_string()))?;
-        tauri::async_runtime::spawn_blocking(move || {
+        blocking("system_actions_error", move || {
             rx.recv()
                 .map_err(|e| FsError::new("system_actions_error", e.to_string()))?
         })
         .await
-        .map_err(|e| FsError::new("system_actions_error", e.to_string()))?
     }
     #[cfg(windows)]
     {
         let _ = window;
-        tauri::async_runtime::spawn_blocking(move || {
+        blocking("system_actions_error", move || {
             let executable = std::env::current_exe()
                 .map_err(|e| FsError::new("system_actions_error", e.to_string()))?;
             let output = std::process::Command::new(executable)
@@ -70,12 +67,11 @@ pub async fn show_system_actions(window: tauri::WebviewWindow, path: String) -> 
             check_output(output)
         })
         .await
-        .map_err(|e| FsError::new("system_actions_error", e.to_string()))?
     }
     #[cfg(target_os = "macos")]
     {
         let _ = window;
-        tauri::async_runtime::spawn_blocking(move || {
+        blocking("system_actions_error", move || {
             let output = std::process::Command::new("/usr/bin/osascript")
                 .arg("-e")
                 .arg(include_str!("system_actions/macos.applescript"))
@@ -85,7 +81,6 @@ pub async fn show_system_actions(window: tauri::WebviewWindow, path: String) -> 
             check_output(output)
         })
         .await
-        .map_err(|e| FsError::new("system_actions_error", e.to_string()))?
     }
 }
 

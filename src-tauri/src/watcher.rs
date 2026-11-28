@@ -4,10 +4,30 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        atomic::{AtomicU64, Ordering},
-        Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex,
     },
+    time::Duration,
 };
+
+// Below the frontend's 180 ms debounce, so a continuous burst still refreshes
+// on its 1 s max delay (src/utils/directoryRefresh.ts) instead of every tick.
+const COALESCE: Duration = Duration::from_millis(100);
+
+/// Runs `emit` once, `COALESCE` after the first of a burst of calls; a call
+/// arriving after the flag is cleared schedules a new one, so the last change
+/// is always followed by an emit.
+fn coalesce(pending: &Arc<AtomicBool>, emit: impl FnOnce() + Send + 'static) {
+    if pending.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let pending = pending.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(COALESCE);
+        pending.store(false, Ordering::SeqCst);
+        emit();
+    });
+}
 use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Default)]
@@ -57,10 +77,14 @@ fn watch(app: &AppHandle, paths: Vec<String>) -> std::result::Result<(), String>
 
         let event_path = path.to_string_lossy().into_owned();
         let event_app = app.clone();
+        let pending = Arc::new(AtomicBool::new(false));
         let watcher = RecommendedWatcher::new(
             move |event: notify::Result<notify::Event>| match event {
                 Ok(event) if !matches!(event.kind, EventKind::Access(_)) => {
-                    let _ = event_app.emit("filesystem-changed", &event_path);
+                    let (app, path) = (event_app.clone(), event_path.clone());
+                    coalesce(&pending, move || {
+                        let _ = app.emit("filesystem-changed", &path);
+                    });
                 }
                 Err(error) => eprintln!("Filesystem watcher error: {error}"),
                 _ => {}
@@ -85,4 +109,30 @@ fn watch(app: &AppHandle, paths: Vec<String>) -> std::result::Result<(), String>
         }
     }
     first_error.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coalesces_a_burst_into_one_trailing_emit() {
+        let pending = Arc::new(AtomicBool::new(false));
+        let emits = Arc::new(AtomicU64::new(0));
+        let count = || {
+            let emits = emits.clone();
+            move || {
+                emits.fetch_add(1, Ordering::SeqCst);
+            }
+        };
+        for _ in 0..1000 {
+            coalesce(&pending, count());
+        }
+        std::thread::sleep(COALESCE * 3);
+        assert_eq!(emits.load(Ordering::SeqCst), 1);
+        // A later change gets its own emit.
+        coalesce(&pending, count());
+        std::thread::sleep(COALESCE * 3);
+        assert_eq!(emits.load(Ordering::SeqCst), 2);
+    }
 }

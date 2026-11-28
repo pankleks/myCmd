@@ -1,5 +1,5 @@
 use crate::{
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem,
 };
 use std::{
@@ -39,12 +39,6 @@ fn alternative_name() -> Option<String> {
         .map(str::to_owned)
 }
 
-#[cfg(target_os = "linux")]
-fn configure_x_terminal_emulator(command: &mut Command, directory: &Path) {
-    if let Some(name) = alternative_name() {
-        configure_alternative(command, directory, &name);
-    }
-}
 fn launchers(directory: &Path) -> Vec<Command> {
     #[cfg(target_os = "linux")]
     let commands = {
@@ -54,7 +48,9 @@ fn launchers(directory: &Path) -> Vec<Command> {
         xdg.arg(argument);
         // Debian/Ubuntu's alternatives system selects the user's terminal.
         let mut alternative = Command::new("x-terminal-emulator");
-        configure_x_terminal_emulator(&mut alternative, directory);
+        if let Some(name) = alternative_name() {
+            configure_alternative(&mut alternative, directory, &name);
+        }
         vec![xdg, alternative]
     };
     #[cfg(target_os = "macos")]
@@ -143,63 +139,38 @@ fn script_interpreter(script: &Path) -> &'static str {
     }
 }
 
+/// The argv that runs the script: an executable file with a shebang runs
+/// itself so the kernel picks its interpreter (bash `[[` fails under dash).
 #[cfg(target_os = "linux")]
-fn script_launchers(script: &Path, directory: &Path, interpreter: &str) -> Vec<Command> {
-    let mut xdg = Command::new("xdg-terminal-exec");
-    let mut dir = std::ffi::OsString::from("--dir=");
-    dir.push(directory);
-    xdg.arg(dir).arg("--").arg(interpreter).arg(script);
-    let mut alternative = Command::new("x-terminal-emulator");
-    match alternative_name().as_deref() {
-        Some("gnome-terminal") => {
-            alternative
-                .arg("--working-directory")
-                .arg(directory)
-                .arg("--")
-                .arg(interpreter)
-                .arg(script);
-        }
-        Some("konsole") => {
-            alternative
-                .arg("--workdir")
-                .arg(directory)
-                .arg("-e")
-                .arg(interpreter)
-                .arg(script);
-        }
-        Some("kitty") => {
-            alternative
-                .arg("--directory")
-                .arg(directory)
-                .arg(interpreter)
-                .arg(script);
-        }
-        Some("wezterm") => {
-            alternative
-                .args(["start", "--cwd"])
-                .arg(directory)
-                .arg("--")
-                .arg(interpreter)
-                .arg(script);
-        }
-        // ponytail: cosmic-term/xterm-style `-e` is best effort; the flag was
-        // observed to parse on cosmic-term but cannot be verified headless.
-        _ => {
-            configure_x_terminal_emulator(&mut alternative, directory);
-            alternative.arg("-e").arg(interpreter).arg(script);
-        }
+fn script_argv(script: &Path) -> Vec<&std::ffi::OsStr> {
+    use std::{io::Read, os::unix::fs::PermissionsExt};
+    let executable = std::fs::metadata(script).is_ok_and(|m| m.permissions().mode() & 0o111 != 0);
+    let mut magic = [0u8; 2];
+    let shebang = executable
+        && std::fs::File::open(script).is_ok_and(|mut f| f.read_exact(&mut magic).is_ok())
+        && magic == *b"#!";
+    if shebang {
+        vec![script.as_os_str()]
+    } else {
+        vec![script_interpreter(script).as_ref(), script.as_os_str()]
     }
-    vec![xdg, alternative]
-        .into_iter()
-        .map(|mut command| {
-            command
-                .current_dir(directory)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            command
-        })
-        .collect()
+}
+
+/// `launchers` with the script's argv appended after each terminal's
+/// separator for "run this command".
+#[cfg(target_os = "linux")]
+fn script_launchers(argv: &[&std::ffi::OsStr], directory: &Path) -> Vec<Command> {
+    let mut commands = launchers(directory);
+    commands[0].arg("--").args(argv);
+    // ponytail: cosmic-term/xterm-style `-e` is best effort; the flag was
+    // observed to parse on cosmic-term but cannot be verified headless.
+    let separator: &[&str] = match alternative_name().as_deref() {
+        Some("gnome-terminal" | "wezterm") => &["--"],
+        Some("kitty") => &[],
+        _ => &["-e"],
+    };
+    commands[1].args(separator).args(argv);
+    commands
 }
 
 /// Open a terminal in the script's directory and run the script inside it.
@@ -216,8 +187,7 @@ pub fn run_script(path: &Path) -> Result<()> {
     let directory = script.parent().unwrap().to_owned();
     // ponytail: keep trying other launchers on any spawn error; terminal CLI
     // flags vary and a flag mismatch only shows up after a successful spawn.
-    let interpreter = script_interpreter(&script);
-    for mut command in script_launchers(&script, &directory, interpreter) {
+    for mut command in script_launchers(&script_argv(&script), &directory) {
         if spawn_detached(&mut command).is_ok() {
             return Ok(());
         }
@@ -227,9 +197,7 @@ pub fn run_script(path: &Path) -> Result<()> {
 
 #[tauri::command]
 pub async fn open_terminal(path: String) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || open(Path::new(&path)))
-        .await
-        .map_err(|error| FsError::new("io_error", error.to_string()))?
+    blocking("io_error", move || open(Path::new(&path))).await
 }
 
 #[cfg(test)]
@@ -300,7 +268,7 @@ mod tests {
     fn script_launchers_pass_interpreter_and_script_as_argv() {
         let directory = Path::new("/directory with spaces & symbols");
         let script = directory.join("deploy me.sh");
-        let commands = script_launchers(&script, directory, "sh");
+        let commands = script_launchers(&script_argv(&script), directory);
         assert_eq!(commands.len(), 2);
         let xdg: Vec<_> = commands[0].get_args().collect();
         assert!(xdg.contains(&std::ffi::OsStr::new("--")));
@@ -315,5 +283,28 @@ mod tests {
         assert_eq!(script_interpreter(Path::new("run.BASH")), "bash");
         assert_eq!(script_interpreter(Path::new("run.zsh")), "zsh");
         assert_eq!(script_interpreter(Path::new("run.sh")), "sh");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn executable_scripts_with_a_shebang_run_through_the_kernel() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let script = directory.path().join("build; rm -rf ~.sh");
+        let mode = |mode| {
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        std::fs::write(&script, "#!/bin/bash\n[[ 1 ]]\n").unwrap();
+        mode(0o755);
+        assert_eq!(script_argv(&script), [script.as_os_str()]);
+        let commands = script_launchers(&script_argv(&script), directory.path());
+        let xdg: Vec<_> = commands[0].get_args().collect();
+        assert_eq!(xdg[1..], [std::ffi::OsStr::new("--"), script.as_os_str()]);
+        // Not executable, or no shebang: fall back to the interpreter.
+        mode(0o644);
+        assert_eq!(script_argv(&script), ["sh".as_ref(), script.as_os_str()]);
+        std::fs::write(&script, "echo hi\n").unwrap();
+        mode(0o755);
+        assert_eq!(script_argv(&script), ["sh".as_ref(), script.as_os_str()]);
     }
 }

@@ -32,3 +32,13 @@ impl FsError {
     }
 }
 pub type Result<T> = std::result::Result<T, FsError>;
+
+/// Runs `work` on the blocking thread pool; a task that panicked fails with `code`.
+pub async fn blocking<T: Send + 'static>(
+    code: &str,
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| FsError::new(code, e.to_string()))?
+}

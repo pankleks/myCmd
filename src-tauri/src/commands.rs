@@ -1,6 +1,6 @@
 use crate::{
     config::{self, AppConfig},
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem,
     operations::{Manager, Operation, Resolution},
 };
@@ -67,14 +67,29 @@ pub async fn count_delete_entries(
     sizing: State<'_, DirectorySizing>,
 ) -> Result<DeleteCounts> {
     let request = sizing.register(request_id)?;
-    tauri::async_runtime::spawn_blocking(move || count_delete_paths(paths, || request.check()))
-        .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))?
+    blocking("io_error", move || {
+        count_delete_paths(paths, || request.check())
+    })
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn previews_fail_fast_while_a_transfer_holds_the_connection() {
+        let connection = std::sync::Mutex::new(());
+        let wait = std::time::Duration::from_millis(50);
+        let held = connection.lock().unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(
+            lock_for_preview(&connection, wait).unwrap_err().code,
+            "sftp_busy"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        drop(held);
+        assert!(lock_for_preview(&connection, wait).is_ok());
+    }
     #[test]
     fn preview_routing_preserves_local_reads_and_reports_disconnected_sftp() {
         let manager = crate::sftp::Manager::default();
@@ -228,9 +243,10 @@ mod tests {
 }
 #[tauri::command]
 pub async fn list_directory(path: String) -> Result<filesystem::Listing> {
-    tauri::async_runtime::spawn_blocking(move || filesystem::list(std::path::Path::new(&path)))
-        .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))?
+    blocking("io_error", move || {
+        filesystem::list(std::path::Path::new(&path))
+    })
+    .await
 }
 #[tauri::command]
 pub async fn read_text_preview(
@@ -239,7 +255,7 @@ pub async fn read_text_preview(
     state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
 ) -> Result<String> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         with_preview_path(
             &manager,
             connection_id.as_deref(),
@@ -249,7 +265,6 @@ pub async fn read_text_preview(
         )
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
 pub async fn read_pdf_preview(
@@ -258,7 +273,7 @@ pub async fn read_pdf_preview(
     state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
 ) -> Result<tauri::ipc::Response> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         with_preview_path(
             &manager,
             connection_id.as_deref(),
@@ -269,7 +284,6 @@ pub async fn read_pdf_preview(
         .map(tauri::ipc::Response::new)
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
 pub async fn read_image_preview(
@@ -278,7 +292,7 @@ pub async fn read_image_preview(
     state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
 ) -> Result<String> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         with_preview_path(
             &manager,
             connection_id.as_deref(),
@@ -288,7 +302,6 @@ pub async fn read_image_preview(
         )
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
 pub async fn read_image_thumbnail(
@@ -298,7 +311,7 @@ pub async fn read_image_thumbnail(
     state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
 ) -> Result<String> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         with_preview_path(
             &manager,
             connection_id.as_deref(),
@@ -308,7 +321,6 @@ pub async fn read_image_thumbnail(
         )
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 fn with_preview_path<T>(
     manager: &crate::sftp::Manager,
@@ -323,9 +335,7 @@ fn with_preview_path<T>(
     };
     crate::sftp::remote_path(path)?;
     let connection = manager.get(id)?;
-    let connection = connection
-        .lock()
-        .map_err(|e| FsError::new("sftp_error", e.to_string()))?;
+    let connection = lock_for_preview(&connection, std::time::Duration::from_secs(3))?;
     let mut file = connection
         .sftp
         .open(std::path::Path::new(path))
@@ -361,6 +371,32 @@ fn with_preview_path<T>(
     drop(connection);
     read(temporary.path())
 }
+/// A transfer holds the connection for its whole run: fail with `sftp_busy`
+/// instead of blocking. The short wait lets parallel thumbnails (3 at a time)
+/// take turns. shortcut: a preview slower than `wait` also fails the others.
+fn lock_for_preview<T>(
+    connection: &std::sync::Mutex<T>,
+    wait: std::time::Duration,
+) -> Result<std::sync::MutexGuard<'_, T>> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        match connection.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(e)) => {
+                return Err(FsError::new("sftp_error", e.to_string()))
+            }
+            Err(std::sync::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                return Err(FsError::new(
+                    "sftp_busy",
+                    "Connection is busy with a transfer. Try again when it finishes.",
+                ))
+            }
+        }
+    }
+}
 #[tauri::command]
 pub async fn read_markdown_image(
     markdown_path: String,
@@ -369,7 +405,7 @@ pub async fn read_markdown_image(
     state: State<'_, std::sync::Arc<crate::sftp::Manager>>,
 ) -> Result<filesystem::PreviewImage> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         if let Some(id) = connection_id {
             let source = source.split(['?', '#']).next().unwrap_or_default().trim();
             let source = filesystem::decode_uri_path(source)
@@ -395,17 +431,14 @@ pub async fn read_markdown_image(
         filesystem::read_markdown_image(std::path::Path::new(&markdown_path), &source)
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
 pub async fn list_roots() -> Result<Vec<filesystem::Root>> {
-    tauri::async_runtime::spawn_blocking(filesystem::roots)
-        .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))
+    blocking("io_error", || Ok(filesystem::roots())).await
 }
 #[tauri::command]
 pub async fn open_file(path: String) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         let p = filesystem::absolute(std::path::Path::new(&path))?;
         if p.is_file() {
             match launch_action(&p, &config::load().launch.for_current_os()) {
@@ -417,7 +450,6 @@ pub async fn open_file(path: String) -> Result<()> {
         open::that_detached(&p).map_err(|e| FsError::io(e, &p))
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 
 #[derive(Debug, PartialEq)]
@@ -490,11 +522,10 @@ fn edit(path: &std::path::Path, editor: Option<&str>) -> Result<()> {
 
 #[tauri::command]
 pub async fn edit_file(path: String, editor: Option<String>) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         edit(std::path::Path::new(&path), editor.as_deref())
     })
     .await
-    .map_err(|error| FsError::new("io_error", error.to_string()))?
 }
 
 #[tauri::command]
@@ -509,11 +540,10 @@ pub async fn measure_directory(
     sizing: State<'_, DirectorySizing>,
 ) -> Result<u64> {
     let request = sizing.register(request_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         filesystem::directory_size_checked(std::path::Path::new(&path), || request.check())
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 
 #[tauri::command]

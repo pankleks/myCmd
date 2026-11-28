@@ -8,7 +8,7 @@
 //! repository, and must equal what GitHub returned; commands only embed those
 //! exact URLs and fixed file names, quoted for the shell, so nothing GitHub
 //! sends reaches a command unchecked.
-use crate::error::{FsError, Result};
+use crate::error::{blocking, FsError, Result};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -537,9 +537,7 @@ pub async fn check_for_update(
     state: tauri::State<'_, std::sync::Arc<Updates>>,
 ) -> Result<UpdateCheck> {
     let updates = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || updates.check(force))
-        .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))?
+    blocking("io_error", move || updates.check(force)).await
 }
 
 #[tauri::command]

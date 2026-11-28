@@ -121,28 +121,39 @@ pub fn read_pdf_preview(path: &Path) -> Result<Vec<u8>> {
     if !metadata.is_file() {
         return Err(FsError::new("not_a_file", "Only files can be previewed"));
     }
-    let too_large = || {
+    let content = read_bounded(&path, &metadata, MAX_PDF_PREVIEW_BYTES, || {
         FsError::new(
             "file_too_large",
             "PDFs larger than 64 MiB cannot be previewed",
         )
-    };
-    if metadata.len() > MAX_PDF_PREVIEW_BYTES {
-        return Err(too_large());
-    }
-    let file = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
-    let mut content = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_PDF_PREVIEW_BYTES + 1)
-        .read_to_end(&mut content)
-        .map_err(|e| FsError::io(e, &path))?;
-    if content.len() as u64 > MAX_PDF_PREVIEW_BYTES {
-        return Err(too_large());
-    }
+    })?;
     if !content.starts_with(b"%PDF-") {
         return Err(FsError::new(
             "invalid_pdf",
             "This file is not a PDF document",
         ));
+    }
+    Ok(content)
+}
+
+/// Reads at most `limit` bytes, failing with `too_large` also when the file
+/// grew after `metadata` was taken.
+fn read_bounded(
+    path: &Path,
+    metadata: &fs::Metadata,
+    limit: u64,
+    too_large: impl Fn() -> FsError,
+) -> Result<Vec<u8>> {
+    if metadata.len() > limit {
+        return Err(too_large());
+    }
+    let file = fs::File::open(path).map_err(|e| FsError::io(e, path))?;
+    let mut content = Vec::with_capacity(metadata.len() as usize);
+    file.take(limit + 1)
+        .read_to_end(&mut content)
+        .map_err(|e| FsError::io(e, path))?;
+    if content.len() as u64 > limit {
+        return Err(too_large());
     }
     Ok(content)
 }
@@ -197,24 +208,12 @@ pub fn read_text_preview(path: &Path) -> Result<String> {
     if !metadata.is_file() {
         return Err(FsError::new("not_a_file", "Only files can be previewed"));
     }
-    if metadata.len() > MAX_TEXT_PREVIEW_BYTES {
-        return Err(FsError::new(
+    let content = read_bounded(&path, &metadata, MAX_TEXT_PREVIEW_BYTES, || {
+        FsError::new(
             "file_too_large",
             "Files larger than 8 MiB cannot be previewed",
-        ));
-    }
-
-    let file = fs::File::open(&path).map_err(|e| FsError::io(e, &path))?;
-    let mut content = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_TEXT_PREVIEW_BYTES + 1)
-        .read_to_end(&mut content)
-        .map_err(|e| FsError::io(e, &path))?;
-    if content.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
-        return Err(FsError::new(
-            "file_too_large",
-            "Files larger than 8 MiB cannot be previewed",
-        ));
-    }
+        )
+    })?;
     if let Some(little_endian) = utf16_encoding(&content) {
         let bytes = if content.starts_with(&[0xff, 0xfe]) || content.starts_with(&[0xfe, 0xff]) {
             &content[2..]
@@ -311,24 +310,12 @@ fn image_data_url(path: &Path) -> Result<PreviewImage> {
             ));
         }
     };
-    if metadata.len() > MAX_IMAGE_PREVIEW_BYTES {
-        return Err(FsError::new(
+    let content = read_bounded(path, &metadata, MAX_IMAGE_PREVIEW_BYTES, || {
+        FsError::new(
             "image_too_large",
             "Images larger than 4 MiB cannot be previewed",
-        ));
-    }
-
-    let file = fs::File::open(path).map_err(|e| FsError::io(e, path))?;
-    let mut content = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_IMAGE_PREVIEW_BYTES + 1)
-        .read_to_end(&mut content)
-        .map_err(|e| FsError::io(e, path))?;
-    if content.len() as u64 > MAX_IMAGE_PREVIEW_BYTES {
-        return Err(FsError::new(
-            "image_too_large",
-            "Images larger than 4 MiB cannot be previewed",
-        ));
-    }
+        )
+    })?;
 
     if matches!(mime, "image/heic" | "image/heif")
         && !matches!(

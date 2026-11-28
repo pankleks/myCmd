@@ -1,10 +1,11 @@
 use crate::{
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem::{self, Entry, Listing},
 };
 use std::{collections::BTreeMap, fs::File, path::Path};
 
 const MAX_ENTRIES: usize = 100_000;
+const MAX_UNPACKED_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 struct CheckedReader<'a> {
     reader: &'a mut dyn std::io::Read,
@@ -16,7 +17,7 @@ impl std::io::Read for CheckedReader<'_> {
         (self.check)().map_err(|error| std::io::Error::other(error.message))?;
         let size = self.reader.read(buffer)?;
         *self.budget = self.budget.saturating_add(size as u64);
-        if *self.budget > 8 * 1024 * 1024 * 1024 {
+        if *self.budget > MAX_UNPACKED_BYTES {
             return Err(std::io::Error::other(
                 "Archive rewrite exceeds the 8 GiB safety limit",
             ));
@@ -56,24 +57,22 @@ pub fn delete_selected(
     let error = |e: String| FsError::new("archive_error", e);
     let mut removed = std::collections::BTreeSet::new();
     let mut keep = |name: &str| -> Result<bool> {
-        let safe = safe_name(name).ok_or_else(|| error("Unsafe archive member path".into()))?;
-        let selected = safe
-            .strip_prefix(directory)
-            .and_then(|relative| relative.split('/').next())
-            .filter(|first| members.iter().any(|member| member == first));
-        if let Some(name) = selected {
-            removed.insert(name.to_owned());
+        // Like extraction: unselected members are copied raw, never resolved,
+        // so an unsafe name only blocks a selection that contains it.
+        if !selected(name, directory, members) {
+            return Ok(true);
         }
-        Ok(selected.is_none())
+        let safe = safe_name(name).ok_or_else(|| error("Unsafe archive member path".into()))?;
+        let first = safe[directory.len()..]
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        removed.insert(first.to_owned());
+        Ok(false)
     };
     let mut replacement = tempfile::NamedTempFile::new_in(path.parent().unwrap())
         .map_err(|e| FsError::io(e, &path))?;
-    if path
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .eq_ignore_ascii_case("zip")
-    {
+    if has_extension(&path, "zip") {
         let mut archive =
             zip::ZipArchive::new(File::open(&path).map_err(|e| FsError::io(e, &path))?)
                 .map_err(|e| error(e.to_string()))?;
@@ -111,12 +110,7 @@ pub fn delete_selected(
             )
             .map_err(|e| error(e.to_string()))?;
         }
-    } else if path
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .eq_ignore_ascii_case("7z")
-    {
+    } else if has_extension(&path, "7z") {
         let mut archive = sevenz_rust2::ArchiveReader::open(&path, sevenz_rust2::Password::empty())
             .map_err(|e| error(e.to_string()))?;
         if archive.archive().files.len() > MAX_ENTRIES {
@@ -288,7 +282,7 @@ pub fn extract_selected(
                     break;
                 }
                 written += size as u64;
-                if written > 8 * 1024 * 1024 * 1024 {
+                if written > MAX_UNPACKED_BYTES {
                     return Err(FsError::new(
                         "archive_limit",
                         "Extraction exceeds the 8 GiB safety limit",
@@ -302,12 +296,7 @@ pub fn extract_selected(
         Ok(())
     };
     let archive_error = |e: String| FsError::new("archive_error", e);
-    if archive_path
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .eq_ignore_ascii_case("zip")
-    {
+    if has_extension(&archive_path, "zip") {
         let mut archive = zip::ZipArchive::new(
             File::open(&archive_path).map_err(|e| FsError::io(e, &archive_path))?,
         )
@@ -336,12 +325,7 @@ pub fn extract_selected(
             }
             extract(&name, folder, &mut entry)?;
         }
-    } else if archive_path
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .eq_ignore_ascii_case("7z")
-    {
+    } else if has_extension(&archive_path, "7z") {
         let mut archive =
             sevenz_rust2::ArchiveReader::open(&archive_path, sevenz_rust2::Password::empty())
                 .map_err(|e| archive_error(e.to_string()))?;
@@ -398,6 +382,13 @@ pub fn extract_selected(
         ));
     }
     Ok(found.into_iter().map(|name| staging.join(name)).collect())
+}
+
+fn has_extension(path: &Path, extension: &str) -> bool {
+    path.extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .eq_ignore_ascii_case(extension)
 }
 
 /// Whether a raw member name falls under one of the selected top-level members.
@@ -472,7 +463,7 @@ fn listing(path: &Path, directory: &str, members: Vec<(String, bool, u64)>) -> R
 
 #[tauri::command]
 pub async fn list_archive(archive_path: String, directory: String) -> Result<Listing> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("archive_error", move || {
         let path = filesystem::absolute(Path::new(&archive_path))?;
         if safe_name(&directory).is_none() || (!directory.is_empty() && !directory.ends_with('/')) {
             return Err(FsError::new("invalid_path", "Invalid archive directory"));
@@ -484,12 +475,7 @@ pub async fn list_archive(archive_path: String, directory: String) -> Result<Lis
             )
         };
         let mut members = Vec::new();
-        if path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .eq_ignore_ascii_case("zip")
-        {
+        if has_extension(&path, "zip") {
             let file = File::open(&path).map_err(|e| FsError::io(e, &path))?;
             let mut archive = zip::ZipArchive::new(file).map_err(|e| error(e.to_string()))?;
             if archive.len() > MAX_ENTRIES {
@@ -499,12 +485,7 @@ pub async fn list_archive(archive_path: String, directory: String) -> Result<Lis
                 let entry = archive.by_index_raw(i).map_err(|e| error(e.to_string()))?;
                 members.push((entry.name().to_owned(), entry.is_dir(), entry.size()));
             }
-        } else if path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .eq_ignore_ascii_case("7z")
-        {
+        } else if has_extension(&path, "7z") {
             let reader = sevenz_rust2::ArchiveReader::open(&path, sevenz_rust2::Password::empty())
                 .map_err(|e| error(e.to_string()))?;
             if reader.archive().files.len() > MAX_ENTRIES {
@@ -521,7 +502,6 @@ pub async fn list_archive(archive_path: String, directory: String) -> Result<Lis
         listing(&path, &directory, members)
     })
     .await
-    .map_err(|e| FsError::new("archive_error", e.to_string()))?
 }
 
 #[cfg(test)]
@@ -606,6 +586,23 @@ mod tests {
         );
         assert!(!temp.path().join("evil.txt").exists());
         assert!(!blocked.path().join("escape.txt").exists());
+
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(
+            delete_selected(&path, "", &["docs".into()], || Ok(()))
+                .unwrap_err()
+                .message,
+            "Unsafe archive member path"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        delete_selected(&path, "", &["good.txt".into()], || Ok(())).unwrap();
+        let mut names: Vec<String> = zip::ZipArchive::new(File::open(&path).unwrap())
+            .unwrap()
+            .file_names()
+            .map(str::to_owned)
+            .collect();
+        names.sort();
+        assert_eq!(names, ["../evil.txt", "docs/../escape.txt", "docs/ok.txt"]);
     }
 
     #[test]

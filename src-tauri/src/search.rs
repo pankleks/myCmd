@@ -1,6 +1,6 @@
 use crate::{
     cancellation::Registry,
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem::{self, Entry},
 };
 use serde::Serialize;
@@ -132,7 +132,7 @@ fn search(
         cancelled: false,
     };
     let mut stack: Vec<PathBuf> = vec![root];
-    let mut pending = Vec::new();
+    let mut pending: Vec<Entry> = Vec::new();
     let mut last_batch = std::time::Instant::now();
     while let Some(directory) = stack.pop() {
         if check().is_err() {
@@ -158,20 +158,22 @@ fn search(
                     continue;
                 }
             };
-            let metadata = match std::fs::symlink_metadata(item.path()) {
-                Ok(metadata) => metadata,
+            // Usually free from the directory read (d_type / find data), so
+            // only matches pay for a stat in `filesystem::entry`.
+            let file_type = match item.file_type() {
+                Ok(file_type) => file_type,
                 Err(_) => {
                     result.skipped += 1;
                     continue;
                 }
             };
-            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            if file_type.is_dir() {
                 stack.push(item.path());
             }
             if pattern.matches_with(&item.file_name().to_string_lossy(), options) {
                 if let Some(needle) = &needle {
                     // Only regular files: do not follow links or read devices/pipes.
-                    if !metadata.is_file() {
+                    if !file_type.is_file() {
                         continue;
                     }
                     match contains_text(&item.path(), needle, &check) {
@@ -226,7 +228,7 @@ pub async fn search_files(
     request_id: String,
 ) -> Result<SearchResult> {
     let request = manager.0.register(request_id.clone())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("io_error", move || {
         search(
             Path::new(&root),
             &pattern,
@@ -244,7 +246,6 @@ pub async fn search_files(
         )
     })
     .await
-    .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 #[tauri::command]
 pub fn cancel_search(manager: State<'_, SearchManager>, request_id: String) -> Result<()> {

@@ -1,5 +1,5 @@
 use crate::{
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem::{self, Entry},
 };
 use serde::{Deserialize, Serialize};
@@ -201,9 +201,7 @@ pub fn set_permissions(path: &Path, change: PermissionChange) -> Result<FileProp
 
 #[tauri::command]
 pub async fn get_file_properties(path: String) -> Result<FileProperties> {
-    tauri::async_runtime::spawn_blocking(move || read(Path::new(&path)))
-        .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))?
+    blocking("io_error", move || read(Path::new(&path))).await
 }
 
 #[tauri::command]
@@ -211,9 +209,10 @@ pub async fn set_file_permissions(
     path: String,
     permissions: PermissionChange,
 ) -> Result<FileProperties> {
-    tauri::async_runtime::spawn_blocking(move || set_permissions(Path::new(&path), permissions))
-        .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))?
+    blocking("io_error", move || {
+        set_permissions(Path::new(&path), permissions)
+    })
+    .await
 }
 
 #[cfg(test)]

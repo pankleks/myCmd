@@ -1,6 +1,6 @@
 use crate::{
     config,
-    error::{FsError, Result},
+    error::{blocking, FsError, Result},
     filesystem::{Entry, Listing},
 };
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
@@ -18,6 +18,7 @@ use std::{
 };
 
 const MAX_ENTRIES: usize = 100_000;
+const MAX_RESOLVED_LINKS: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -534,24 +535,22 @@ pub async fn connect_sftp(
     state: tauri::State<'_, Arc<Manager>>,
 ) -> Result<ConnectResult> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("sftp_error", move || {
         let known = config::config_dir().join("sftp_known_hosts");
         let user_known = dirs::home_dir().map(|home| home.join(".ssh/known_hosts"));
         manager.connect(request, &known, user_known.as_deref())
     })
     .await
-    .map_err(|e| FsError::new("sftp_error", e.to_string()))?
 }
 #[tauri::command]
 pub async fn disconnect_sftp(id: String, state: tauri::State<'_, Arc<Manager>>) -> Result<()> {
     let manager = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("sftp_error", move || {
         let session = manager.sessions.lock().map_err(lock_error)?.remove(&id);
         drop(session);
         Ok(())
     })
     .await
-    .map_err(|e| FsError::new("sftp_error", e.to_string()))?
 }
 #[tauri::command]
 pub async fn list_sftp(
@@ -560,7 +559,7 @@ pub async fn list_sftp(
     state: tauri::State<'_, Arc<Manager>>,
 ) -> Result<Listing> {
     let connection = state.get(&id)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("sftp_error", move || {
         remote_path(&path)?;
         // A transfer holds the connection for its whole run; fail fast instead of freezing the panel.
         let connection = connection.try_lock().map_err(|e| match e {
@@ -581,13 +580,28 @@ pub async fn list_sftp(
         // Names this app cannot address (non-Unicode, containing '\\') are hidden, not fatal.
         let (items, invalid) = directory(sftp, &path, || Ok(()))?;
         let mut skipped = invalid.len();
+        let mut warnings = Vec::new();
+        // shortcut: each link target is one sequential round trip under the
+        // connection lock; past this many, links are listed as non-directories.
+        let mut resolvable = MAX_RESOLVED_LINKS;
         for (name, stat) in items {
             let full = join(&path, &name)?;
             match entry(&full, &stat) {
                 Ok(mut item) => {
                     if item.r#type == "symlink" {
-                        item.directory_target =
-                            sftp.stat(Path::new(&full)).is_ok_and(|stat| stat.is_dir());
+                        if resolvable == 0 && warnings.is_empty() {
+                            warnings.push(FsError::new(
+                                "sftp_links_unresolved",
+                                format!(
+                                    "Only the first {MAX_RESOLVED_LINKS} symbolic links were checked for folder targets."
+                                ),
+                            ));
+                        }
+                        if resolvable > 0 {
+                            resolvable -= 1;
+                            item.directory_target =
+                                sftp.stat(Path::new(&full)).is_ok_and(|stat| stat.is_dir());
+                        }
                     }
                     entries.push(item);
                 }
@@ -603,11 +617,9 @@ pub async fn list_sftp(
             path,
             entries,
             skipped_entries: skipped,
-            warnings: Vec::new(),
+            warnings,
         })
-    })
-    .await
-    .map_err(|e| FsError::new("sftp_error", e.to_string()))?
+    }).await
 }
 
 #[cfg(test)]

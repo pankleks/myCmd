@@ -44,12 +44,19 @@ fn destination_entry(sftp: &Sftp, path: &str, upload: bool) -> Result<Option<Ent
             .map(|stat| remote::entry(path, &stat))
             .transpose()
     } else {
-        match fs::symlink_metadata(path) {
-            Ok(_) => filesystem::entry(Path::new(path)).map(Some),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(FsError::io(e, Path::new(path))),
-        }
+        let path = Path::new(path);
+        exists(path)?.then(|| filesystem::entry(path)).transpose()
     }
+}
+
+fn within_limit(items: usize) -> Result<()> {
+    if items >= 100_000 {
+        return Err(FsError::new(
+            "sftp_limit",
+            "Operation exceeds 100,000 items",
+        ));
+    }
+    Ok(())
 }
 
 fn target_path(parent: &str, name: &str, upload: bool) -> Result<String> {
@@ -151,12 +158,7 @@ impl Worker {
         let mut pending = vec![(source.to_owned(), relative.to_owned())];
         while let Some((source, relative)) = pending.pop() {
             self.check()?;
-            if nodes.len() >= 100_000 {
-                return Err(FsError::new(
-                    "sftp_limit",
-                    "Operation exceeds 100,000 items",
-                ));
-            }
+            within_limit(nodes.len())?;
             let stat = sftp.lstat(Path::new(&source)).map_err(error)?;
             let entry = remote::entry(&source, &stat)?;
             if entry.r#type == "symlink" && !deleting {
@@ -183,12 +185,7 @@ impl Worker {
                     return Err(FsError::new("invalid_path", format!("{source} contains names myCmd cannot handle: {shown}{more}. Rename them on the server; nothing was changed.")));
                 }
                 for (child, _) in children {
-                    if nodes.len() + pending.len() >= 100_000 {
-                        return Err(FsError::new(
-                            "sftp_limit",
-                            "Operation exceeds 100,000 items",
-                        ));
-                    }
+                    within_limit(nodes.len() + pending.len())?;
                     pending.push((join(&source, &child)?, format!("{relative}/{child}")));
                 }
             }
@@ -215,12 +212,7 @@ impl Worker {
         }
         while let Some((path, relative)) = pending.pop() {
             self.check()?;
-            if nodes.len() >= 100_000 {
-                return Err(FsError::new(
-                    "sftp_limit",
-                    "Operation exceeds 100,000 items",
-                ));
-            }
+            within_limit(nodes.len())?;
             let entry = filesystem::entry(&path)?;
             remote_name(&entry.name)?;
             let metadata = fs::symlink_metadata(&path).map_err(|e| FsError::io(e, &path))?;
@@ -232,12 +224,7 @@ impl Worker {
             }
             if metadata.is_dir() {
                 for child in fs::read_dir(&path).map_err(|e| FsError::io(e, &path))? {
-                    if nodes.len() + pending.len() >= 100_000 {
-                        return Err(FsError::new(
-                            "sftp_limit",
-                            "Operation exceeds 100,000 items",
-                        ));
-                    }
+                    within_limit(nodes.len() + pending.len())?;
                     let child = child.map_err(|e| FsError::io(e, &path))?;
                     let child_name = child.file_name().into_string().map_err(|_| {
                         FsError::new("invalid_path", "SFTP filenames must be Unicode")
@@ -350,22 +337,14 @@ impl Worker {
                         if let Some(name) = answer.name {
                             target = target_path(target_parent, &name, upload)?;
                         } else {
-                            let mut n = 1;
-                            loop {
+                            let folder = node.entry.r#type == "directory";
+                            for n in 1.. {
                                 self.check()?;
-                                target = target_path(
-                                    target_parent,
-                                    &super::numbered_name(
-                                        base,
-                                        n,
-                                        node.entry.r#type == "directory",
-                                    ),
-                                    upload,
-                                )?;
+                                let name = super::numbered_name(base, n, folder);
+                                target = target_path(target_parent, &name, upload)?;
                                 if destination_entry(sftp, &target, upload)?.is_none() {
                                     break;
                                 }
-                                n += 1;
                             }
                         }
                     }
@@ -461,27 +440,18 @@ impl Worker {
             )
             .map_err(error)?;
         let result = (|| {
-            let mut buffer = vec![0; 1024 * 1024];
-            let mut bytes = 0u64;
-            loop {
-                self.check()?;
-                let n = input
-                    .read(&mut buffer)
-                    .map_err(|e| FsError::io(e, source))?;
-                if n == 0 {
-                    break;
-                }
-                bytes = bytes
-                    .checked_add(n as u64)
-                    .ok_or_else(|| source_changed(source))?;
-                if bytes > snapshot.metadata.len() {
-                    return Err(source_changed(source));
-                }
-                output
-                    .write_all(&buffer[..n])
-                    .map_err(|e| FsError::new("sftp_error", e.to_string()))?;
-                self.tick(source, n as u64, 0)?;
-            }
+            self.pump(
+                source,
+                |buffer| input.read(buffer).map_err(|e| FsError::io(e, source)),
+                |chunk, bytes| {
+                    if bytes > snapshot.metadata.len() {
+                        return Err(source_changed(source));
+                    }
+                    output
+                        .write_all(chunk)
+                        .map_err(|e| FsError::new("sftp_error", e.to_string()))
+                },
+            )?;
             let modified = snapshot
                 .metadata
                 .modified()
@@ -547,29 +517,24 @@ impl Worker {
         let target = Path::new(target);
         let mut temp = tempfile::NamedTempFile::new_in(target.parent().unwrap())
             .map_err(|e| FsError::io(e, target))?;
-        let mut buffer = vec![0; 1024 * 1024];
-        let mut bytes = 0u64;
-        loop {
-            self.check()?;
-            let n = input
-                .read(&mut buffer)
-                .map_err(|e| FsError::new("sftp_error", e.to_string()))?;
-            if n == 0 {
-                break;
-            }
-            bytes = bytes.checked_add(n as u64).ok_or_else(|| {
-                FsError::new("size_overflow", "Remote source grew during download")
-            })?;
-            if bytes > expected_size {
-                return Err(FsError::new(
-                    "source_changed",
-                    "Remote source grew during download",
-                ));
-            }
-            temp.write_all(&buffer[..n])
-                .map_err(|e| FsError::io(e, target))?;
-            self.tick(Path::new(source), n as u64, 0)?;
-        }
+        // The byte count saturates, so an overflow also reads as growth.
+        let bytes = self.pump(
+            Path::new(source),
+            |buffer| {
+                input
+                    .read(buffer)
+                    .map_err(|e| FsError::new("sftp_error", e.to_string()))
+            },
+            |chunk, bytes| {
+                if bytes > expected_size {
+                    return Err(FsError::new(
+                        "source_changed",
+                        "Remote source grew during download",
+                    ));
+                }
+                temp.write_all(chunk).map_err(|e| FsError::io(e, target))
+            },
+        )?;
         let after = sftp.lstat(Path::new(source)).map_err(error)?;
         if !same_remote_file(&before, &after) || before.size != Some(bytes) {
             return Err(FsError::new(
