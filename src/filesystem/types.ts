@@ -64,6 +64,8 @@ export interface PanelState {
   sort: { column: Column; direction: 'asc' | 'desc' };
   showHidden: boolean;
   loading: boolean;
+  /** Path of the load in progress; a reload of `path` keeps its entries valid. */
+  loadingPath?: string;
   error?: string;
   skippedEntries?: number;
   warnings?: ListingWarning[];

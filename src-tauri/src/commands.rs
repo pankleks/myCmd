@@ -14,55 +14,62 @@ pub struct DeleteCounts {
     files: u64,
     skipped: u64,
 }
-fn count_delete_paths(paths: Vec<String>) -> DeleteCounts {
+fn count_delete_paths(paths: Vec<String>, check: impl Fn() -> Result<()>) -> Result<DeleteCounts> {
     let mut counts = DeleteCounts::default();
-    let mut visited = std::collections::HashSet::new();
-    let mut stack: Vec<std::path::PathBuf> =
-        paths.into_iter().map(std::path::PathBuf::from).collect();
-    while let Some(path) = stack.pop() {
-        if std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink())
-        {
-            if visited.insert(path) {
-                counts.files += 1;
-            }
-            continue;
-        }
-        let path = match filesystem::absolute(&path) {
-            Ok(path) => path,
-            Err(_) => {
-                counts.skipped += 1;
-                continue;
-            }
-        };
-        if !visited.insert(path.clone()) {
-            continue;
-        }
+    // Resolve only the selection; a selected symlink is one item and is not followed.
+    let mut roots = Vec::new();
+    for path in paths.into_iter().map(std::path::PathBuf::from) {
         match std::fs::symlink_metadata(&path) {
-            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
-                counts.folders += 1;
-                match std::fs::read_dir(&path) {
-                    Ok(entries) => {
-                        for entry in entries {
-                            match entry {
-                                Ok(entry) => stack.push(entry.path()),
-                                Err(_) => counts.skipped += 1,
-                            }
-                        }
-                    }
-                    Err(_) => counts.skipped += 1,
-                }
-            }
+            Ok(metadata) if metadata.is_symlink() => roots.push(path),
+            _ => match filesystem::absolute(&path) {
+                Ok(path) => roots.push(path),
+                Err(_) => counts.skipped += 1,
+            },
+        }
+    }
+    // Sorted by components, a folder's descendants follow it directly: drop them.
+    roots.sort();
+    let mut folders = Vec::new();
+    let mut last: Option<std::path::PathBuf> = None;
+    for root in roots {
+        if last.as_ref().is_some_and(|kept| root.starts_with(kept)) {
+            continue;
+        }
+        match std::fs::symlink_metadata(&root) {
+            Ok(metadata) if metadata.is_dir() => folders.push(root.clone()),
             Ok(_) => counts.files += 1,
             Err(_) => counts.skipped += 1,
         }
+        last = Some(root);
     }
-    counts
+    while let Some(folder) = folders.pop() {
+        check()?;
+        counts.folders += 1;
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            counts.skipped += 1;
+            continue;
+        };
+        for entry in entries {
+            // The directory entry type needs no extra stat call per file.
+            match entry.and_then(|entry| Ok((entry.file_type()?, entry.path()))) {
+                Ok((kind, path)) if kind.is_dir() => folders.push(path),
+                Ok(_) => counts.files += 1,
+                Err(_) => counts.skipped += 1,
+            }
+        }
+    }
+    Ok(counts)
 }
 #[tauri::command]
-pub async fn count_delete_entries(paths: Vec<String>) -> Result<DeleteCounts> {
-    tauri::async_runtime::spawn_blocking(move || count_delete_paths(paths))
+pub async fn count_delete_entries(
+    paths: Vec<String>,
+    request_id: String,
+    sizing: State<'_, DirectorySizing>,
+) -> Result<DeleteCounts> {
+    let request = sizing.register(request_id)?;
+    tauri::async_runtime::spawn_blocking(move || count_delete_paths(paths, || request.check()))
         .await
-        .map_err(|e| FsError::new("io_error", e.to_string()))
+        .map_err(|e| FsError::new("io_error", e.to_string()))?
 }
 
 #[cfg(test)]
@@ -147,13 +154,41 @@ mod tests {
         std::fs::create_dir(temp.path().join("nested")).unwrap();
         std::fs::write(temp.path().join("nested/a.zip"), b"not an archive").unwrap();
         std::fs::write(temp.path().join("b.txt"), b"file").unwrap();
-        let counts = count_delete_paths(vec![
-            filesystem::text(temp.path()),
-            filesystem::text(&temp.path().join("nested")),
-        ]);
+        let counts = count_delete_paths(
+            vec![
+                filesystem::text(temp.path()),
+                filesystem::text(&temp.path().join("nested")),
+                filesystem::text(&temp.path().join("b.txt")),
+                filesystem::text(temp.path()),
+            ],
+            || Ok(()),
+        )
+        .unwrap();
         assert_eq!(counts.folders, 2);
         assert_eq!(counts.files, 2);
         assert_eq!(counts.skipped, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn counts_a_selected_symlink_once_without_following_it() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(temp.path().join("target")).unwrap();
+        std::fs::write(temp.path().join("target/inside.txt"), b"file").unwrap();
+        std::os::unix::fs::symlink(temp.path().join("target"), temp.path().join("link")).unwrap();
+        let counts =
+            count_delete_paths(vec![filesystem::text(&temp.path().join("link"))], || Ok(()))
+                .unwrap();
+        assert_eq!((counts.folders, counts.files), (0, 1));
+    }
+
+    #[test]
+    fn delete_counting_stops_when_cancelled() {
+        let temp = tempfile::tempdir().unwrap();
+        let cancelled = count_delete_paths(vec![filesystem::text(temp.path())], || {
+            Err(FsError::new("cancelled", "cancelled"))
+        });
+        assert!(cancelled.is_err_and(|error| error.code == "cancelled"));
     }
 
     #[test]

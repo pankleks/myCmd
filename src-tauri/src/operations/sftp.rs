@@ -391,8 +391,20 @@ impl Worker {
             }
             if node.entry.r#type == "directory" {
                 if !overwrite {
+                    // Keep the source folder's permission bits, as for files (like
+                    // scp -p), so uploaded sites stay readable by the web server.
+                    // The owner keeps rwx so the folder's contents can be written.
                     if upload {
-                        sftp.mkdir(Path::new(&target), 0o700).map_err(error)?;
+                        #[cfg(unix)]
+                        let mode = {
+                            use std::os::unix::fs::PermissionsExt;
+                            fs::symlink_metadata(&node.source)
+                                .map_or(0o755, |metadata| metadata.permissions().mode() & 0o777)
+                        };
+                        #[cfg(not(unix))]
+                        let mode = 0o755;
+                        sftp.mkdir(Path::new(&target), (mode | 0o700) as i32)
+                            .map_err(error)?;
                     } else {
                         let builder = fs::DirBuilder::new();
                         #[cfg(unix)]
@@ -400,7 +412,8 @@ impl Worker {
                         #[cfg(unix)]
                         {
                             use std::os::unix::fs::DirBuilderExt;
-                            builder.mode(0o700);
+                            let mode = node.stat.as_ref().and_then(|stat| stat.perm);
+                            builder.mode(mode.map_or(0o755, |mode| mode & 0o777) | 0o700);
                         }
                         builder
                             .create(&target)
@@ -480,8 +493,9 @@ impl Worker {
                 use std::os::unix::fs::PermissionsExt;
                 Some(snapshot.metadata.permissions().mode() & 0o777)
             };
+            // Windows has no Unix mode; without one the file would stay 0600.
             #[cfg(not(unix))]
-            let permissions = None;
+            let permissions = Some(0o644);
             output
                 .setstat(FileStat {
                     size: None,
@@ -709,6 +723,7 @@ mod tests {
         let destination = fixture.dir.path().join("remote");
         let download = fixture.dir.path().join("download");
         fs::create_dir_all(source.join("nested/empty")).unwrap();
+        fs::set_permissions(source.join("nested"), fs::Permissions::from_mode(0o755)).unwrap();
         fs::create_dir(&destination).unwrap();
         fs::create_dir(&download).unwrap();
         let odd = fixture.dir.path().join("odd");
@@ -747,6 +762,12 @@ mod tests {
         assert_eq!(w.progress.processed_bytes, 7);
         assert_eq!(w.progress.total_items, w.progress.processed_items);
         assert!(destination.join("local/nested/empty").is_dir());
+        let folder_mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        // Folders keep the source mode (minus the umask), not 0700.
+        assert_eq!(
+            folder_mode(&destination.join("local/nested")) & 0o755,
+            0o755
+        );
         assert_eq!(
             fs::read_to_string(destination.join("local/nested/日本語 # %.txt")).unwrap(),
             "payload"
@@ -766,6 +787,7 @@ mod tests {
         w.run_sftp(sftp, transfer.clone()).unwrap();
         assert_eq!(w.progress.processed_bytes, 7);
         assert!(download.join("local/nested/empty").is_dir());
+        assert_eq!(folder_mode(&download.join("local/nested")) & 0o755, 0o755);
         assert_eq!(
             fs::metadata(download.join("local/nested/日本語 # %.txt"))
                 .unwrap()

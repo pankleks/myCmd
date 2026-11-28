@@ -161,6 +161,8 @@ describe('search result navigation', () => {
     expect(previewEntry(p)?.name).toBe('old');
     p.loading = true;
     expect(previewEntry(p)).toBeUndefined();
+    p.loadingPath = p.path;
+    expect(previewEntry(p)?.name).toBe('old');
     p.loading = false;
     p.path = 'archive:test.zip!/';
     expect(previewEntry(p)).toBeUndefined();

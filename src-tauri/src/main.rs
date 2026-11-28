@@ -23,6 +23,12 @@ fn main() {
         std::process::exit(code);
     }
     tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
+                // A hostile previewed file must never replace the app page with a remote one.
+                .on_navigation(|_, url| is_app_url(url))
+                .build(),
+        )
         .manage(clipboard::FileClipboard::default())
         .manage(operations::Manager::default())
         .manage(shell::ShellManager::default())
@@ -70,4 +76,27 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("Could not start myCmd");
+}
+
+/// The bundled app (tauri://localhost, or http(s)://tauri.localhost on Windows),
+/// the Vite dev server in debug builds, and local-only documents.
+fn is_app_url(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "tauri" | "about" | "blob" | "data")
+        || url.host_str() == Some("tauri.localhost")
+        || (cfg!(debug_assertions) && url.host_str() == Some("localhost"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn navigation_stays_inside_the_app() {
+        let allowed = |url: &str| super::is_app_url(&url.parse().unwrap());
+        assert!(allowed("tauri://localhost/index.html"));
+        assert!(allowed("http://tauri.localhost/"));
+        assert!(allowed("https://tauri.localhost/"));
+        assert!(allowed("about:blank"));
+        assert!(!allowed("https://example.com/"));
+        assert!(!allowed("https://tauri.localhost.example.com/"));
+        assert!(!allowed("file:///etc/passwd"));
+    }
 }

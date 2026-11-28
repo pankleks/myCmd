@@ -141,6 +141,21 @@ it('does not remember a compression change when the dialog is cancelled', () => 
   expect(preferences.compressionLevel).toBe(1);
 });
 
+it('names the items a delete will remove', () => {
+  const entries = Array.from({ length: 12 }, (_, i) => entry(`item${i}`));
+  show(entries, 'delete');
+  const names = [...target.querySelectorAll('.delete-names li')].map((li) =>
+    li.textContent?.trim(),
+  );
+  expect(names).toEqual([
+    ...entries.slice(0, 10).map((e) => e.name),
+    '…and 2 more',
+  ]);
+  expect(target.querySelector('p')!.textContent).toMatch(
+    /Move\s+12 items\s+to the Recycle Bin\?/,
+  );
+});
+
 it('keeps the existing copy dialog unchanged', () => {
   show([entry('Folder')], 'copy');
   expect(target.querySelector('select')).toBeNull();

@@ -14,10 +14,25 @@ export async function countDeleteEntries(
   const first = entries[0];
   if (!first) return { folders: 0, files: 0, skipped: 0 };
   const location = parseLocation(first.path);
-  if (location.kind === 'local')
-    return invoke<DeleteCounts>('count_delete_entries', {
-      paths: entries.map((entry) => entry.path),
-    });
+  if (location.kind === 'local') {
+    // Stop the backend walk once the dialog closes; it can take minutes on a big tree.
+    const requestId = crypto.randomUUID();
+    const poll = setInterval(() => {
+      if (!cancelled()) return;
+      clearInterval(poll);
+      void invoke('cancel_directory_sizing', {
+        requestIds: [requestId],
+      }).catch(() => {});
+    }, 250);
+    try {
+      return await invoke<DeleteCounts>('count_delete_entries', {
+        paths: entries.map((entry) => entry.path),
+        requestId,
+      });
+    } finally {
+      clearInterval(poll);
+    }
+  }
   const counts: DeleteCounts = { folders: 0, files: 0, skipped: 0 };
   const stack = [...entries];
   const visited = new Set<string>();

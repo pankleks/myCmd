@@ -33,6 +33,7 @@ function start() {
     target,
     props: {
       get target() {
+        void commander.left.revision; // like App: a new object per refresh
         const path = commander.left.path;
         return path
           ? { path, name: path, extension: 'txt', key: path }
@@ -60,6 +61,18 @@ describe('panel preview debounce', () => {
     expect(mocks.read).not.toHaveBeenCalled();
     await advance(1);
     expect(mocks.read).toHaveBeenCalledExactlyOnceWith('/c.txt');
+  });
+  it('keeps an open preview when a refresh rebuilds an unchanged target', async () => {
+    commander.left.path = '/a.txt';
+    start();
+    await advance(200);
+    expect(mocks.read).toHaveBeenCalledOnce();
+    // A folder refresh replaces entries; the getter then returns a new object.
+    commander.left.entries = [];
+    commander.left.revision++;
+    flushSync();
+    await advance(200);
+    expect(mocks.read).toHaveBeenCalledOnce();
   });
   it('cancels a pending preview when the selection is cleared', async () => {
     commander.left.path = '/a.txt';

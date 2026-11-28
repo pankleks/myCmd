@@ -178,7 +178,14 @@ impl Manager {
         // Hold the file lock only for file access, not during network login.
         let trusted = {
             let _guard = self.known_hosts_lock.lock().map_err(lock_error)?;
-            verify_host(&session, profile, &key, known_path, user_known_path)?
+            verify_host(
+                &session,
+                profile,
+                &key,
+                key_type,
+                known_path,
+                user_known_path,
+            )?
         };
         if !trusted && request.trust_fingerprint.as_deref() != Some(&fingerprint) {
             if request.trust_fingerprint.is_some() {
@@ -248,13 +255,16 @@ impl Manager {
                 "This connection is busy with a transfer. Reconnect when it finishes.",
             ));
         }
-        sessions.insert(
+        let old = sessions.insert(
             profile.id.clone(),
             Arc::new(Mutex::new(Connection {
                 sftp,
                 _session: session,
             })),
         );
+        // Closing a dead session waits for the network timeout; do it unlocked.
+        drop(sessions);
+        drop(old);
         Ok(ConnectResult::Connected {
             id: profile.id.clone(),
             path,
@@ -263,28 +273,75 @@ impl Manager {
     }
 }
 
+fn key_type_name(kind: HostKeyType) -> Result<&'static str> {
+    Ok(match kind {
+        HostKeyType::Rsa => "ssh-rsa",
+        HostKeyType::Dss => "ssh-dss",
+        HostKeyType::Ecdsa256 => "ecdsa-sha2-nistp256",
+        HostKeyType::Ecdsa384 => "ecdsa-sha2-nistp384",
+        HostKeyType::Ecdsa521 => "ecdsa-sha2-nistp521",
+        HostKeyType::Ed25519 => "ssh-ed25519",
+        _ => {
+            return Err(FsError::new(
+                "sftp_host_key",
+                "Unsupported server host key type",
+            ))
+        }
+    })
+}
+
 fn verify_host(
     session: &Session,
     profile: &Profile,
     key: &[u8],
+    kind: HostKeyType,
     path: &Path,
     user_path: Option<&Path>,
 ) -> Result<bool> {
+    let type_name = key_type_name(kind)?;
+    let encoded_key = base64::engine::general_purpose::STANDARD.encode(key);
     let mut trusted = false;
     for path in user_path.into_iter().chain(std::iter::once(path)) {
-        match fs::metadata(path) {
+        let contents = match fs::read_to_string(path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(FsError::io(e, path)),
-            Ok(_) => {}
-        }
+            Ok(contents) => contents,
+        };
         let mut hosts = session.known_hosts().map_err(error)?;
-        hosts
-            .read_file(path, KnownHostFileKind::OpenSSH)
-            .map_err(error)?;
+        for line in contents.lines() {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            // libssh2 does not know markers; honour @revoked for this exact key.
+            if fields.first() == Some(&"@revoked")
+                && fields.get(2) == Some(&type_name)
+                && fields.get(3) == Some(&encoded_key.as_str())
+            {
+                return Err(FsError::new(
+                    "sftp_host_key_changed",
+                    format!(
+                        "The server key is revoked in {}. Connection blocked.",
+                        path.display()
+                    ),
+                ));
+            }
+            // libssh2 compares the key with every entry for the host whatever its
+            // type, so an ed25519 line would "mismatch" an ECDSA key: load only lines
+            // of the server's key type. Unreadable lines are skipped, as OpenSSH does.
+            if fields.get(1) == Some(&type_name) {
+                let _ = hosts.read_str(line, KnownHostFileKind::OpenSSH);
+            }
+        }
         match hosts.check_port(&profile.host, profile.port, key) {
             CheckResult::Match => trusted = true,
-            CheckResult::NotFound => {},
-            _ => return Err(FsError::new("sftp_host_key_changed", "SSH host key does not match known_hosts. Connection blocked. Verify the server key outside myCmd before updating known_hosts.")),
+            CheckResult::NotFound => {}
+            _ => {
+                return Err(FsError::new(
+                    "sftp_host_key_changed",
+                    format!(
+                        "SSH host key does not match {}. Connection blocked. Verify the server key outside myCmd before updating that file.",
+                        path.display()
+                    ),
+                ))
+            }
         }
     }
     Ok(trusted)
@@ -594,31 +651,60 @@ pub(crate) mod tests {
 
     #[test]
     fn known_hosts_require_explicit_trust_and_block_changed_keys() {
+        use HostKeyType::Ed25519;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("known_hosts");
         let session = Session::new().unwrap();
         let profile = profile();
         let key = b"test host key bytes";
-        assert!(!verify_host(&session, &profile, key, &path, None).unwrap());
-        save_host(&session, &profile, key, HostKeyType::Ed25519, &path).unwrap();
-        assert!(verify_host(&session, &profile, key, &path, None).unwrap());
+        assert!(!verify_host(&session, &profile, key, Ed25519, &path, None).unwrap());
+        save_host(&session, &profile, key, Ed25519, &path).unwrap();
+        assert!(verify_host(&session, &profile, key, Ed25519, &path, None).unwrap());
+        let changed =
+            verify_host(&session, &profile, b"different", Ed25519, &path, None).unwrap_err();
+        assert_eq!(changed.code, "sftp_host_key_changed");
+        assert!(changed.message.contains(&path.display().to_string()));
+        let user_path = dir.path().join("user_known_hosts");
+        save_host(&session, &profile, b"conflicting", Ed25519, &user_path).unwrap();
         assert_eq!(
-            verify_host(&session, &profile, b"different", &path, None)
+            verify_host(&session, &profile, key, Ed25519, &path, Some(&user_path))
                 .unwrap_err()
                 .code,
             "sftp_host_key_changed"
         );
-        let user_path = dir.path().join("user_known_hosts");
-        save_host(
-            &session,
-            &profile,
-            b"conflicting",
-            HostKeyType::Ed25519,
-            &user_path,
+    }
+
+    #[test]
+    fn known_hosts_ignore_other_key_types_unreadable_lines_and_honour_revoked_keys() {
+        use HostKeyType::Ed25519;
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new().unwrap();
+        let profile = profile();
+        let key = b"test host key bytes";
+        // OpenSSH may know the host by another key type than the one negotiated.
+        let line = |name: &str, key: &[u8], kind| {
+            let path = dir.path().join(name);
+            save_host(&session, &profile, key, kind, &path).unwrap();
+            fs::read_to_string(path).unwrap()
+        };
+        let ecdsa = line("ecdsa", b"ecdsa key", HostKeyType::Ecdsa256);
+        let ed25519 = line("ed25519", key, Ed25519);
+        let mixed = dir.path().join("mixed");
+        fs::write(&mixed, format!("not a known_hosts line\n{ecdsa}")).unwrap();
+        assert!(!verify_host(&session, &profile, key, Ed25519, &mixed, None).unwrap());
+        fs::write(&mixed, format!("not a known_hosts line\n{ecdsa}{ed25519}")).unwrap();
+        assert!(verify_host(&session, &profile, key, Ed25519, &mixed, None).unwrap());
+        let revoked = dir.path().join("revoked");
+        fs::write(
+            &revoked,
+            format!(
+                "@revoked * ssh-ed25519 {}\n",
+                base64::engine::general_purpose::STANDARD.encode(key)
+            ),
         )
         .unwrap();
         assert_eq!(
-            verify_host(&session, &profile, key, &path, Some(&user_path))
+            verify_host(&session, &profile, key, Ed25519, &revoked, None)
                 .unwrap_err()
                 .code,
             "sftp_host_key_changed"

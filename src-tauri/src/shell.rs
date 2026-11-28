@@ -204,23 +204,6 @@ pub struct CommandResult {
     pub output_read_failed: bool,
 }
 
-#[cfg(test)]
-fn run_shell(
-    shell: &std::ffi::OsStr,
-    interactive: bool,
-    command: &str,
-    cwd: &str,
-) -> std::result::Result<CommandResult, String> {
-    run_shell_controlled(
-        shell,
-        interactive,
-        command,
-        cwd,
-        &AtomicBool::new(false),
-        RUNTIME_LIMIT,
-    )
-}
-
 fn run_shell_controlled(
     shell: &std::ffi::OsStr,
     interactive: bool,
@@ -359,19 +342,32 @@ fn strip_interactive_prelude(stderr: &str) -> String {
     }
 }
 
-#[cfg(test)]
-fn execute(command: &str, cwd: &str) -> std::result::Result<CommandResult, String> {
+/// Runs a command line in the user's shell: the one path used by the app and the tests.
+fn execute(
+    command: &str,
+    cwd: &str,
+    cancel: &AtomicBool,
+) -> std::result::Result<CommandResult, String> {
     #[cfg(windows)]
     {
         let shell = env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
-        run_shell(&shell, false, command, cwd)
+        let cwd = crate::filesystem::windows_working_directory(std::path::Path::new(cwd))
+            .map_err(|e| e.message)?;
+        run_shell_controlled(
+            &shell,
+            false,
+            command,
+            &cwd.to_string_lossy(),
+            cancel,
+            RUNTIME_LIMIT,
+        )
     }
     #[cfg(not(windows))]
     {
         let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
         // Load aliases/functions up front. Never replay a command: a failing
         // compound command may already have performed destructive actions.
-        let result = run_shell(&shell, true, command, cwd)?;
+        let result = run_shell_controlled(&shell, true, command, cwd, cancel, RUNTIME_LIMIT)?;
         Ok(CommandResult {
             stderr: strip_interactive_prelude(&result.stderr),
             ..result
@@ -388,30 +384,9 @@ pub async fn run_system_command(
 ) -> std::result::Result<CommandResult, String> {
     let lease = manager.begin(command_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        #[cfg(windows)]
-        let shell = env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
-        #[cfg(windows)]
-        let cwd = crate::filesystem::windows_working_directory(std::path::Path::new(&cwd))
-            .map_err(|e| e.message)?
-            .to_string_lossy()
-            .into_owned();
-        #[cfg(not(windows))]
-        let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
-        let result = run_shell_controlled(
-            &shell,
-            !cfg!(windows),
-            &command,
-            &cwd,
-            lease.token(),
-            RUNTIME_LIMIT,
-        )?;
-        #[cfg(not(windows))]
-        let result = CommandResult {
-            stderr: strip_interactive_prelude(&result.stderr),
-            ..result
-        };
+        let result = execute(&command, &cwd, lease.token());
         drop(lease);
-        Ok(result)
+        result
     })
     .await
     .map_err(|error| error.to_string())?
@@ -735,8 +710,8 @@ mod tests {
         let cwd = env::current_dir().unwrap();
         let cwd = cwd.to_str().unwrap();
         let pwd = if cfg!(windows) { "cd" } else { "pwd" };
-        let directory = execute(pwd, cwd).unwrap();
-        let output = execute("echo mycmd-shell-test", cwd).unwrap();
+        let directory = execute(pwd, cwd, &AtomicBool::new(false)).unwrap();
+        let output = execute("echo mycmd-shell-test", cwd, &AtomicBool::new(false)).unwrap();
 
         assert!(directory.success);
         assert_eq!(directory.stdout.trim(), cwd);
@@ -771,7 +746,11 @@ mod tests {
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
         let previous = env::var_os("SHELL");
         env::set_var("SHELL", &fake);
-        let result = execute("whatever", dir.path().to_str().unwrap());
+        let result = execute(
+            "whatever",
+            dir.path().to_str().unwrap(),
+            &AtomicBool::new(false),
+        );
         match previous {
             Some(value) => env::set_var("SHELL", value),
             None => env::remove_var("SHELL"),
@@ -792,6 +771,7 @@ mod tests {
         let result = execute(
             "echo once >> count; __mycmd_missing_command__",
             dir.path().to_str().unwrap(),
+            &AtomicBool::new(false),
         );
         match previous {
             Some(value) => env::set_var("SHELL", value),

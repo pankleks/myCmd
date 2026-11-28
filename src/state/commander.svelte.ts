@@ -57,7 +57,8 @@ export function rows(panel: PanelState): Row[] {
 export function previewEntry(panel: PanelState): Row | undefined {
   const searching = !!searchSession(panel.path);
   if (
-    (panel.loading && !searching) ||
+    // Entries are stale while navigating elsewhere, not during a refresh.
+    (panel.loading && !searching && panel.loadingPath !== panel.path) ||
     (!isLocalPath(panel.path) &&
       !searching &&
       parseLocation(panel.path).kind !== 'sftp')
@@ -106,6 +107,7 @@ export async function load(
   const revision = ++panel.revision;
   const oldCursor = rows(panel)[panel.cursor]?.path;
   panel.loading = true;
+  panel.loadingPath = path;
   panel.error = undefined;
   try {
     const location = parseLocation(path);

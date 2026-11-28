@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import FilePreview from './FilePreview.svelte';
 
   let {
@@ -19,6 +20,9 @@
 
   $effect(() => {
     const next = target;
+    // A folder refresh rebuilds the target object; keep an unchanged preview
+    // (scroll position, search) instead of reloading it.
+    if (next && next.key === untrack(() => settledTarget?.key)) return;
     // Dispose the previous preview immediately; only open a file once the
     // cursor has stopped moving. Effect cleanup also handles panel unmount.
     settledTarget = undefined;

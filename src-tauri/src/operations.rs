@@ -308,14 +308,18 @@ impl Worker {
             }
         }
     }
+    /// `measured` is the source size when the caller already walked it.
     fn transfer(
         &mut self,
         source: &Path,
         destination: &Path,
         moving: bool,
+        measured: Option<(u64, u64)>,
     ) -> Result<Option<PathBuf>> {
         let mut stack = Vec::new();
-        match self.transfer_item(source, destination, moving)? {
+        // After one EXDEV, every child crosses devices too: skip their renames.
+        let mut cross_device = false;
+        match self.transfer_item(source, destination, moving, measured, &mut cross_device)? {
             TransferStep::Finished(target) => return Ok(target),
             TransferStep::Directory(directory) => stack.push(directory),
         }
@@ -325,7 +329,7 @@ impl Worker {
             if let Some(child) = directory.children.next() {
                 let child = child.map_err(|e| FsError::io(e, &directory.source))?;
                 let target = directory.target.join(child.file_name());
-                match self.transfer_item(&child.path(), &target, moving)? {
+                match self.transfer_item(&child.path(), &target, moving, None, &mut cross_device)? {
                     TransferStep::Finished(target) => {
                         stack.last_mut().unwrap().complete &= target.is_some()
                     }
@@ -359,6 +363,8 @@ impl Worker {
         source: &Path,
         destination: &Path,
         moving: bool,
+        measured: Option<(u64, u64)>,
+        cross_device: &mut bool,
     ) -> Result<TransferStep> {
         self.check()?;
         let meta = fs::symlink_metadata(source).map_err(|e| FsError::io(e, source))?;
@@ -439,17 +445,20 @@ impl Worker {
                 "Cannot overwrite a different item type or a symbolic link; use Rename or Skip",
             ));
         }
-        if moving && !overwrite {
+        if moving && !overwrite && !*cross_device {
             // Measure before committing, while errors/cancellation can still
             // leave the source untouched.
-            let n = self.measure(source)?;
+            let n = match measured {
+                Some(n) => n,
+                None => self.measure(source)?,
+            };
             self.check()?;
             match rename_noreplace(source, &target) {
                 Ok(()) => {
                     self.record_progress(&target, n.0, n.1);
                     return Ok(TransferStep::Finished(Some(target)));
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {}
+                Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => *cross_device = true,
                 Err(e) => return Err(FsError::io(e, &target)),
             }
         }
@@ -624,8 +633,12 @@ impl Worker {
                 members,
                 destination,
             } => {
-                let staging =
-                    tempfile::tempdir().map_err(|e| FsError::new("io_error", e.to_string()))?;
+                // Stage next to the target, not in /tmp (often RAM-backed tmpfs), so
+                // the final step is a rename instead of a second full copy.
+                let staging = tempfile::Builder::new()
+                    .prefix(".mycmd-extract-")
+                    .tempdir_in(&destination)
+                    .map_err(|e| FsError::io(e, &destination))?;
                 let sources = crate::archives::extract_selected(
                     &archive_path,
                     &directory,
@@ -633,7 +646,7 @@ impl Worker {
                     staging.path(),
                     || self.check(),
                 )?;
-                self.batch(sources, destination, false)?;
+                self.batch(sources, destination, true)?;
             }
             Operation::CreateFile { parent, name } => {
                 filesystem::validate_name(&name)?;
@@ -666,14 +679,15 @@ impl Worker {
                 self.progress.total_items = items;
                 self.emit();
                 self.progress.result_path = self
-                    .transfer(&path, &target, true)?
+                    .transfer(&path, &target, true, Some((bytes, items)))?
                     .map(|target| filesystem::text(&target));
             }
             Operation::Delete { sources, permanent } => {
                 let sources = normalize_sources(sources)?;
                 for p in &sources {
                     protect(p)?;
-                    let n = self.measure(p)?;
+                    // The trash takes each item whole: count items, do not walk them.
+                    let n = if permanent { self.measure(p)? } else { (0, 1) };
                     self.progress.total_bytes += n.0;
                     self.progress.total_items += n.1;
                 }
@@ -944,7 +958,7 @@ impl Worker {
         self.progress.total_bytes += bytes;
         self.progress.total_items += items;
         self.emit();
-        self.transfer(source, &target, moving)?;
+        self.transfer(source, &target, moving, Some((bytes, items)))?;
         Ok(())
     }
     fn batch(&mut self, sources: Vec<PathBuf>, destination: PathBuf, moving: bool) -> Result<()> {
@@ -956,6 +970,7 @@ impl Worker {
             ));
         }
         let sources = normalize_sources(sources)?;
+        let mut measured = Vec::with_capacity(sources.len());
         for p in &sources {
             protect(p)?;
             let m = fs::symlink_metadata(p).map_err(|e| FsError::io(e, p))?;
@@ -968,10 +983,16 @@ impl Worker {
             let n = self.measure(p)?;
             self.progress.total_bytes += n.0;
             self.progress.total_items += n.1;
+            measured.push(n);
         }
         self.emit();
-        for p in sources {
-            self.transfer(&p, &destination.join(p.file_name().unwrap()), moving)?;
+        for (p, n) in sources.into_iter().zip(measured) {
+            self.transfer(
+                &p,
+                &destination.join(p.file_name().unwrap()),
+                moving,
+                Some(n),
+            )?;
         }
         Ok(())
     }
@@ -1235,6 +1256,48 @@ fn remove_leaf(p: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn extract_stages_in_the_destination_and_leaves_nothing_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        fs::create_dir_all(source.join("folder")).unwrap();
+        fs::write(source.join("folder/inner.txt"), "inner").unwrap();
+        fs::write(source.join("top.txt"), "top").unwrap();
+        worker("overwrite")
+            .run(Operation::Compress {
+                sources: vec![source.join("folder"), source.join("top.txt")],
+                destination: dir.path().to_owned(),
+                name: "a.zip".into(),
+                compression_level: 6,
+            })
+            .unwrap();
+        let destination = dir.path().join("out");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("top.txt"), "existing").unwrap();
+        worker("overwrite")
+            .run(Operation::Extract {
+                archive_path: dir.path().join("a.zip"),
+                directory: String::new(),
+                members: vec!["folder".into(), "top.txt".into()],
+                destination: destination.clone(),
+            })
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(destination.join("folder/inner.txt")).unwrap(),
+            "inner"
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("top.txt")).unwrap(),
+            "top"
+        );
+        let mut names: Vec<_> = fs::read_dir(&destination)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["folder", "top.txt"]);
+    }
+
     #[test]
     fn compress_uses_each_level_and_preserves_contents() {
         let dir = tempfile::tempdir().unwrap();
@@ -1906,7 +1969,7 @@ mod tests {
         for moving in [false, true] {
             assert_eq!(
                 worker("overwrite")
-                    .transfer(&source, &target, moving)
+                    .transfer(&source, &target, moving, None)
                     .err()
                     .unwrap()
                     .code,
@@ -1926,7 +1989,7 @@ mod tests {
         fs::write(&source, "payload").unwrap();
         assert_eq!(
             worker("overwrite")
-                .transfer(&source, &target, false)
+                .transfer(&source, &target, false, None)
                 .err()
                 .unwrap()
                 .code,
@@ -1934,7 +1997,7 @@ mod tests {
         );
         let mut w = worker("cancel");
         assert_eq!(
-            w.transfer(&source, &target, true).unwrap(),
+            w.transfer(&source, &target, true, None).unwrap(),
             Some(target.clone())
         );
         assert_eq!(fs::read_to_string(&target).unwrap(), "payload");
@@ -2095,7 +2158,7 @@ mod tests {
         let time = filetime::FileTime::from_unix_time(1_000_000, 0);
         filetime::set_file_mtime(&source, time).unwrap();
         worker("overwrite")
-            .transfer(&source, &destination.join("source"), false)
+            .transfer(&source, &destination.join("source"), false, None)
             .unwrap();
         assert_eq!(
             filetime::FileTime::from_last_modification_time(
@@ -2137,7 +2200,7 @@ mod tests {
             .unwrap();
         // Overwrite intentionally exercises copy-and-remove, even on one volume.
         worker("overwrite")
-            .transfer(&source, &destination, true)
+            .transfer(&source, &destination, true, None)
             .unwrap();
         assert!(!source.exists());
         assert_eq!(
@@ -2156,7 +2219,7 @@ mod tests {
         fs::write(&destination, "old").unwrap();
         xattr::set(&source, "user.mycmd-test", b"metadata").unwrap();
         worker("overwrite")
-            .transfer(&source, &destination, true)
+            .transfer(&source, &destination, true, None)
             .unwrap();
         assert_eq!(
             xattr::get(&destination, "user.mycmd-test").unwrap(),
@@ -2241,7 +2304,10 @@ mod tests {
         }
         fs::write(leaf.join("payload"), b"content").unwrap();
         let mut copier = worker("overwrite");
-        assert!(copier.transfer(&source, &target, false).unwrap().is_some());
+        assert!(copier
+            .transfer(&source, &target, false, None)
+            .unwrap()
+            .is_some());
         let relative = leaf.strip_prefix(&source).unwrap();
         assert_eq!(
             fs::read(target.join(relative).join("payload")).unwrap(),
@@ -2251,7 +2317,10 @@ mod tests {
         assert_eq!(copier.progress.processed_items, 42);
         // Existing destination directories force the copy-and-remove merge path.
         let mut mover = worker("overwrite");
-        assert!(mover.transfer(&source, &target, true).unwrap().is_some());
+        assert!(mover
+            .transfer(&source, &target, true, None)
+            .unwrap()
+            .is_some());
         assert!(!source.exists());
         assert_eq!(
             fs::read(target.join(relative).join("payload")).unwrap(),
@@ -2293,8 +2362,14 @@ mod tests {
         filetime::set_file_mtime(&source, modified).unwrap();
         let target = destination_temp.path().join("tree");
         let mut mover = worker("overwrite");
-        assert!(mover.transfer(&source, &target, true).unwrap().is_some());
+        assert!(mover
+            .transfer(&source, &target, true, None)
+            .unwrap()
+            .is_some());
         assert!(!source.exists());
+        // Each item counted once: children skip the rename after the first EXDEV.
+        assert_eq!(mover.progress.processed_items, 4);
+        assert_eq!(mover.progress.processed_bytes, 20);
         assert_eq!(
             fs::read(target.join("nested/file")).unwrap(),
             b"cross-device payload"

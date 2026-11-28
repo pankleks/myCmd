@@ -72,7 +72,8 @@
   import { createOperationController } from './operations/controller.svelte';
   import { createCommandController } from './operations/commandController.svelte';
   import { createDirectoryRefresh } from './utils/directoryRefresh';
-  import { sftpActionError, toSftpOperation } from './state/sftpRules';
+  import { sftpActionError } from './state/sftpRules';
+  import { routeOperation } from './operations/route';
   import { skippedLinksMessage } from './operations/skippedLinks';
   import { contextMenuItems } from './state/contextMenu';
   import { galleryImages, type GalleryImage } from './utils/imageGallery';
@@ -83,6 +84,22 @@
   let error = $state('');
   let errorTitle = $state('Error');
   let createdFileEditor: { editor: string | null } | undefined;
+  // Reloading a search panel runs the whole search again, so only the side
+  // whose results an operation changed (`search: true`) is searched again.
+  function reloadPanels(focus?: {
+    side: Side;
+    path?: string;
+    search?: boolean;
+  }) {
+    return Promise.all(
+      (['left', 'right'] as const).map((side) => {
+        const panel = commander[side];
+        const mine = side === focus?.side;
+        if (searchSession(panel.path) && !(mine && focus?.search)) return;
+        return load(panel, undefined, mine ? focus?.path : undefined);
+      }),
+    );
+  }
   const operations = createOperationController({
     start: api.start,
     cancel: api.cancel,
@@ -94,18 +111,7 @@
     completed: async (payload, side) => {
       const editor = createdFileEditor;
       createdFileEditor = undefined;
-      await Promise.all([
-        load(
-          commander.left,
-          undefined,
-          side === 'left' ? payload.resultPath : undefined,
-        ),
-        load(
-          commander.right,
-          undefined,
-          side === 'right' ? payload.resultPath : undefined,
-        ),
-      ]);
+      await reloadPanels({ side, path: payload.resultPath, search: true });
       commander[side].selected = new Set();
       const linksMessage =
         payload.state === 'completed'
@@ -120,7 +126,7 @@
   const commands = createCommandController({
     run: api.runCommand,
     cancel: api.cancelCommand,
-    refresh: () => Promise.all([load(commander.left), load(commander.right)]),
+    refresh: () => reloadPanels(),
     report: (command, output) => {
       commandError = { command, output };
     },
@@ -246,7 +252,7 @@
     systemActionsRunning = true;
     try {
       await api.systemActions(path);
-      await Promise.all([load(commander.left), load(commander.right)]);
+      await reloadPanels();
     } catch (cause) {
       showError(errorMessage(cause), 'System actions failed');
     } finally {
@@ -299,7 +305,7 @@
       name: entry.name,
       extension: entry.extension,
       isDirectory: entry.type === 'directory',
-      key: `${commander.activePanel}:${active.revision}:${entry.path}:${entry.size}:${entry.modified ?? ''}`,
+      key: `${commander.activePanel}:${entry.path}:${entry.size}:${entry.modified ?? ''}`,
     };
   });
   let percent = $derived(
@@ -494,18 +500,7 @@
   }
   async function refreshProperties() {
     const target = propertiesDialog!;
-    await Promise.all([
-      load(
-        commander.left,
-        undefined,
-        target.side === 'left' ? target.path : undefined,
-      ),
-      load(
-        commander.right,
-        undefined,
-        target.side === 'right' ? target.path : undefined,
-      ),
-    ]);
+    await reloadPanels({ side: target.side, path: target.path });
   }
   function viewCurrentFile() {
     if (!ready || busy || commandRunning) return;
@@ -682,30 +677,12 @@
   }
   async function submit(operation: FileOperation) {
     const side = dialog!.side;
-    const location = parseLocation(dialog!.parent);
-    operation = toSftpOperation(
+    operation = routeOperation(
       operation,
       dialog!.parent,
       dialog!.destination,
-      dialog!.entries.map((entry) => entry.path),
+      dialog!.entries,
     );
-    if (operation.type === 'delete' && location.kind === 'archive') {
-      operation = {
-        type: 'deleteArchive',
-        archivePath: location.archivePath,
-        directory: location.directory,
-        members: dialog!.entries.map((entry) => entry.name),
-      };
-    }
-    if (operation.type === 'copy' && location.kind === 'archive') {
-      operation = {
-        type: 'extract',
-        archivePath: location.archivePath,
-        directory: location.directory,
-        members: dialog!.entries.map((entry) => entry.name),
-        destination: operation.destination,
-      };
-    }
     closeDialog();
     createdFileEditor =
       operation.type === 'createFile'

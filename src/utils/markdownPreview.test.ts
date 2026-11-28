@@ -51,6 +51,30 @@ describe('Markdown preview', () => {
     );
   });
 
+  it('drops links, fake dialogs, app classes and app ids from file content', async () => {
+    const doc = documentFor(
+      await renderMarkdownPreview(
+        [
+          '<img src="x.png" usemap="#m"><map name="m"><area shape="rect" coords="0,0,9,9" href="https://example.com"></map>',
+          '<dialog open class="file-viewer">fake</dialog>',
+          '<div id="list-right" class="panel active file-viewer">x</div>',
+          '<button>Delete</button><textarea></textarea><select></select>',
+          '- [x] done',
+        ].join('\n\n'),
+        vi.fn().mockResolvedValue(image),
+      ),
+    );
+    expect(
+      doc.querySelector('area, map, dialog, button, textarea, select'),
+    ).toBeNull();
+    expect(doc.querySelector('[class]')).toBeNull();
+    expect(doc.getElementById('list-right')).toBeNull();
+    expect(doc.getElementById('user-content-list-right')?.textContent).toBe(
+      'x',
+    );
+    expect(doc.querySelector('input[type="checkbox"]')).not.toBeNull();
+  });
+
   it('keeps failed diagrams readable and continues with the next diagram', async () => {
     mermaid.render
       .mockRejectedValueOnce(new Error('parse error'))

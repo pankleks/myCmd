@@ -18,9 +18,31 @@ const sanitizeOptions = {
     'video',
     'audio',
     'form',
+    // <area href> navigates like <a>; the others imitate app dialogs and controls.
+    'area',
+    'map',
+    'dialog',
+    'button',
+    'select',
+    'textarea',
   ],
   FORBID_ATTR: ['style', 'target', 'srcset', 'action', 'formaction'],
+  // Prefix id/name so file content cannot shadow app elements like list-left.
+  SANITIZE_NAMED_PROPS: true,
 };
+
+/** App classes (e.g. `file-viewer` is a full-window overlay) must not style file content. */
+function keepPreviewClasses(root: HTMLElement) {
+  for (const element of root.querySelectorAll('[class]')) {
+    const kept = [...element.classList].filter(
+      (name) =>
+        /^language-[\w-]+$/.test(name) ||
+        (name === 'mermaid-diagram' && element.tagName === 'IMG'),
+    );
+    if (kept.length) element.className = kept.join(' ');
+    else element.removeAttribute('class');
+  }
+}
 
 export async function renderMarkdownPreview(
   content: string,
@@ -165,7 +187,7 @@ export async function renderMarkdownPreview(
       diagrams[0]?.parentElement?.before(error);
     }
   }
-  return isCancelled()
-    ? ''
-    : DOMPurify.sanitize(preview.body.innerHTML, sanitizeOptions);
+  if (isCancelled()) return '';
+  keepPreviewClasses(preview.body);
+  return DOMPurify.sanitize(preview.body.innerHTML, sanitizeOptions);
 }

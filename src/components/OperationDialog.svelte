@@ -125,14 +125,25 @@
   >
     <h2>{title}</h2>
     {#if action === 'delete'}
+      <p>
+        {permanent ? 'Delete' : 'Move'}
+        {entries.length === 1 ? '1 item' : `${entries.length} items`}
+        {permanent ? 'permanently?' : 'to the Recycle Bin?'}
+      </p>
+      <!-- Name what is deleted: selected items may be scrolled out of view. -->
+      <ul class="delete-names">
+        {#each entries.slice(0, 10) as entry (entry.path)}<li>
+            {entry.name}
+          </li>{/each}
+        {#if entries.length > 10}<li>…and {entries.length - 10} more</li>{/if}
+      </ul>
+      <p>
+        {#if counts}{counts.folders} folders, {counts.files} files / links (including
+          all children).
+        {:else if countFailed}Unable to count all contents.
+        {:else}Counting contents…{/if}
+      </p>
       {#if permanent}
-        <p>Delete {entries.length} items permanently?</p>
-        <p>
-          {#if counts}{counts.folders} folders, {counts.files} files / links (including
-            all children).
-          {:else if countFailed}Unable to count all contents.
-          {:else}Counting contents…{/if}
-        </p>
         <p class="danger-text">
           Folders and all their contents will be deleted. This cannot be undone.
         </p>
@@ -141,13 +152,6 @@
             Recycle Bin.
           </p>{/if}
       {:else}
-        <p>Move {entries.length} items to the Recycle Bin?</p>
-        <p>
-          {#if counts}{counts.folders} folders, {counts.files} files / links (including
-            all children).
-          {:else if countFailed}Unable to count all contents.
-          {:else}Counting contents…{/if}
-        </p>
         <p>You can restore them from the Recycle Bin.</p>
       {/if}
       {#if counts?.skipped}<p class="danger-text">

@@ -87,6 +87,13 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
+      # Overwrite backups, remote previews and EXDEV fallbacks only run against a
+      # real sshd and a second filesystem (/dev/shm).
+      - name: Live SFTP and cross-filesystem tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y openssh-server
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets -- --ignored sftp_live remote_preview cross_device
       - name: Build Windows desktop for integration test
         if: runner.os == 'Windows'
         run: npm run tauri build -- --debug --no-bundle --ci --config .github/tauri.smoke.conf.json -- --locked

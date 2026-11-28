@@ -34,7 +34,7 @@ Server keys are checked against `~/.ssh/known_hosts` and `sftp_known_hosts` in m
 
 Use **F5** to copy between one local panel and one SFTP panel. Transfers reuse progress, cancellation, and conflict handling. Files are written to temporary siblings before commit; source files are never deleted. An interrupted upload may leave a `.mycmd-*.part` file. Replacing an existing remote file uses a recoverable `.mycmd-*.backup` because SFTP v3 lacks a standard atomic replace operation. Errors identify backups that need manual recovery after reconnecting. Cancellation can take until the current network request times out.
 
-Remote folders support **F7**, **F2**, and **F8** (permanent deletion with confirmation). Transfers reject symbolic links rather than following them; remote deletion removes the link itself. New transferred folders use private permissions; regular-file permissions and modification times are preserved where supported, without ownership or special permission bits.
+Remote folders support **F7**, **F2**, and **F8** (permanent deletion with confirmation). Transfers reject symbolic links rather than following them; remote deletion removes the link itself. Folder and regular-file permissions and file modification times are preserved where supported (the owner always keeps write access to new folders), without ownership or special permission bits; files uploaded from Windows get 0644.
 
 Remote Move, remote-to-remote copies, ZIP, search, previews/editing, clipboard file export, and native system actions are not supported on SFTP locations. Use **Connections…** to disconnect or reconnect, and **Ctrl+R** to refresh remote listings.
 
